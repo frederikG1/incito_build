@@ -1,0 +1,31 @@
+artikelnr;varenavn;maerke;kategori;pris;foerpris;maengde;beskrivelse;billede;gyldig_fra;gyldig_til;etiketter
+SKU-0001;Letmælk;Arla;mejeri;9,95;12,95;1 l;Frisk letmælk fra danske gårde, 1,5% fedt;/images/SKU-0001.svg;14-09-2026;20-09-2026;
+SKU-0002;Skyr Vanilje;Cheasy;mejeri;16,00;22,50;450 g;Fedtfattig skyr med vanilje;/images/SKU-0002.svg;14-09-2026;20-09-2026;
+SKU-0003;Smør;Lurpak;mejeri;24,95;32,00;200 g;Saltet smør, klassisk;/images/SKU-0003.svg;14-09-2026;20-09-2026;
+SKU-0004;Cheddar Revet;Arla;mejeri;18,95;;150 g;Revet cheddar, moden;/images/SKU-0004.svg;14-09-2026;20-09-2026;
+SKU-0005;Økologisk Yoghurt;Thise;mejeri;21,00;26,00;1 l;Økologisk naturel yoghurt;/images/SKU-0005.svg;14-09-2026;20-09-2026;Økologisk
+SKU-0006;Fløde 38%;Karolines;mejeri;12,50;;250 ml;Piskefløde til madlavning og dessert;/images/SKU-0006.svg;14-09-2026;20-09-2026;Medlemspris
+SKU-0007;Danske Æbler;;frugt-og-groent;14,95;24,95;1 kg;Sprøde danske æbler, klasse 1;/images/SKU-0007.svg;14-09-2026;20-09-2026;Spar stort
+SKU-0008;Bananer;;frugt-og-groent;12,00;16,00;1 kg;Fairtrade bananer;/images/SKU-0008.svg;14-09-2026;20-09-2026;
+SKU-0009;Avocado;;frugt-og-groent;20,00;30,00;2 stk.;Spiseklar avocado;/images/SKU-0009.svg;14-09-2026;20-09-2026;Spar stort
+SKU-0010;Cherrytomater;;frugt-og-groent;11,95;15,95;250 g;Søde cherrytomater på stilk;/images/SKU-0010.svg;14-09-2026;20-09-2026;2 for 1
+SKU-0011;Agurk;;frugt-og-groent;7,95;;1 stk.;Dansk drivhusagurk;/images/SKU-0011.svg;14-09-2026;20-09-2026;
+SKU-0012;Blåbær;;frugt-og-groent;15,00;22,00;125 g;Friske blåbær;/images/SKU-0012.svg;14-09-2026;20-09-2026;Spar stort
+SKU-0013;Coca-Cola Zero;Coca-Cola;drikkevarer;15,95;24,95;1,5 l;Sukkerfri sodavand;/images/SKU-0013.svg;14-09-2026;20-09-2026;Spar stort|Medlemspris
+SKU-0014;Pilsner;Carlsberg;drikkevarer;49,00;69,00;6 x 33 cl;Dansk pilsner, 4,6%;/images/SKU-0014.svg;14-09-2026;20-09-2026;
+SKU-0015;Appelsinjuice;Rynkeby;drikkevarer;17,95;22,95;1 l;Juice af presset appelsin;/images/SKU-0015.svg;14-09-2026;20-09-2026;
+SKU-0016;Mineralvand;San Pellegrino;drikkevarer;14,00;;75 cl;Kulsyreholdigt mineralvand;/images/SKU-0016.svg;14-09-2026;20-09-2026;
+SKU-0017;Instant Kaffe;Nescafé;drikkevarer;55,00;79,00;200 g;Frysetørret instant kaffe;/images/SKU-0017.svg;14-09-2026;20-09-2026;Spar stort
+SKU-0018;Hakket Oksekød 8-12%;;koed-og-fisk;32,00;45,00;500 g;Dansk hakket oksekød;/images/SKU-0018.svg;14-09-2026;20-09-2026;
+SKU-0019;Kyllingebryst;;koed-og-fisk;55,00;75,00;600 g;Fersk kyllingebryst uden skind;/images/SKU-0019.svg;14-09-2026;20-09-2026;
+SKU-0020;Laksefilet;;koed-og-fisk;45,00;60,00;250 g;Norsk laksefilet uden skind;/images/SKU-0020.svg;14-09-2026;20-09-2026;Medlemspris
+SKU-0021;Bacon i Skiver;Tulip;koed-og-fisk;15,95;21,95;140 g;Røget bacon i skiver;/images/SKU-0021.svg;14-09-2026;20-09-2026;2 for 1
+SKU-0022;Spaghetti;Barilla;kolonial;12,95;17,95;500 g;Italiensk spaghetti nr. 5;/images/SKU-0022.svg;14-09-2026;20-09-2026;
+SKU-0023;Økologisk Havregryn;Urtekram;kolonial;18,00;24,00;1 kg;Økologiske havregryn;/images/SKU-0023.svg;14-09-2026;20-09-2026;Økologisk
+SKU-0024;Ketchup;Heinz;kolonial;22,95;29,95;570 g;Tomatketchup, klassisk;/images/SKU-0024.svg;14-09-2026;20-09-2026;
+SKU-0025;Olivenolie Ekstra Jomfru;Castello;kolonial;42,00;58,00;500 ml;Koldpresset olivenolie;/images/SKU-0025.svg;14-09-2026;20-09-2026;
+SKU-0026;Guldbarre;Toms;kolonial;25,00;34,00;160 g;Mørk chokolade med nougat;/images/SKU-0026.svg;14-09-2026;20-09-2026;
+SKU-0027;Chips Salt;Kims;kolonial;16,95;22,95;170 g;Klassiske saltede chips;/images/SKU-0027.svg;14-09-2026;20-09-2026;Medlemspris
+SKU-0001;Letmælk;Arla;mejeri;9,95;12,95;1 l;Frisk letmælk fra danske gårde, 1,5% fedt;/images/SKU-0001.svg;14-09-2026;20-09-2026;
+SKU-9999;;;kolonial;19,95;;500 g;;;14-09-2026;20-09-2026;
+SKU-9998;Mystisk Vare;;kolonial;ikke-et-tal;;1 stk.;;;14-09-2026;20-09-2026;

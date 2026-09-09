@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+data/image-cache/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.data/
+.DS_Store
+.env
+ml/.venv/
+danish_catalogs_dataset/

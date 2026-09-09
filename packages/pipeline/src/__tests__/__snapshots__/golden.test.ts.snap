@@ -1,0 +1,73 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildCatalog against the sample feed > matches the committed layout snapshot 1`] = `
+[
+  {
+    "id": "page-1",
+    "placements": [
+      "hero=SKU-0013",
+      "foot-a=SKU-0015",
+      "foot-b=SKU-0016",
+      "side-top=SKU-0014",
+      "side-bottom=SKU-0017",
+    ],
+    "subtitle": "",
+    "templateId": "authored/hero-right",
+    "title": "Drikkevarer",
+  },
+  {
+    "id": "page-2",
+    "placements": [
+      "a=SKU-0019",
+      "b=SKU-0018",
+      "c=SKU-0020",
+      "d=SKU-0021",
+    ],
+    "subtitle": "",
+    "templateId": "authored/grid-4",
+    "title": "Koed Og Fisk",
+  },
+  {
+    "id": "page-3",
+    "placements": [
+      "a=SKU-0008",
+      "b=SKU-0011",
+      "c=SKU-0012",
+      "d=SKU-0009",
+      "e=SKU-0010",
+      "f=SKU-0007",
+    ],
+    "subtitle": "",
+    "templateId": "authored/grid-6",
+    "title": "Frugt Og Groent",
+  },
+  {
+    "id": "page-4",
+    "placements": [
+      "a=SKU-0024",
+      "b=SKU-0023",
+      "c=SKU-0026",
+      "d=SKU-0025",
+      "e=SKU-0022",
+      "f=SKU-0027",
+    ],
+    "subtitle": "",
+    "templateId": "authored/grid-6",
+    "title": "Kolonial",
+  },
+  {
+    "id": "page-5",
+    "placements": [
+      "a=SKU-0005",
+      "b=SKU-0006",
+      "c=SKU-0003",
+      "d=SKU-0001",
+      "e=SKU-0004",
+      "f=SKU-0002",
+    ],
+    "subtitle": "",
+    "templateId": "authored/grid-6",
+    "title": "Mejeri",
+  },
+]
+`;

@@ -1,0 +1,2669 @@
+{
+  "version": "0.1.0-house-365discount",
+  "templates": [
+    {
+      "id": "mined/000",
+      "name": "5 slots \u00b7 seen 14\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#3",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/001",
+      "name": "4 slots \u00b7 seen 4\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s2"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#11",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/002",
+      "name": "6 slots \u00b7 seen 3\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 4,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s5",
+          "x": 8,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#8",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/003",
+      "name": "5 slots \u00b7 seen 2\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 11,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.65,
+          "textCapacity": 174,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#6",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/004",
+      "name": "4 slots \u00b7 seen 2\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 11,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 1.65,
+          "textCapacity": 174,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s2"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#10",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/005",
+      "name": "6 slots \u00b7 seen 2\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s5",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#23",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/006",
+      "name": "4 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 2,
+          "w": 7,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 1.05,
+          "textCapacity": 110,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 7,
+          "y": 1,
+          "w": 5,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.75,
+          "textCapacity": 79,
+          "promotesTo": [
+            "s1",
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#1",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/007",
+      "name": "4 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s2"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 6,
+          "y": 1,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#2",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/008",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s1"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s1"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s1"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s1"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#4",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/009",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s3",
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 5,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.75,
+          "textCapacity": 79,
+          "promotesTo": [
+            "s1",
+            "s4"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 5,
+          "y": 8,
+          "w": 7,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 1.05,
+          "textCapacity": 110,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s3",
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#5",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/010",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 1,
+          "y": 8,
+          "w": 11,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.65,
+          "textCapacity": 174,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#7",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/011",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 1,
+          "y": 4,
+          "w": 5,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.75,
+          "textCapacity": 79,
+          "promotesTo": [
+            "s1",
+            "s3"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#9",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/012",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 1,
+          "w": 12,
+          "h": 3,
+          "role": "hero",
+          "preferredAspect": 2.4,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 7,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 7,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#12",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/013",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 1,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s1",
+            "s3"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#13",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/014",
+      "name": "4 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 5,
+          "w": 5,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.0,
+          "textCapacity": 79,
+          "promotesTo": [
+            "s1",
+            "s3"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 8,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s3",
+            "s2"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 8,
+          "role": "hero",
+          "preferredAspect": 0.45,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 7,
+          "y": 8,
+          "w": 5,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.75,
+          "textCapacity": 79,
+          "promotesTo": [
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#14",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/015",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 5,
+          "role": "standard",
+          "preferredAspect": 0.72,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s4"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 5,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2",
+            "s3"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s4"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 1,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s4"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 5,
+          "w": 6,
+          "h": 7,
+          "role": "hero",
+          "preferredAspect": 0.5143,
+          "textCapacity": 95,
+          "promotesTo": []
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#15",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/016",
+      "name": "4 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 3,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s1",
+            "s3"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 7,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 6,
+          "role": "hero",
+          "preferredAspect": 0.6,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 7,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#19",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/017",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 1,
+          "w": 11,
+          "h": 3,
+          "role": "hero",
+          "preferredAspect": 2.2,
+          "textCapacity": 174,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#20",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/018",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s4"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s4"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s4"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s4"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 8,
+          "role": "hero",
+          "preferredAspect": 0.45,
+          "textCapacity": 95,
+          "promotesTo": []
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#24",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/019",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 5,
+          "y": 8,
+          "w": 7,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 1.05,
+          "textCapacity": 110,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#25",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/020",
+      "name": "6 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 1,
+          "w": 12,
+          "h": 3,
+          "role": "hero",
+          "preferredAspect": 2.4,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 4,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s5",
+          "x": 8,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#26",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/021",
+      "name": "6 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s0",
+            "s4"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 4,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s0",
+            "s4"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2"
+          ]
+        },
+        {
+          "id": "s5",
+          "x": 8,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s0",
+            "s4"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#27",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/022",
+      "name": "3 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 4,
+          "w": 5,
+          "h": 7,
+          "role": "hero",
+          "preferredAspect": 0.4286,
+          "textCapacity": 79,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 6,
+          "y": 2,
+          "w": 5,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.75,
+          "textCapacity": 79,
+          "promotesTo": [
+            "s2",
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 7,
+          "y": 6,
+          "w": 5,
+          "h": 5,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 79,
+          "promotesTo": [
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "0rRWC0PC#28",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/023",
+      "name": "6 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2",
+            "s5"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 5,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2",
+            "s5"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2",
+            "s5"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 5,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2",
+            "s5"
+          ]
+        },
+        {
+          "id": "s5",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#1",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/024",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 1,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 5,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s3"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s3"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0",
+            "s3"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#2",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/025",
+      "name": "4 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2",
+            "s1"
+          ]
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 8,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s2",
+          "x": 1,
+          "y": 0,
+          "w": 11,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 1.65,
+          "textCapacity": 174,
+          "promotesTo": [
+            "s1"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2",
+            "s1"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#9",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/026",
+      "name": "3 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 11,
+          "h": 2,
+          "role": "standard",
+          "preferredAspect": 3.3,
+          "textCapacity": 174,
+          "promotesTo": [
+            "s0",
+            "s2"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 6,
+          "w": 12,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.8,
+          "textCapacity": 190,
+          "promotesTo": []
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#11",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/027",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 8,
+          "role": "hero",
+          "preferredAspect": 0.45,
+          "textCapacity": 95,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 6,
+          "y": 1,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 7,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 10,
+          "w": 6,
+          "h": 2,
+          "role": "standard",
+          "preferredAspect": 1.8,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s1",
+            "s2"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#13",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/028",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 10,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.5,
+          "textCapacity": 158,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#14",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/029",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 5,
+          "w": 12,
+          "h": 3,
+          "role": "hero",
+          "preferredAspect": 2.4,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 8,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s3",
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 4,
+          "y": 8,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s3",
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 5,
+          "y": 1,
+          "w": 7,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 1.05,
+          "textCapacity": 110,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 8,
+          "y": 8,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s3",
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#17",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/030",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 5,
+          "role": "hero",
+          "preferredAspect": 1.44,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 5,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 5,
+          "w": 6,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 1.2,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#18",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/031",
+      "name": "5 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 1,
+          "w": 12,
+          "h": 3,
+          "role": "hero",
+          "preferredAspect": 2.4,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 6,
+          "y": 4,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#21",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/032",
+      "name": "6 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 3,
+          "role": "hero",
+          "preferredAspect": 2.4,
+          "textCapacity": 190,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 3,
+          "w": 4,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 0.8,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 7,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 4,
+          "y": 3,
+          "w": 4,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 0.8,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 7,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s5",
+          "x": 8,
+          "y": 3,
+          "w": 4,
+          "h": 3,
+          "role": "standard",
+          "preferredAspect": 0.8,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#22",
+        "pageNumber": 0
+      }
+    },
+    {
+      "id": "mined/033",
+      "name": "6 slots \u00b7 seen 1\u00d7",
+      "grid": {
+        "cols": 12,
+        "rows": 12,
+        "gutter": 0.05
+      },
+      "slots": [
+        {
+          "id": "s0",
+          "x": 0,
+          "y": 0,
+          "w": 11,
+          "h": 4,
+          "role": "hero",
+          "preferredAspect": 1.65,
+          "textCapacity": 174,
+          "promotesTo": []
+        },
+        {
+          "id": "s1",
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s2",
+          "x": 0,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s3",
+          "x": 4,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        },
+        {
+          "id": "s4",
+          "x": 6,
+          "y": 8,
+          "w": 6,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.9,
+          "textCapacity": 95,
+          "promotesTo": [
+            "s0"
+          ]
+        },
+        {
+          "id": "s5",
+          "x": 8,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "role": "standard",
+          "preferredAspect": 0.6,
+          "textCapacity": 63,
+          "promotesTo": [
+            "s2",
+            "s4"
+          ]
+        }
+      ],
+      "provenance": {
+        "source": "mined",
+        "catalogId": "FIAMxJ0t#25",
+        "pageNumber": 0
+      }
+    }
+  ]
+}

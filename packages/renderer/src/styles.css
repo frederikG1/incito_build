@@ -1,0 +1,378 @@
+/*
+ * Catalog rendering.
+ *
+ * Type and spacing are sized in container-query units (cqi/cqh) rather
+ * than rem, so a tile reads correctly at any slot size and at any page
+ * zoom without variant classes. This is what lets OfferTile be one
+ * component instead of three.
+ */
+
+.catalog {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.page {
+  position: relative;
+  width: 100%;
+  max-width: 780px;
+  container-type: size;
+  container-name: page;
+  overflow: hidden;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 12px 32px rgb(0 0 0 / 0.10);
+  display: flex;
+  flex-direction: column;
+}
+
+.page--error {
+  aspect-ratio: 0.707;
+  display: grid;
+  place-items: center;
+  background: #fff4f4;
+  color: #b00020;
+  font: 600 14px/1.4 system-ui, sans-serif;
+}
+
+.page__header {
+  display: flex;
+  align-items: center;
+  gap: 2cqi;
+  padding: 2.4cqi 3cqi 1.6cqi;
+  flex: 0 0 auto;
+}
+
+.page__logo {
+  height: 5cqi;
+  width: auto;
+  object-fit: contain;
+}
+
+.page__title {
+  margin: 0;
+  font-family: var(--heading-font);
+  font-size: 4.2cqi;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--brand);
+  text-transform: uppercase;
+}
+
+.page__subtitle {
+  margin: 0.4cqi 0 0;
+  font-size: 1.9cqi;
+  opacity: 0.55;
+  font-weight: 500;
+}
+
+.page__canvas {
+  position: relative;
+  flex: 1 1 auto;
+  margin: 0 1.4cqi 1.4cqi;
+}
+
+.page__slot {
+  position: absolute;
+}
+
+.page__empty {
+  width: 100%;
+  height: 100%;
+  border: 1px dashed rgb(0 0 0 / 0.16);
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  font-size: 1.6cqi;
+  opacity: 0.4;
+}
+
+.page__footer {
+  position: absolute;
+  bottom: 1.2cqi;
+  right: 2cqi;
+  font-size: 1.6cqi;
+  opacity: 0.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- tile */
+
+/*
+ * Type is sized in `cqi` against the PAGE container, not the slot, and
+ * scaled by a per-role multiplier. Slots deliberately do NOT establish
+ * containers: if they did, `cqi` would resolve against the slot and type
+ * would scale linearly with tile area — which reads as broken rather
+ * than as hierarchy.
+ */
+.tile {
+  --step: calc(var(--scale, 1) * 1cqi);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid rgb(0 0 0 / 0.07);
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+  padding: calc(var(--step) * 0.9);
+  cursor: default;
+}
+
+/* The hero carries a tinted ground so it reads as the page's anchor
+   before any of its content is parsed. */
+.tile--hero {
+  background: color-mix(in srgb, var(--brand) 4%, #fff);
+  border-color: color-mix(in srgb, var(--brand) 16%, transparent);
+}
+
+.tile--selected { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+/*
+ * 55.7% is the median share of a tile that real published catalogs give to
+ * artwork, measured across 723 grocery tiles (see MEASURED in
+ * OfferTile.tsx). It replaced a hand-picked value.
+ */
+.tile__media {
+  position: relative;
+  flex: 1 1 auto;
+  flex-basis: 55.7%;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+/*
+ * Absolutely positioned rather than laid out in flow: a percentage height
+ * against a flex-sized parent with indefinite height resolves
+ * inconsistently and lets tall artwork spill over the price block.
+ * Taking the image out of flow makes the media box authoritative.
+ */
+/* Direct child only: the mark artwork also lives inside .tile__media, and
+   taking it out of flow collapses its own list item to zero height, which
+   this rule's max-height then clamps the mark itself down to. */
+.tile__media > img {
+  position: absolute;
+  inset: calc(var(--step) * 0.5);
+  width: auto;
+  height: auto;
+  max-width: calc(100% - var(--step));
+  max-height: calc(100% - var(--step));
+  margin: auto;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}
+
+.tile__placeholder {
+  width: calc(var(--step) * 7);
+  height: calc(var(--step) * 7);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brand) 10%, #f2f2f2);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: calc(var(--step) * 3);
+  color: color-mix(in srgb, var(--brand) 55%, #999);
+}
+
+/* Labels sit on the tile, not the image, so they keep a stable corner
+   regardless of how the artwork happens to be proportioned. */
+.tile__labels {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--step) * 0.25);
+  align-items: flex-start;
+  max-width: 78%;
+}
+
+.tag {
+  font-size: calc(var(--step) * 1.05);
+  font-weight: 800;
+  line-height: 1;
+  padding: calc(var(--step) * 0.42) calc(var(--step) * 0.6);
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.tag--member   { background: var(--brand); }
+.tag--multibuy { background: #1c1c1c; }
+.tag--saving   { background: #d81e05; }
+.tag--new      { background: #0a7d4f; }
+.tag--organic  { background: #2f7d32; }
+.tag--custom   { background: #444; }
+
+/* A mark is artwork, not a tag: no box, no padding, and sized in the same
+   step unit as the type so it scales with the tile rather than fighting it. */
+.tag--mark {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  max-width: 34%;
+}
+
+/* Marks sit opposite the price tags so the two never stack. Bottom-right
+   is where published leaflets put them: close to the product, clear of the
+   promotional flash in the top-left. */
+.tile__marks {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  gap: calc(var(--step) * 0.3);
+  align-items: flex-end;
+  max-width: 60%;
+}
+
+.tag--mark img {
+  display: block;
+  height: calc(var(--step) * 3.4);
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.tile__body {
+  flex: 0 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--step) * 0.5);
+}
+
+.tile__text { min-width: 0; }
+
+.tile__brand {
+  margin: 0;
+  font-size: calc(var(--step) * 1.05);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.45;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tile__name {
+  margin: 0;
+  font-family: var(--heading-font);
+  font-size: calc(var(--step) * 1.62);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  /* Two lines then ellipsis. The solver's textCapacity term exists to
+     keep names out of this clamp, but a feed can always surprise it. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tile__quantity {
+  margin: 0;
+  font-size: calc(var(--step) * 1.1);
+  opacity: 0.55;
+  line-height: 1.2;
+}
+
+.tile__description {
+  margin: 0;
+  font-size: calc(var(--step) * 1.05);
+  opacity: 0.6;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tile__pricing {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: calc(var(--step) * 0.6);
+  margin-top: calc(var(--step) * 0.2);
+}
+
+.price {
+  display: flex;
+  align-items: flex-start;
+  color: var(--brand);
+  font-family: var(--heading-font);
+  font-weight: 900;
+  line-height: 0.82;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 4.4 against the name's 1.62 is a ratio of 2.72 — the 60th percentile of
+ * the measured 1.43-3.26 range, deliberately above the 1.90 median. The
+ * median understates: the miner takes "name size" to be the largest
+ * non-numeric text in a tile, which is often an in-tile headline
+ * ("FRIT VALG") set larger than the product name itself. Sitting above
+ * the median compensates without leaving the observed range.
+ */
+.price__major { font-size: calc(var(--step) * 4.4); }
+
+.price__minor {
+  font-size: calc(var(--step) * 2.1);
+  margin-left: calc(var(--step) * 0.12);
+  letter-spacing: -0.02em;
+}
+
+.tile__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(var(--step) * 0.22);
+  text-align: right;
+  font-size: calc(var(--step) * 1.05);
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.tile__preprice { text-decoration: line-through; opacity: 0.45; font-variant-numeric: tabular-nums; }
+
+.tile__savings {
+  font-weight: 800;
+  background: var(--accent);
+  color: #1a1a1a;
+  padding: calc(var(--step) * 0.3) calc(var(--step) * 0.55);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.tile__comparison,
+.tile__validity { opacity: 0.45; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* A wide tile stacked vertically wastes its width and squashes the image,
+   so wide slots switch to a side-by-side composition. Driven by a class
+   from the renderer rather than a container query, because slots are not
+   containers — see the note at the top of this section. */
+.tile--wide { flex-direction: row; align-items: stretch; }
+.tile--wide .tile__media { flex: 1 1 46%; }
+.tile--wide .tile__body { flex: 1 1 54%; justify-content: center; padding-left: calc(var(--step) * 0.8); }
