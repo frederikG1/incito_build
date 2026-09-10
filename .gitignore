@@ -9,5 +9,3 @@ data/image-cache/
 .data/
 .DS_Store
 .env
-ml/.venv/
-danish_catalogs_dataset/

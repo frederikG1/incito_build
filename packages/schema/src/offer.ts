@@ -88,6 +88,21 @@ export const Offer = z.object({
   validTo: z.string().date(),
 
   imageUrl: ImageRef.nullable().default(null),
+  /**
+   * Every variant of this one offer, for a tile that shows them together.
+   *
+   * "Frit valg" and "Flere varianter" offers are one price covering
+   * several products, and published leaflets print them as a cluster in a
+   * single tile rather than picking one at random: 85% of the mined
+   * grocery tiles carry two or more images, and 72% of SuperBrugsen's
+   * offers supply two or more motives. Ordered as the feed gave them, the
+   * first being the one `imageUrl` also points at.
+   *
+   * Empty or single-entry means an ordinary one-product tile — the
+   * renderer falls back to `imageUrl`, so a feed without variants needs
+   * no special handling.
+   */
+  imagePack: z.array(ImageRef).max(8).default([]),
   labels: z.array(OfferLabel).default([]),
 
   /**

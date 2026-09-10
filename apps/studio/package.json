@@ -10,14 +10,11 @@
   },
   "dependencies": {
     "@incitio/schema": "0.1.0",
-    "@incitio/ingest": "0.1.0",
-    "@incitio/layout": "0.1.0",
+    "@incitio/brands": "0.1.0",
     "@incitio/renderer": "0.1.0",
-    "@dnd-kit/core": "^6.3.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "zustand": "^5.0.2",
-    "@incitio/pipeline": "0.1.0"
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.17",

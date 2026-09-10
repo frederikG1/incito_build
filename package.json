@@ -13,10 +13,12 @@
     "dev:api": "npm run dev -w @incitio/server",
     "build": "npm run build -w @incitio/studio",
     "test": "vitest run",
-    "typecheck": "tsc -b packages/schema packages/ingest packages/layout packages/pipeline packages/planner packages/server && tsc --noEmit -p apps/studio",
+    "typecheck": "tsc -b packages/schema packages/ingest packages/brands packages/compose packages/curator packages/pipeline packages/pdf packages/server && tsc --noEmit -p apps/studio",
     "sample-data": "node scripts/make-sample-data.mjs",
-    "generate": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/generate-catalog.ts",
-    "score": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/score-catalog.ts"
+    "refs": "node ./node_modules/.bin/vite-node scripts/fetch-references.ts",
+    "build:catalogue": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/build-catalogue.ts",
+    "render": "node ./node_modules/.bin/vite-node scripts/render-catalogue.ts",
+    "check": "node ./node_modules/.bin/vite-node scripts/check-render.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -24,9 +26,14 @@
     "playwright": "^1.63.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
-    "vitest": "^3.0.5"
+    "vitest": "^3.0.5",
+    "@types/react-dom": "^18.3.5"
   },
   "allowScripts": {
     "esbuild@0.25.12": true
+  },
+  "dependencies": {
+    "react-dom": "^18.3.1",
+    "react": "^18.3.1"
   }
 }

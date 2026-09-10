@@ -1,4 +1,0 @@
-# Offline tooling only. Nothing here is imported at request time by the app;
-# the sidecar's entire integration surface is the files and tables it writes.
-requests==2.32.3
-pdfplumber==0.11.8

@@ -8,11 +8,14 @@ const dbPath =
   process.env['INCITIO_DB'] ??
   fileURLToPath(new URL('../../../.data/incitio.db', import.meta.url));
 
+// Where the demo feed's root-relative image paths resolve when printing.
+const assetDir = fileURLToPath(new URL('../../../data', import.meta.url));
+
 const store = new Store(dbPath);
 const port = Number(process.env['PORT'] ?? 8787);
 
-serve({ fetch: createApp(store).fetch, port }, (info) => {
-  console.log(`incitio api on http://localhost:${info.port} (db: ${dbPath})`);
+serve({ fetch: createApp(store, { assetDir }).fetch, port }, (info) => {
+  console.log(`incitio api på http://localhost:${info.port} (db: ${dbPath})`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

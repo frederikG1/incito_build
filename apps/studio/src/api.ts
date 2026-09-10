@@ -1,116 +1,58 @@
-import { CatalogDocument, TemplateLibrary } from '@incitio/schema';
-import { parseLabelDictionary, EMPTY_LABEL_DICTIONARY, type LabelDictionary } from '@incitio/ingest';
+import { Brand, CatalogDocument } from '@incitio/schema';
 
 const BASE = '/api';
 
-export async function fetchCatalog(id: string): Promise<CatalogDocument | null> {
-  const response = await fetch(`${BASE}/catalogs/${encodeURIComponent(id)}`);
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`load failed: ${response.status}`);
-
-  const body = (await response.json()) as { document: unknown };
-  const parsed = CatalogDocument.safeParse(body.document);
-  // A stored document that no longer matches the schema is treated as
-  // absent rather than crashing the editor; the caller regenerates.
-  return parsed.success ? parsed.data : null;
-}
-
-export async function saveCatalog(document: CatalogDocument, label = ''): Promise<void> {
-  const query = label ? `?label=${encodeURIComponent(label)}` : '';
-  const response = await fetch(`${BASE}/catalogs/${encodeURIComponent(document.id)}${query}`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(document),
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`save failed: ${response.status} ${detail.slice(0, 200)}`);
-  }
-}
-
 /**
- * Coalesces a burst of edits into one write. Dragging a tile produces a
- * document mutation per drop, and version history is more useful when it
- * records intentions rather than every intermediate state.
+ * Which chain this session is acting as.
+ *
+ * Sent on every scoped request as a header. Today it is a picker in the
+ * toolbar; when real sign-in arrives, this module is the only place that
+ * changes — the rest of the studio already assumes it can only ever see
+ * one chain's catalogues, layouts and feed.
  */
-export function createAutosave(delayMs: number, onError: (message: string) => void) {
-  let timer: number | undefined;
-  let pending: CatalogDocument | null = null;
+export const BRAND_HEADER = 'x-incitio-brand';
 
-  return {
-    schedule(document: CatalogDocument): void {
-      pending = document;
-      if (timer !== undefined) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        const target = pending;
-        pending = null;
-        timer = undefined;
-        if (target) {
-          saveCatalog(target).catch((error: unknown) =>
-            onError(error instanceof Error ? error.message : String(error)),
-          );
-        }
-      }, delayMs);
-    },
-    async flush(): Promise<void> {
-      if (timer !== undefined) window.clearTimeout(timer);
-      timer = undefined;
-      const target = pending;
-      pending = null;
-      if (target) await saveCatalog(target);
-    },
-  };
+function headers(brandId: string, extra: Record<string, string> = {}): HeadersInit {
+  return { [BRAND_HEADER]: brandId, ...extra };
 }
 
-/**
- * Templates mined from real catalogs by the Python sidecar. Absent on a
- * clean checkout — the caller falls back to the authored library rather
- * than failing, so the app never depends on a harvest having been run.
- */
-export async function fetchMinedLibrary(path = '/templates/mined.json'): Promise<TemplateLibrary | null> {
+async function fail(response: Response): Promise<never> {
+  const body = (await response.json().catch(() => ({}))) as { detail?: string; error?: string };
+  throw new Error(body.detail ?? body.error ?? `${response.status} ${response.statusText}`);
+}
+
+export interface BrandSummary { id: string; name: string }
+
+export async function fetchBrands(): Promise<BrandSummary[]> {
+  const response = await fetch(`${BASE}/brands`);
+  if (!response.ok) await fail(response);
+  return ((await response.json()) as { brands: BrandSummary[] }).brands;
+}
+
+export interface BrandSource {
+  id: string;
+  name: string;
+  format: 'csv' | 'json';
+  /** A sample shipped with the repo, or null. */
+  path: string | null;
+}
+
+export interface BrandProfile {
+  brand: Brand;
+  /** Every format this chain delivers. The first is the default. */
+  sources: BrandSource[];
+}
+
+export async function fetchBrandProfile(brandId: string): Promise<BrandProfile> {
+  const response = await fetch(`${BASE}/brand/profile`, { headers: headers(brandId) });
+  if (!response.ok) await fail(response);
+  const body = (await response.json()) as { brand: unknown; sources: BrandSource[] };
+  return { brand: Brand.parse(body.brand), sources: body.sources };
+}
+
+export async function fetchCurationStatus(brandId: string): Promise<boolean> {
   try {
-    const response = await fetch(path);
-    if (!response.ok) return null;
-    const parsed = TemplateLibrary.safeParse(await response.json());
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Certification marks, served from the same static root as the feeds.
- * Absent on a clean checkout, in which case labels render as text — the
- * catalog is still correct, just less branded.
- */
-export async function fetchLabelDictionary(
-  path = '/labels/tjek-labels.json',
-): Promise<LabelDictionary> {
-  try {
-    const response = await fetch(path);
-    if (!response.ok) return EMPTY_LABEL_DICTIONARY;
-    return parseLabelDictionary(await response.json()).dictionary;
-  } catch {
-    return EMPTY_LABEL_DICTIONARY;
-  }
-}
-
-export interface PlannedGroup {
-  title: string;
-  subtitle: string;
-  offerIds: string[];
-}
-
-export interface PlanReply {
-  groups: PlannedGroup[];
-  reasoning: string[];
-  usage: { inputTokens: number; outputTokens: number } | null;
-}
-
-/** Whether the API has an Anthropic key, so the button can say so up front. */
-export async function fetchPlannerStatus(): Promise<boolean> {
-  try {
-    const response = await fetch(`${BASE}/plan/status`);
+    const response = await fetch(`${BASE}/brand/curation/status`, { headers: headers(brandId) });
     if (!response.ok) return false;
     return Boolean(((await response.json()) as { configured?: boolean }).configured);
   } catch {
@@ -118,22 +60,96 @@ export async function fetchPlannerStatus(): Promise<boolean> {
   }
 }
 
+export interface BuildReply {
+  document: CatalogDocument;
+  /** Which reader ran, and what it matched on. */
+  source: { id: string; name: string; reason: string };
+  curated: boolean;
+  curationError: string | null;
+  offerCount: number;
+  dropped: number;
+  substitutions: { pageId: string; asked: string; used: string; reason: string }[];
+  usage: { inputTokens: number; outputTokens: number } | null;
+}
+
+export interface BuildRequest {
+  feed: string;
+  maxPages?: number;
+  offerCount?: number;
+  brief?: string;
+  skipCuration?: boolean;
+  seed?: string;
+}
+
 /**
- * Ask the server to plan the pages. The key stays in the server's
- * environment — this request carries offers, not credentials.
+ * Build a catalogue server-side.
+ *
+ * The feed goes up and a finished document comes back. Curation runs on
+ * the server so the Anthropic key never reaches the browser — this
+ * request carries offers, not credentials.
  */
-export async function planPages(
-  offers: { id: string }[],
-  body: Record<string, unknown>,
-): Promise<PlanReply> {
-  const response = await fetch(`${BASE}/plan`, {
+export async function buildCatalogue(brandId: string, request: BuildRequest): Promise<BuildReply> {
+  const response = await fetch(`${BASE}/brand/build`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
   });
-  if (!response.ok) {
-    const detail = (await response.json().catch(() => ({}))) as { detail?: string; error?: string };
-    throw new Error(detail.detail ?? detail.error ?? `planning failed: ${response.status}`);
-  }
-  return (await response.json()) as PlanReply;
+  if (!response.ok) await fail(response);
+  const body = (await response.json()) as BuildReply;
+  return { ...body, document: CatalogDocument.parse(body.document) };
+}
+
+export async function saveCatalogue(
+  brandId: string,
+  document: CatalogDocument,
+  label = '',
+): Promise<void> {
+  const query = label ? `?label=${encodeURIComponent(label)}` : '';
+  const response = await fetch(
+    `${BASE}/brand/catalogs/${encodeURIComponent(document.id)}${query}`,
+    {
+      method: 'PUT',
+      headers: headers(brandId, { 'content-type': 'application/json' }),
+      body: JSON.stringify(document),
+    },
+  );
+  if (!response.ok) await fail(response);
+}
+
+export async function fetchCatalogue(
+  brandId: string,
+  id: string,
+): Promise<CatalogDocument | null> {
+  const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}`, {
+    headers: headers(brandId),
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) await fail(response);
+  const body = (await response.json()) as { document: unknown };
+  const parsed = CatalogDocument.safeParse(body.document);
+  // A stored document that no longer matches the schema is treated as
+  // absent rather than crashing the editor; the caller rebuilds.
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * The PDF, fetched as a blob rather than linked.
+ *
+ * A plain `<a href>` would drop the brand header, and the endpoint would
+ * reject it — the same isolation that protects the data also means every
+ * request has to be made by code that knows who it is.
+ */
+export async function fetchCataloguePdf(brandId: string, id: string): Promise<Blob> {
+  const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}/pdf`, {
+    headers: headers(brandId),
+  });
+  if (!response.ok) await fail(response);
+  return response.blob();
+}
+
+/** This chain's own feed, from the static root. */
+export async function fetchFeed(path: string): Promise<string> {
+  const response = await fetch(path);
+  if (!response.ok) throw new Error(`kunne ikke hente feedet (${response.status})`);
+  return response.text();
 }

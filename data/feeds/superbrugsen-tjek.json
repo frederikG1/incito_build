@@ -1,0 +1,1538 @@
+[
+  {
+    "id": "o4TtvUQ8bJW-bLnAOP9rU",
+    "ern": "ern:offer:o4TtvUQ8bJW-bLnAOP9rU",
+    "heading": "Taffel chips eller nødder",
+    "description": "Flere varianter. 90-175 g. Kg-pris maks. 133,33. Frit valg. 1 pose",
+    "catalog_page": 0,
+    "catalog_view_id": "1103502",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 90, "to": 175 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F9d3bc42a36e9e13aeffed5ca877cb7da&w=300&s=050381fcfd3e8d93c7b2772a4401a5f7",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F9d3bc42a36e9e13aeffed5ca877cb7da&w=600&s=719250ec701bf5a09123a5515187f75f",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F9d3bc42a36e9e13aeffed5ca877cb7da&w=1000&s=9ab172e703a7ceb389596c2b2a5b7775"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-08-31T22:00:00+0000",
+    "run_till": "2026-09-30T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "OO8xngOSqsL3GY8oa8c9n",
+    "ern": "ern:offer:OO8xngOSqsL3GY8oa8c9n",
+    "heading": "Coop instant nudler\n",
+    "description": "Flere varianter. 65 g. Kg-pris 46,15. Frit valg. 1 stk.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090472",
+    "pricing": { "price": 3, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 65, "to": 65 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F38f88c12cc62e15f25d4ff91f8480626&w=300&s=9d3b6d68607011542e4b8e54b2fc56cc",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F38f88c12cc62e15f25d4ff91f8480626&w=600&s=b7f5f64095437210c9261a4347c7294a",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F38f88c12cc62e15f25d4ff91f8480626&w=1000&s=fbb6e94fb80f97499c627e976d38e2e8"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "Y45wOrB-sgzZhBzlhqpJg",
+    "ern": "ern:offer:Y45wOrB-sgzZhBzlhqpJg",
+    "heading": "Håndværker eller rundstykke*",
+    "description": "Stk.-pris 6,00. Frit valg.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090626",
+    "pricing": { "price": 6, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "pcs", "si": { "symbol": "pcs", "factor": 1 } },
+      "size": { "from": 1, "to": 1 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fbb4584df237ed910398f86d1f7ccb796&w=300&s=31e8f817a6341405dd9187784c9c03e5",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fbb4584df237ed910398f86d1f7ccb796&w=600&s=b0cd35273caafb42d36f005ef2b826b6",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fbb4584df237ed910398f86d1f7ccb796&w=1000&s=ba1bf58271322341439c0236c6876293"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "bcPXocBwkZvSEOEpRobFB",
+    "ern": "ern:offer:bcPXocBwkZvSEOEpRobFB",
+    "heading": "Änglamark vådservietter",
+    "description": "100 stk. Stk-pris 0,09. 1 pakke.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090441",
+    "pricing": { "price": 9, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "pcs", "si": { "symbol": "pcs", "factor": 1 } },
+      "size": { "from": 100, "to": 100 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fa300f7e7c22444c669bb4c281d6ff88c&w=300&s=cd38821721fad05ce9899d8114c875c8",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fa300f7e7c22444c669bb4c281d6ff88c&w=600&s=9960d545f96663d38cc3a4514d0a8592",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fa300f7e7c22444c669bb4c281d6ff88c&w=1000&s=75c9367b8f1a4db5fe2785ab994e27fe"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "x9FI2uvt8kKqPbuEG3iJd",
+    "ern": "ern:offer:x9FI2uvt8kKqPbuEG3iJd",
+    "heading": "Nestlé, Daim eller Marabou bars",
+    "description": "Flere varianter. 38-56 g. Kg-pris maks. 263,16. Frit valg. 1 pakke",
+    "catalog_page": 0,
+    "catalog_view_id": "1090586",
+    "pricing": { "price": 10, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 38, "to": 56 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F8ae3e89ce8769d6bae2331dbcd3125b3&w=300&s=89fece4aa7a825a75f06780775d88ccd",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F8ae3e89ce8769d6bae2331dbcd3125b3&w=600&s=26d8a8911939430332c8859e5eae7ebc",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F8ae3e89ce8769d6bae2331dbcd3125b3&w=1000&s=414cdf6e9b4222e1b55763393b4b7907"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "mnw21fv9C0_URzbBwif5J",
+    "ern": "ern:offer:mnw21fv9C0_URzbBwif5J",
+    "heading": "Onsdagssnegl*",
+    "description": "Bløddejssnegl eller høj snegl.\nStk.-pris 10,00. Frit valg.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090622",
+    "pricing": { "price": 10, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "pcs", "si": { "symbol": "pcs", "factor": 1 } },
+      "size": { "from": 1, "to": 1 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F0eee54f7679dde42fb1fb8763c841aed&w=300&s=336e2d359d621cd5899a71489c6187fb",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F0eee54f7679dde42fb1fb8763c841aed&w=600&s=df2e340dde0582aa93b9e7a2898a4a15",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F0eee54f7679dde42fb1fb8763c841aed&w=1000&s=6e84dbf37a5c0467ba3c5d446561ad45"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-22T22:00:00+0000",
+    "run_till": "2026-09-23T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "frgHmVFKDABHv7wFp1UAY",
+    "ern": "ern:offer:frgHmVFKDABHv7wFp1UAY",
+    "heading": "Yumyum eller Reeva nudler",
+    "description": "Begrænset parti. 70-75 g. Kg-pris maks. 142,86. Frit valg. 1 stk.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090473",
+    "pricing": { "price": 10, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 70, "to": 75 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fe1627b51fbfb14b6e3f5a053179ed08f%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F232778973d02185c4c8c80e5d7dec737&w=300&s=24d54ebe26d8a3899ef571a56eb9415b",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fe1627b51fbfb14b6e3f5a053179ed08f%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F232778973d02185c4c8c80e5d7dec737&w=600&s=ef1b73a96bb9012c4ef474443744cbab",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fe1627b51fbfb14b6e3f5a053179ed08f%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F232778973d02185c4c8c80e5d7dec737&w=1000&s=b9d78f8d4df9ec70ea6eb8ba92a2284f"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "Ozlmf7NE4bhdgTyUVZgmE",
+    "ern": "ern:offer:Ozlmf7NE4bhdgTyUVZgmE",
+    "heading": "Coop kartofler",
+    "description": "Dybfrost. Flere varianter. 400-1000 g. Kg-pris maks. 25,00. Frit valg. 1 pose",
+    "catalog_page": 0,
+    "catalog_view_id": "1090439",
+    "pricing": { "price": 10, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 400, "to": 1000 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F149145d84c3c467e779708f560e4bbf2%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fb5b05e17873dcce79d4171eae5d1f887%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F859b418cc85bc74e98258b37186fe061&w=300&s=dcb8757c3ed48dbd2534be9e4783868f",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F149145d84c3c467e779708f560e4bbf2%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fb5b05e17873dcce79d4171eae5d1f887%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F859b418cc85bc74e98258b37186fe061&w=600&s=be4e3e3fbae2aa8a72844e386fdfd6f8",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F149145d84c3c467e779708f560e4bbf2%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Fb5b05e17873dcce79d4171eae5d1f887%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F859b418cc85bc74e98258b37186fe061&w=1000&s=e99f001a723c6ed09eb2ab19576ded19"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "v6qyucahV02uHSQDwjtIn",
+    "ern": "ern:offer:v6qyucahV02uHSQDwjtIn",
+    "heading": "Danonino eller Actimel\n",
+    "description": "300-400 g. Kg-pris maks. 33,33. Frit valg. 1 stk.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090447",
+    "pricing": { "price": 10, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 300, "to": 400 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F9738eaebd09aaf03c7eadc813deb416c&w=300&s=45227be8ffcaaa8733b17ad443556bf6",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F9738eaebd09aaf03c7eadc813deb416c&w=600&s=9902908b1469f790d286f7b31a22064a",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F9738eaebd09aaf03c7eadc813deb416c&w=1000&s=a1eb37d0b60c5bf25dca1bdd9aaa09fa"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "J5AxxZCi-egnGqdmQa-p7",
+    "ern": "ern:offer:J5AxxZCi-egnGqdmQa-p7",
+    "heading": "Katjes eller Malaco slikpose",
+    "description": "Flere varianter. 100-120 g. Kg-pris maks. 100,00. Frit valg. 1 pose",
+    "catalog_page": 0,
+    "catalog_view_id": "1090444",
+    "pricing": { "price": 10, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 100, "to": 120 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F0e03648d4d9c40f1b3c325d30ad8bb78&w=300&s=57b84c1f4a690c9329e26980bfed39c9",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F0e03648d4d9c40f1b3c325d30ad8bb78&w=600&s=2662d9f1d2bdd0bc264ab6ee470080ef",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F0e03648d4d9c40f1b3c325d30ad8bb78&w=1000&s=51bf0255ec8e2c1607f83e8ca3acdc56"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "Gud29hifiErmbff-hbBNV",
+    "ern": "ern:offer:Gud29hifiErmbff-hbBNV",
+    "heading": "Knorr sauce, bouillon, fond du chef eller snackpot",
+    "description": "Flere varianter. 60-112 g. Kg-pris maks. 166,67. Frit valg.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090446",
+    "pricing": { "price": 10, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 60, "to": 112 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Faf048958c0b265802a5c92223bcc8e52&w=300&s=71d66ec81292de40e0cda9b3a33375b0",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Faf048958c0b265802a5c92223bcc8e52&w=600&s=87de77175596f7ac6f5465c845311548",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Faf048958c0b265802a5c92223bcc8e52&w=1000&s=7c1d5b2b81b35a9ee445ff09f3832deb"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "chu42IRVojx6ArpLPFldZ",
+    "ern": "ern:offer:chu42IRVojx6ArpLPFldZ",
+    "heading": "San Pellegrino eller Änglamark økologisk sodavand",
+    "description": "33-100 cl. Literpris maks. 30,30 + pant. Frit valg.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090445",
+    "pricing": { "price": 10, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "cl", "si": { "symbol": "l", "factor": 0.01 } },
+      "size": { "from": 33, "to": 100 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Fe3ec91d991862180d5be8d362b8fdf08&w=300&s=9b386c2429416cf21d63f2fd9ba6857a",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Fe3ec91d991862180d5be8d362b8fdf08&w=600&s=0f08ca0e58a87a24ac4c64c56f9207f5",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Fe3ec91d991862180d5be8d362b8fdf08&w=1000&s=01a54c1a369c85a585fbffc2b4f996c6"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "A8MEq4Ra6iOZKUf2txdQj",
+    "ern": "ern:offer:A8MEq4Ra6iOZKUf2txdQj",
+    "heading": "Coop bacon i skiver eller i tern",
+    "description": "140-150 g. Kg-pris maks. 85,71. Frit valg. 1 pakke",
+    "catalog_page": 0,
+    "catalog_view_id": "1090610",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 140, "to": 150 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F345650356866d6bdf7a7fa278a94fa18&w=300&s=c8b3553d360ecda54fe735c4b8dd013e",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F345650356866d6bdf7a7fa278a94fa18&w=600&s=eb67ce5132e88d178c820c99e79903f9",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F345650356866d6bdf7a7fa278a94fa18&w=1000&s=5e4d1aae7cb08e698839cd1d488101c3"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "04pRLpPqCQBLNiAcgxSn0",
+    "ern": "ern:offer:04pRLpPqCQBLNiAcgxSn0",
+    "heading": "Xtra! jasmin ris ",
+    "description": "1000 g. Kg-pris 12,00. 1 pose",
+    "catalog_page": 0,
+    "catalog_view_id": "1090616",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 1000, "to": 1000 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F733a6db0d9864f45ea14dabd499b91ab&w=300&s=57cf7be715294c6ba00dfdb9f7956de0",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F733a6db0d9864f45ea14dabd499b91ab&w=600&s=d52120950362b49b5b9200ac3c2a0ec5",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F733a6db0d9864f45ea14dabd499b91ab&w=1000&s=504391d033af2eeb05e58f2a8ea67a3a"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "5XeoaiSF6p4g6UqgQKkp-",
+    "ern": "ern:offer:5XeoaiSF6p4g6UqgQKkp-",
+    "heading": "Palmolive roll-on eller håndsæbe",
+    "description": "Flere varianter. 50-300 ml. Liter-pris maks. 240,00. Frit valg. 1 stk.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090631",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "ml", "si": { "symbol": "l", "factor": 0.001 } },
+      "size": { "from": 50, "to": 300 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Fdcc21fd5e334c55fee549eb8d4e2912d&w=300&s=a6004d98448c2d7d0087c4062df1feb3",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Fdcc21fd5e334c55fee549eb8d4e2912d&w=600&s=fb314ad95f3ee447c6fa4d860e43f07f",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Fdcc21fd5e334c55fee549eb8d4e2912d&w=1000&s=bb0ea7a208cb9da50f9cfff0fa00629b"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "h4eFuxsOSvQVQWJPJzUPg",
+    "ern": "ern:offer:h4eFuxsOSvQVQWJPJzUPg",
+    "heading": "Coop marmelade",
+    "description": "Flere varianter. 400 g. Kg-pris 30,00. Frit valg. 1 stk.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090620",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 400, "to": 400 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Ff64a6e4c51cc41b54f1585cb62c3adb9&w=300&s=45f805f80640aa0bd3f083f807d71563",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Ff64a6e4c51cc41b54f1585cb62c3adb9&w=600&s=13203def78707a953ca04235aa239277",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Ff64a6e4c51cc41b54f1585cb62c3adb9&w=1000&s=9f3d735f29187281b8b1e6e2898081cc"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "pxepYR9tsf8pixNwkhtrI",
+    "ern": "ern:offer:pxepYR9tsf8pixNwkhtrI",
+    "heading": "Shaker",
+    "description": "27,5 cl. Literpris 43,64 + pant. Frit valg. 1 flaske",
+    "catalog_page": 0,
+    "catalog_view_id": "1090590",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "cl", "si": { "symbol": "l", "factor": 0.01 } },
+      "size": { "from": 27.5, "to": 27.5 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F9538538ab553e2510b2f5a737065593a%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F7fe1d581683f6519fed3a4fe12528788%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F2e8d45422dc9c58c6e689e0ca143f5f4%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F26fdfad09d03faa87ae96af3c9ae52f7&w=300&s=b06da848a0bd74d40d356d53bce6ae97",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F9538538ab553e2510b2f5a737065593a%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F7fe1d581683f6519fed3a4fe12528788%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F2e8d45422dc9c58c6e689e0ca143f5f4%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F26fdfad09d03faa87ae96af3c9ae52f7&w=600&s=3933143e550bc595f64cba1c9785532f",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F9538538ab553e2510b2f5a737065593a%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F7fe1d581683f6519fed3a4fe12528788%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F2e8d45422dc9c58c6e689e0ca143f5f4%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F26fdfad09d03faa87ae96af3c9ae52f7&w=1000&s=6246a20c027596f194bc55f8d25dea18"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "iM5cFjK_nsYjwnqLshe_4",
+    "ern": "ern:offer:iM5cFjK_nsYjwnqLshe_4",
+    "heading": "K-Salat pålægssalat",
+    "description": "Flere varianter. 100-150 g. Kg-pris maks. 120,00. Frit valg. 1 stk.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090611",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 100, "to": 150 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Fffeebc91bf1e6299f7a631ffdd38fb30&w=300&s=b60f7a2bcf38ccd29db8e1f925b3e6d8",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Fffeebc91bf1e6299f7a631ffdd38fb30&w=600&s=5877c7d20a11faf6296f8ed4c1317b64",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2Fffeebc91bf1e6299f7a631ffdd38fb30&w=1000&s=d99e0ef413f65f54c33d891ccc3f3d39"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "2Bn0qSe0akCh98FPjhLd_",
+    "ern": "ern:offer:2Bn0qSe0akCh98FPjhLd_",
+    "heading": "Santa Maria spice mix\n",
+    "description": "28 g. Kg-pris 428,57. 1 stk.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090469",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 28, "to": 28 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F55bc8328e62082cc6a382677362d14ce&w=300&s=d7a6c66f4218a5f9e737b47669b8763a",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F55bc8328e62082cc6a382677362d14ce&w=600&s=4a258da4d64fb3dfd33ffa6e22bf5555",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F55bc8328e62082cc6a382677362d14ce&w=1000&s=124a99b031cf2a02d73e22373546ee0b"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "joZyQdpRUtwrA3XhpNR9K",
+    "ern": "ern:offer:joZyQdpRUtwrA3XhpNR9K",
+    "heading": "Den Grønne Slagter pålæg eller kalkunbacon",
+    "description": "Flere varianter. 70-100 g. Kg-pris maks. 171,43. Frit valg.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090442",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 70, "to": 100 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F939e276ec90448680c3e0e6fb3913ee8&w=300&s=4c082b67e13b6558166d816f1fefa80c",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F939e276ec90448680c3e0e6fb3913ee8&w=600&s=659e963b54217cc12b18ac4b392d4cba",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F939e276ec90448680c3e0e6fb3913ee8&w=1000&s=0829311b79c6831ad2de324be209f573"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "cD3xsomZKIvlsU4rkQY32",
+    "ern": "ern:offer:cD3xsomZKIvlsU4rkQY32",
+    "heading": "Coop sweet chilisauce",
+    "description": "495 ml. Literpris 24,24. 1 stk.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090491",
+    "pricing": { "price": 12, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "ml", "si": { "symbol": "l", "factor": 0.001 } },
+      "size": { "from": 495, "to": 495 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F0afe8f1452757e89259df9cf4dd2ebd0&w=300&s=1588e22f568fc78810c53fb32faa16e3",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F0afe8f1452757e89259df9cf4dd2ebd0&w=600&s=f04210d31eff03f7cb54a687f124c264",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F0afe8f1452757e89259df9cf4dd2ebd0&w=1000&s=0506023b647b332a86cfe7812008ee1d"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "igu4yCQb2fvHomcLO6BW1",
+    "ern": "ern:offer:igu4yCQb2fvHomcLO6BW1",
+    "heading": "Santa Maria tortilla",
+    "description": "371 g. Kg-pris 35,04. 1 pakke",
+    "catalog_page": 0,
+    "catalog_view_id": "1090470",
+    "pricing": { "price": 13, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 371, "to": 371 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F1a1ac7489046c51ad8162e5bf25bbc66&w=300&s=4534ed80027e37913b8a0e6beda25835",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F1a1ac7489046c51ad8162e5bf25bbc66&w=600&s=fe73d3604f3b3724d0e73530b712c686",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F1a1ac7489046c51ad8162e5bf25bbc66&w=1000&s=daa06c98fba5a312c8afb1859577df1a"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "2yQBeTShQD7gNTe0dGYu4",
+    "ern": "ern:offer:2yQBeTShQD7gNTe0dGYu4",
+    "heading": "Red Bull ",
+    "description": "Flere varianter. 25 cl. Literpris 52,00 + pant. Frit valg. 1 dåse",
+    "catalog_page": 0,
+    "catalog_view_id": "1090595",
+    "pricing": { "price": 13, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "cl", "si": { "symbol": "l", "factor": 0.01 } },
+      "size": { "from": 25, "to": 25 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F13f80f86a060eece74ccd1cc1df966fa%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F4387edecfd41b3581d30fc943690381d%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Faaeda6a60bf72c302c5abf0eb5a4704c&w=300&s=45980db0973e8687fc55cc4ed8df90a2",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F13f80f86a060eece74ccd1cc1df966fa%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F4387edecfd41b3581d30fc943690381d%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Faaeda6a60bf72c302c5abf0eb5a4704c&w=600&s=7e0a4626eb8e0d2668482b6e5be85fd1",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F13f80f86a060eece74ccd1cc1df966fa%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2F4387edecfd41b3581d30fc943690381d%2Cs3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2F0b1e8%2Faaeda6a60bf72c302c5abf0eb5a4704c&w=1000&s=5ee369154ec5599cdd45ab4773f0d4e7"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  },
+  {
+    "id": "war56PjwjOUk_BiYi3Wh2",
+    "ern": "ern:offer:war56PjwjOUk_BiYi3Wh2",
+    "heading": "Cheasy hytteost eller fraiche",
+    "description": "250-500 g. Kg-pris maks. 56,00. 1 stk.",
+    "catalog_page": 0,
+    "catalog_view_id": "1090602",
+    "pricing": { "price": 14, "pre_price": null, "currency": "DKK" },
+    "quantity": {
+      "unit": { "symbol": "g", "si": { "symbol": "kg", "factor": 0.001 } },
+      "size": { "from": 250, "to": 500 },
+      "pieces": { "from": 1, "to": 1, "min": null, "max": null }
+    },
+    "images": {
+      "thumb": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F87ec9ce83636e490815ee87d65f0435c&w=300&s=2a2a4598172733915bb483c30d737f0d",
+      "view": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F87ec9ce83636e490815ee87d65f0435c&w=600&s=52483c9f166db8ad59b2eac3242e8a59",
+      "zoom": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2Fbusiness_images%2Fc1edq%2F87ec9ce83636e490815ee87d65f0435c&w=1000&s=fb420a0ae4fa18a0686e46df051dcd94"
+    },
+    "links": { "webshop": null },
+    "run_from": "2026-09-17T22:00:00+0000",
+    "run_till": "2026-09-24T21:59:59+0000",
+    "display_run_till": true,
+    "publish": "2026-09-08T22:01:00+0000",
+    "dealer_url": "https://squid-api.tjek.com/v2/dealers/0b1e8",
+    "dealer_id": "0b1e8",
+    "dealer": {
+      "id": "0b1e8",
+      "ern": "ern:dealer:0b1e8",
+      "graph_id": null,
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "description_markdown": "",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=300&s=2f4ebddd01c2d6f7a72010a32814d29b",
+      "color": "c31314",
+      "pageflip": {
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=300&s=f14f4c77206b47dc7f7ec9411e66a1fe",
+        "color": "c31314"
+      },
+      "category_ids": [],
+      "country": { "id": "DK", "unsubscribe_print_url": null },
+      "markets": [{ "slug": "SuperBrugsen", "country_code": "DK" }],
+      "favorite_count": 0,
+      "facebook_page_id": null,
+      "youtube_user_id": null,
+      "twitter_handle": null
+    },
+    "store_url": null,
+    "store_id": null,
+    "catalog_url": "https://squid-api.tjek.com/v2/catalogs/T2iRvUyC",
+    "catalog_id": "T2iRvUyC",
+    "branding": {
+      "name": "SuperBrugsen",
+      "website": "http://superbrugsen.dk",
+      "description": "Superbrugsen tilbyder altid et stort udvalg og skarpe priser. Se SuperBrugsens aktuelle tilbudsavis og din nærmeste Brugsens åbningstider her.",
+      "color": "c31314",
+      "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FtmAVsHGGo38S4fiBnuKCk&w=160&s=fd4473d1c9154809dad6d04abe1202f8",
+      "pageflip": {
+        "color": "c31314",
+        "logo": "https://image-transformer-api.tjek.com/?u=s3%3A%2F%2Fsgn-prd-assets%2Fuploads%2F0b1e8%2FFabh-xec5ysbOjhTS1RSm&w=160&s=ec1f32bd1632cf9654127a2edf2d6ab3"
+      }
+    },
+    "category_ids": []
+  }
+]

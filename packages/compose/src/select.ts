@@ -1,5 +1,5 @@
 import type { Offer } from '@incitio/schema';
-import { compareByImportance, offerImportance } from './scoring.js';
+import { compareByImportance, offerImportance } from './importance.js';
 
 /**
  * Which offers make the catalog at all.
@@ -178,4 +178,3 @@ export function targetForPages(pages: number, offersPerPage: number): number {
   return Math.max(0, Math.round(pages * offersPerPage));
 }
 
-export { offerImportance };

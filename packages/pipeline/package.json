@@ -8,6 +8,8 @@
   "dependencies": {
     "@incitio/schema": "0.1.0",
     "@incitio/ingest": "0.1.0",
-    "@incitio/layout": "0.1.0"
+    "@incitio/brands": "0.1.0",
+    "@incitio/compose": "0.1.0",
+    "@incitio/curator": "0.1.0"
   }
 }

@@ -1,4 +1,4 @@
-import { Offer, type OfferFeed, type OfferLabelInput } from '@incitio/schema';
+import { Offer, type OfferFeed, type OfferLabelInput, type Quantity } from '@incitio/schema';
 import { parsePrice, parseQuantity, parseDate } from './coerce.js';
 import { EMPTY_LABEL_DICTIONARY, type LabelDictionary } from './labels.js';
 
@@ -33,9 +33,25 @@ export interface FieldMapping {
     prePrice?: FieldSource<number>;
     savings?: FieldSource<number>;
     quantity?: FieldSource<string>;
+    /**
+     * A quantity the feed already states in structured form.
+     *
+     * Takes precedence over `quantity`, which is free text run through
+     * `parseQuantity`. Platform feeds carry `{unit, size:{from,to},
+     * pieces:{from,to}}`, and round-tripping that through a string
+     * only to parse it back would lose the range and invent an
+     * ambiguity the source did not have.
+     */
+    quantityValue?: (row: Record<string, unknown>) => Quantity | null;
     validFrom: FieldSource<string>;
     validTo: FieldSource<string>;
     imageUrl?: FieldSource<string>;
+    /**
+     * Variant images for one offer. Declared as its own hook rather than
+     * derived from imageUrl because only the feed knows which rows are
+     * variants of the same offer — see Offer.imagePack.
+     */
+    imagePack?: (row: Record<string, unknown>) => string[];
     priority?: FieldSource<number>;
     /**
      * The dictionary is passed in rather than imported so the package
@@ -129,7 +145,7 @@ export function normalizeRows(
       savings = Math.round((prePrice - price) * 100) / 100;
     }
 
-    const quantity = parseQuantity(pick(row, f.quantity));
+    const quantity = f.quantityValue?.(row) ?? parseQuantity(pick(row, f.quantity));
 
     // Unit price is a legal requirement in most retail markets, so it is
     // computed wherever the quantity makes it derivable.
@@ -161,6 +177,11 @@ export function normalizeRows(
       validFrom,
       validTo,
       imageUrl: asString(pick(row, f.imageUrl)) ?? null,
+      // Deduped and capped here rather than in each mapping: the cap is a
+      // property of what a tile can legibly hold, not of any one feed.
+      imagePack: f.imagePack
+        ? [...new Set(f.imagePack(row).map((url) => url.trim()).filter(Boolean))].slice(0, 8)
+        : [],
       labels: f.labels ? f.labels(row, labelDictionary) : [],
       priority: parsePrice(pick(row, f.priority)),
     });

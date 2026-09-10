@@ -1,14 +1,18 @@
 import type { CSSProperties, ReactNode } from 'react';
-import type { CatalogPage, Offer, PageTemplate, Theme } from '@incitio/schema';
-import { slotArea, slotAspect, slotRect } from '@incitio/layout';
+import type { Brand, CatalogPage, Offer, PageTemplate } from '@incitio/schema';
+import { brandCssVars } from '@incitio/schema';
 import { OfferTile } from './OfferTile.js';
 
 export interface PageViewProps {
   page: CatalogPage;
   template: PageTemplate;
+  brand: Brand;
   offers: Map<string, Offer>;
-  theme: Theme;
-  pageAspect: number;
+  /**
+   * Where this page sits in the book. Picks its ground from the chain's
+   * rotating palette — see `pageGround`. Defaults to the first tint.
+   */
+  pageIndex?: number;
   pageNumber?: number;
   selectedOfferId?: string | null;
   onSelectOffer?: (offerId: string) => void;
@@ -17,39 +21,52 @@ export interface PageViewProps {
 }
 
 /**
- * One catalog page. Slots are positioned absolutely from the template's
- * grid maths — the same `slotRect` the solver reasons about — so what the
- * scorer optimised is exactly what gets drawn. Using CSS grid here instead
- * would put a second, subtly different layout model in the system.
+ * One catalogue page.
+ *
+ * The template's `areas` go straight into `grid-template-areas` and each
+ * slot claims its cell by name. There is no pixel maths here and no
+ * second layout model: the browser resolves the grid, which is also what
+ * makes the printed PDF identical to the screen — Chromium runs the same
+ * code twice.
+ *
+ * The page establishes a size container, so every measurement in the
+ * stylesheet can be written in `cqw`/`cqh` and the whole page scales as
+ * one unit from a thumbnail to A4 at 300dpi.
  */
 export function PageView({
   page,
   template,
+  brand,
   offers,
-  theme,
-  pageAspect,
+  pageIndex = 0,
   pageNumber,
   selectedOfferId,
   onSelectOffer,
   slotDecorator,
 }: PageViewProps) {
-  const slots = new Map(template.slots.map((s) => [s.id, s]));
-
   const style: CSSProperties = {
-    aspectRatio: String(pageAspect),
-    background: theme.pageBackground,
-    color: theme.textColor,
-    fontFamily: theme.bodyFont,
-    '--brand': theme.brandColor,
-    '--accent': theme.accentColor,
-    '--heading-font': theme.headingFont,
+    ...brandCssVars(brand, pageIndex),
+    aspectRatio: String(brand.pageAspect),
   } as CSSProperties;
 
+  const gridStyle: CSSProperties = {
+    gridTemplateAreas: template.areas.map((row) => `"${row}"`).join(' '),
+    gridTemplateColumns: `repeat(${template.areas[0]!.split(' ').length}, 1fr)`,
+    gridTemplateRows: `repeat(${template.areas.length}, 1fr)`,
+  };
+
+  const slots = new Map(template.slots.map((s) => [s.id, s]));
+
   return (
-    <section className="page" style={style} data-page-id={page.id}>
-      {(page.title || theme.logoUrl) && (
-        <header className="page__header">
-          {theme.logoUrl && <img className="page__logo" src={theme.logoUrl} alt="" />}
+    <section
+      className={`page brand--${brand.id} page--ground-${brand.groundPattern}`}
+      style={style}
+      data-page-id={page.id}
+      data-template-id={template.id}
+    >
+      {(page.title || brand.logoUrl) && (
+        <header className="page__masthead">
+          {brand.logoUrl && <img className="page__logo" src={brand.logoUrl} alt="" />}
           <div>
             {page.title && <h2 className="page__title">{page.title}</h2>}
             {page.subtitle && <p className="page__subtitle">{page.subtitle}</p>}
@@ -57,41 +74,45 @@ export function PageView({
         </header>
       )}
 
-      <div className="page__canvas">
+      <div className="page__grid" style={gridStyle}>
         {page.placements.map((placement) => {
           const slot = slots.get(placement.slotId);
           const offer = offers.get(placement.offerId);
+          // A placement naming a slot this template does not have is a
+          // stale edit, not a crash: skip it and let the page render.
           if (!slot) return null;
-
-          const rect = slotRect(slot, template);
-          const positioned: CSSProperties = {
-            left: `${rect.left}%`,
-            top: `${rect.top}%`,
-            width: `${rect.width}%`,
-            height: `${rect.height}%`,
-          };
 
           return (
             <div
-              className="page__slot"
-              style={positioned}
-              key={placement.slotId}
+              className={`slot slot--${slot.role}${slot.bleed > 1 ? ' slot--bleed' : ''}`}
+              style={{
+                gridArea: slot.id,
+                // Only read when the slot is allowed to overrun; see
+                // TemplateSlot.bleed. The artwork scales, the words do not.
+                ...(slot.bleed > 1 ? { '--bleed': String(slot.bleed) } : {}),
+              } as CSSProperties}
+              key={slot.id}
               data-slot-id={slot.id}
-              // Read by the scoring pipeline to attribute a crop to an offer.
               data-offer-id={placement.offerId}
             >
               {offer ? (
                 <OfferTile
                   offer={offer}
-                  slot={slot}
+                  role={slot.role}
+                  // The lead of a page may be marked differently from
+                  // the rest — SuperBrugsen gives it the red disc and
+                  // leaves every other price as a plain numeral.
+                  priceShape={
+                    (slot.role === 'hero' || slot.role === 'feature')
+                      ? brand.leadPriceShape ?? brand.priceShape
+                      : brand.priceShape
+                  }
                   overrides={placement.overrides}
-                  area={slotArea(slot, template)}
-                  aspect={slotAspect(slot, template, pageAspect)}
                   selected={selectedOfferId === offer.id}
                   {...(onSelectOffer ? { onSelect: onSelectOffer } : {})}
                 />
               ) : (
-                <div className="page__empty">Tom plads</div>
+                <div className="slot__empty">Tom plads</div>
               )}
               {slotDecorator?.(slot.id)}
             </div>
@@ -99,7 +120,7 @@ export function PageView({
         })}
       </div>
 
-      {pageNumber !== undefined && <footer className="page__footer">{pageNumber}</footer>}
+      {pageNumber !== undefined && <footer className="page__foot">{pageNumber}</footer>}
     </section>
   );
 }

@@ -1,511 +1,355 @@
 import { create } from 'zustand';
-import { TemplateLibrary, type CatalogDocument, type Offer, type Theme } from '@incitio/schema';
-import {
-  ingestCsv,
-  ingestJson,
-  EMPTY_LABEL_DICTIONARY,
-  type IngestIssue,
-  type LabelDictionary,
-} from '@incitio/ingest';
-import {
-  AUTHORED_LIBRARY,
-  DEFAULT_MAX_OFFERS_PER_PAGE,
-  checkPlacement,
-  generateCatalog,
-  selectOffers,
-  solvePageCandidates,
-  type Violation,
-} from '@incitio/layout';
-import {
-  buildCatalog,
-  detectFeed,
-  RETAILERS,
-  SAMPLE_RETAILER,
-  type RetailerConfig,
-} from '@incitio/pipeline';
-import { createAutosave, fetchCatalog, fetchLabelDictionary, fetchMinedLibrary, fetchPlannerStatus, planPages } from './api.js';
+import type { Brand, CatalogDocument, PlacementOverrides } from '@incitio/schema';
+import * as api from './api.js';
 
-const catalogIdFor = (retailerId: string) => `${retailerId}-1`;
+/**
+ * Which chain the user works for.
+ *
+ * Remembered across reloads because in the real product it is not a
+ * choice at all — it comes from who signed in. Keeping it in one place
+ * now means swapping the picker for a session is a change to this
+ * constant and the toolbar, and nothing else.
+ */
+const BRAND_KEY = 'incitio.brand';
 
-interface EditResult {
-  ok: boolean;
-  violations: Violation[];
+function rememberedBrand(): string | null {
+  try {
+    return window.localStorage.getItem(BRAND_KEY);
+  } catch {
+    return null;
+  }
 }
 
-export type LibrarySource = 'house' | 'mined' | 'authored';
-
-interface StudioState {
-  offers: Map<string, Offer>;
-  /** Raw feed text, kept so "generate again" re-runs the whole pipeline. */
-  feedText: string | null;
-  library: TemplateLibrary;
-  librarySource: LibrarySource;
-  /** Kept so the libraries can be compared without a reload. */
-  minedLibrary: TemplateLibrary | null;
-  /** Certification marks, resolved from feed label text at ingest. */
-  labels: LabelDictionary;
-  /** This retailer's own mined library, when it has one. */
-  houseLibrary: TemplateLibrary | null;
+export interface StudioState {
+  brands: api.BrandSummary[];
+  brandId: string | null;
+  brand: Brand | null;
+  /** The formats this chain delivers; the first is the default. */
+  sources: api.BrandSource[];
+  feed: { text: string; source: string } | null;
   document: CatalogDocument | null;
-  issues: IngestIssue[];
-  unplaced: string[];
-  notSelected: number;
-  categoryMix: Record<string, number>;
+
+  curationReady: boolean;
+  busy: string | null;
+  error: string | null;
+  note: string | null;
+
   selectedOfferId: string | null;
-  lastError: string | null;
+  maxPages: number;
+  brief: string;
+
+  /** Undo history of whole documents. Small, and the editor is small. */
   past: CatalogDocument[];
   future: CatalogDocument[];
 
-  retailer: RetailerConfig;
-  /** True while Claude is planning; drives the button's busy state. */
-  planning: boolean;
-  /** Whether the API has a key configured. */
-  plannerReady: boolean;
-  /** One line per page explaining why those offers belong together. */
-  planReasoning: string[];
-  /** Free-text direction sent to the planner. */
-  brief: string;
-  setBrief: (brief: string) => void;
-  /** What happened to the last uploaded file. */
-  uploadNote: string | null;
-  uploadFeed: (filename: string, text: string) => void;
-  loadSampleFeed: () => Promise<void>;
-  generateWithAi: () => Promise<void>;
-  setRetailer: (id: string) => Promise<void>;
-  regenerate: () => void;
-  setLibrarySource: (source: LibrarySource) => void;
+  start: () => Promise<void>;
+  signInAs: (brandId: string) => Promise<void>;
+  uploadFeed: (name: string, text: string) => void;
+  build: (options?: { skipCuration?: boolean; fresh?: boolean }) => Promise<void>;
+  save: () => Promise<void>;
+  downloadPdf: () => Promise<void>;
+
   select: (offerId: string | null) => void;
-  setTheme: (patch: Partial<Theme>) => void;
-
-  swapPlacements: (a: SlotAddress, b: SlotAddress) => EditResult;
-  promotePlacement: (address: SlotAddress) => EditResult;
-  reshufflePage: (pageId: string) => void;
-  movePage: (pageId: string, direction: -1 | 1) => void;
-
+  swapPlacements: (
+    from: { pageId: string; slotId: string },
+    to: { pageId: string; slotId: string },
+  ) => void;
+  setMaxPages: (pages: number) => void;
+  setBrief: (brief: string) => void;
+  updateOverrides: (offerId: string, patch: Partial<PlacementOverrides>) => void;
+  movePage: (pageId: string, delta: number) => void;
+  setPageTitle: (pageId: string, title: string) => void;
   undo: () => void;
   redo: () => void;
 }
 
-export interface SlotAddress {
-  pageId: string;
-  slotId: string;
-}
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Snapshot before every mutation; 50 deep is well past what anyone undoes. */
-function pushHistory(state: StudioState, next: CatalogDocument): Partial<StudioState> {
-  const past = state.document ? [...state.past, state.document].slice(-50) : state.past;
-  const document = { ...next, updatedAt: new Date().toISOString() };
-  persist(document);
-  return { document, past, future: [] };
-}
-
-let autosave: ReturnType<typeof createAutosave> | null = null;
-
-function persist(document: CatalogDocument | null): void {
-  if (!document) return;
-  autosave ??= createAutosave(600, (message) => useStudio.setState({ lastError: message }));
-  autosave.schedule(document);
-}
-
-export const useStudio = create<StudioState>((set, get) => ({
-  offers: new Map(),
-  feedText: null,
-  library: AUTHORED_LIBRARY,
-  librarySource: 'authored',
-  labels: EMPTY_LABEL_DICTIONARY,
-  minedLibrary: null,
-  houseLibrary: null,
-  retailer: SAMPLE_RETAILER,
-  planning: false,
-  plannerReady: false,
-  planReasoning: [],
-  brief: '',
-  uploadNote: null,
-  document: null,
-  issues: [],
-  unplaced: [],
-  notSelected: 0,
-  categoryMix: {},
-  selectedOfferId: null,
-  lastError: null,
-  past: [],
-  future: [],
-
-  async loadSampleFeed() {
-    try {
-      const { retailer } = get();
-      const response = await fetch(retailer.feedPath);
-      if (!response.ok) throw new Error(`feed request failed: ${response.status}`);
-      const text = await response.text();
-
-      // Marks have to be in hand BEFORE the first ingest: label artwork is
-      // resolved during ingest and stored on the offer, and the renderer
-      // draws offers from this map. Fetching the dictionary afterwards
-      // leaves every tile showing label text with no mark until the next
-      // regenerate.
-      const labels = await fetchLabelDictionary();
-      set({ labels });
-
-      // Offers are always re-derived from the feed — the stored document
-      // holds layout decisions, not product data, so the two can be
-      // refreshed independently.
-      const { feed, issues } =
-        retailer.feedFormat === 'csv'
-          ? ingestCsv(text, retailer.mapping, labels)
-          : ingestJson(text, retailer.mapping, labels);
-      set({
-        feedText: text,
-        offers: new Map(feed.offers.map((o) => [o.id, o])),
-        issues,
-        lastError: null,
-      });
-
-      // Templates mined from real catalogs, when the sidecar has produced
-      // them. Falls back to the hand-authored set so the app still works on
-      // a clean checkout with no harvest run.
-      void fetchPlannerStatus().then((ready) => set({ plannerReady: ready }));
-
-      const mined = await fetchMinedLibrary();
-      if (mined) set({ minedLibrary: mined, library: mined, librarySource: 'mined' });
-
-      // A retailer's own layouts beat the pooled average when it has them.
-      const house = retailer.houseLibrary
-        ? await fetchMinedLibrary(retailer.houseLibrary)
-        : null;
-      set({ houseLibrary: house });
-      if (house) set({ library: house, librarySource: 'house' });
-
-      const saved = await fetchCatalog(catalogIdFor(get().retailer.id));
-      if (saved) set({ document: saved, unplaced: [], past: [], future: [] });
-      else get().regenerate();
-    } catch (error) {
-      set({ lastError: error instanceof Error ? error.message : String(error) });
-    }
-  },
-
-  regenerate() {
-    const { feedText, library, document, retailer, labels } = get();
-    if (!feedText) return;
-
-    const { feed } =
-      retailer.feedFormat === 'csv'
-        ? ingestCsv(feedText, retailer.mapping, labels)
-        : ingestJson(feedText, retailer.mapping, labels);
-
-    const built = buildCatalog(feedText, retailer.feedFormat, retailer, {
-      library,
-      labels,
-      catalogId: catalogIdFor(retailer.id),
-      ...(retailer.targetOfferCount
-        ? { selection: { targetCount: retailer.targetOfferCount } }
-        : {}),
-      ...(document ? { name: document.name } : {}),
-    });
-    // A tuned theme outlives regeneration, but only within one retailer —
-    // carrying Coop's red onto nemlig's pages would be wrong.
-    const keepTheme = document?.retailerId === retailer.id;
-    const next = keepTheme && document
-      ? { ...built.document, theme: document.theme }
-      : built.document;
-
-    persist(next);
+export const useStudio = create<StudioState>((set, get) => {
+  /** Push the current document onto the undo stack before mutating it. */
+  function mutate(change: (document: CatalogDocument) => CatalogDocument): void {
+    const { document, past } = get();
+    if (!document) return;
     set({
-      offers: new Map(feed.offers.map((o) => [o.id, o])),
-      document: next,
-      issues: built.issues,
-      unplaced: built.unplaced,
-      planReasoning: [],
-      notSelected: built.notSelected.length,
-      categoryMix: built.categoryMix,
-      past: [],
+      past: [...past.slice(-29), document],
       future: [],
+      document: change(document),
     });
-  },
+  }
 
-  async setRetailer(id) {
-    const retailer = RETAILERS[id];
-    if (!retailer) return;
-    set({ retailer, document: null, offers: new Map(), past: [], future: [] });
-    await get().loadSampleFeed();
-  },
+  return {
+    brands: [],
+    brandId: null,
+    brand: null,
+    sources: [],
+    feed: null,
+    document: null,
+    curationReady: false,
+    busy: null,
+    error: null,
+    note: null,
+    selectedOfferId: null,
+    maxPages: 6,
+    brief: '',
+    past: [],
+    future: [],
 
-  /**
-   * Plan the pages with Claude, then lay them out.
-   *
-   * The model decides which offers share a page and which leads it; the
-   * solver still owns every coordinate. Offers are selected first so the
-   * model reasons about the catalog that will actually be printed rather
-   * than the retailer's whole range.
-   */
-  async generateWithAi() {
-    const { feedText, library, retailer, document, labels } = get();
-    if (!feedText || get().planning) return;
+    async start() {
+      try {
+        const brands = await api.fetchBrands();
+        set({ brands });
+        const remembered = rememberedBrand();
+        const chosen = brands.find((b) => b.id === remembered) ?? brands[0];
+        if (chosen) await get().signInAs(chosen.id);
+      } catch (error) {
+        set({ error: `Kunne ikke nå API-serveren — kør \`npm run dev:api\`. (${message(error)})` });
+      }
+    },
 
-    set({ planning: true, lastError: null });
-    try {
-      const { feed } =
-        retailer.feedFormat === 'csv'
-          ? ingestCsv(feedText, retailer.mapping, labels)
-          : ingestJson(feedText, retailer.mapping, labels);
-
-      const chosen = retailer.targetOfferCount
-        ? selectOffers(feed.offers, { targetCount: retailer.targetOfferCount }).selected
-        : feed.offers;
-
-      const plan = await planPages(chosen, {
-        offers: chosen,
-        maxPerPage: DEFAULT_MAX_OFFERS_PER_PAGE,
-        language: 'Danish',
-        ...(get().brief.trim() ? { brief: get().brief.trim() } : {}),
-      });
-
-      const byId = new Map(chosen.map((o) => [o.id, o]));
-      const groups = plan.groups
-        .map((group) => ({
-          title: group.title,
-          subtitle: group.subtitle,
-          offers: group.offerIds
-            .map((id) => byId.get(id))
-            .filter((o): o is Offer => o !== undefined),
-        }))
-        .filter((group) => group.offers.length > 0);
-
-      const built = generateCatalog(chosen, {
-        id: catalogIdFor(retailer.id),
-        name: document?.name ?? retailer.displayName,
-        retailerId: retailer.id,
-        theme: document?.retailerId === retailer.id && document ? document.theme : retailer.theme,
-        pageAspect: retailer.pageAspect,
-        library,
-        groups,
-      });
-
-      persist(built.document);
+    /*
+     * Switching chain is a full reset, not a filter.
+     *
+     * Everything in the editor belongs to one chain — its feed, its
+     * layouts, its catalogue — so carrying any of it across would be the
+     * exact mixing this system is meant to prevent. Cheaper and safer to
+     * throw it all away and load the other chain from scratch.
+     */
+    async signInAs(brandId: string) {
       set({
-        offers: new Map(feed.offers.map((o) => [o.id, o])),
-        document: built.document,
-        unplaced: built.unplaced,
-        planReasoning: plan.reasoning,
+        busy: 'Skifter kæde…',
+        error: null,
+        note: null,
+        document: null,
+        feed: null,
+        brand: null,
+        sources: [],
+        selectedOfferId: null,
         past: [],
         future: [],
       });
-    } catch (error) {
-      set({ lastError: error instanceof Error ? error.message : String(error) });
-    } finally {
-      set({ planning: false });
-    }
-  },
+      try {
+        window.localStorage.setItem(BRAND_KEY, brandId);
+      } catch { /* private browsing; the picker still works for this session */ }
 
-  setBrief(brief) {
-    set({ brief });
-  },
+      try {
+        const profile = await api.fetchBrandProfile(brandId);
+        /*
+         * The chain's default reader is the first source, and its
+         * sample is only a convenience so the editor opens with
+         * something on screen. A chain with no shipped sample simply
+         * starts empty and waits for an upload.
+         */
+        const sample = profile.sources.find((source) => source.path);
+        const [curationReady, text] = await Promise.all([
+          api.fetchCurationStatus(brandId),
+          sample?.path ? api.fetchFeed(sample.path) : Promise.resolve(null),
+        ]);
+        set({
+          brandId,
+          brand: profile.brand,
+          sources: profile.sources,
+          curationReady,
+          feed: text && sample?.path
+            ? { text, source: sample.path.split('/').pop() ?? sample.path }
+            : null,
+          busy: null,
+        });
+      } catch (error) {
+        set({ busy: null, brandId, error: message(error) });
+      }
+    },
 
-  /**
-   * Take a feed the customer dropped in and build a catalog from it.
-   *
-   * The profile is detected from the file's field signature rather than
-   * asked for: a retailer uploads the same shape every week, so making
-   * them re-declare it each time is friction with no information in it.
-   * A file that matches nothing says so instead of guessing.
-   */
-  uploadFeed(filename, text) {
-    const detection = detectFeed(text, filename);
-    if (!detection.retailer) {
+    uploadFeed(name, text) {
+      set({ feed: { text, source: name }, note: `Indlæste ${name}`, error: null });
+    },
+
+    async build(options = {}) {
+      const { brandId, feed, maxPages, brief } = get();
+      if (!brandId || !feed) return;
+
+      const skipCuration = options.skipCuration ?? false;
       set({
-        uploadNote: null,
-        lastError:
-          `${filename}: ${detection.reason}.` +
-          (detection.fields.length
-            ? ` Found: ${detection.fields.slice(0, 8).join(', ')}${detection.fields.length > 8 ? '…' : ''}`
-            : ''),
+        busy: skipCuration ? 'Bygger…' : 'Claude planlægger siderne…',
+        error: null,
+        note: null,
       });
-      return;
-    }
 
-    const retailer = detection.retailer;
-    set({
-      retailer,
-      feedText: text,
-      document: null,
-      offers: new Map(),
-      planReasoning: [],
-      past: [],
-      future: [],
-      lastError: null,
-      uploadNote: `${filename} — ${detection.reason}`,
-    });
+      try {
+        const reply = await api.buildCatalogue(brandId, {
+          feed: feed.text,
+          maxPages,
+          skipCuration,
+          ...(brief.trim() ? { brief: brief.trim() } : {}),
+          // A fresh seed on every click: pressing the button again is a
+          // request for another take, and with a fixed seed the second
+          // click returns the first click's pages.
+          ...(options.fresh ? { seed: String(Date.now()) } : {}),
+        });
 
-    // Load this retailer's own layouts before generating, so the first
-    // render already carries its house style.
-    void (async () => {
-      const house = retailer.houseLibrary ? await fetchMinedLibrary(retailer.houseLibrary) : null;
-      set({ houseLibrary: house });
-      if (house) set({ library: house, librarySource: 'house' });
-      get().regenerate();
-    })();
-  },
+        const notes = [
+          reply.source.name,
+          `${reply.document.pages.length} sider af ${reply.offerCount} tilbud`,
+          reply.curated ? 'kurateret af Claude' : 'kategorisortering',
+          ...(reply.dropped > 0 ? [`${reply.dropped} tilbud kunne ikke være med`] : []),
+          ...(reply.substitutions.length > 0
+            ? [`${reply.substitutions.length} sider fik en anden skabelon`]
+            : []),
+        ];
 
-  setLibrarySource(source) {
-    const { minedLibrary, houseLibrary } = get();
-    const library =
-      source === 'house' ? houseLibrary : source === 'mined' ? minedLibrary : AUTHORED_LIBRARY;
-    if (!library) return;
-    set({ library, librarySource: source });
-    get().regenerate();
-  },
+        set({
+          document: reply.document,
+          past: [],
+          future: [],
+          selectedOfferId: null,
+          busy: null,
+          note: notes.join(' · '),
+          ...(reply.curationError ? { error: reply.curationError } : {}),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
 
-  select(offerId) {
-    set({ selectedOfferId: offerId });
-  },
+    async save() {
+      const { brandId, document } = get();
+      if (!brandId || !document) return;
+      set({ busy: 'Gemmer…', error: null });
+      try {
+        await api.saveCatalogue(brandId, document, 'manuel');
+        set({ busy: null, note: 'Gemt' });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
 
-  setTheme(patch) {
-    const { document } = get();
-    if (!document) return;
-    set((state) => pushHistory(state, { ...document, theme: { ...document.theme, ...patch } }));
-  },
+    /*
+     * Save, then print. The endpoint renders what is STORED, so printing
+     * an unsaved edit would hand back the previous version — silently,
+     * and only visible once someone compared the PDF to the screen.
+     */
+    async downloadPdf() {
+      const { brandId, document } = get();
+      if (!brandId || !document) return;
+      set({ busy: 'Printer PDF…', error: null });
+      try {
+        await api.saveCatalogue(brandId, document, 'før print');
+        const blob = await api.fetchCataloguePdf(brandId, document.id);
+        const url = URL.createObjectURL(blob);
+        const link = window.document.createElement('a');
+        link.href = url;
+        link.download = `${document.id}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+        set({ busy: null, note: 'PDF hentet' });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
 
-  /**
-   * Exchanges the offers in two slots, which may live on different pages.
-   * The move is rejected outright if either resulting placement would break
-   * a hard constraint — the human can rearrange freely, but cannot produce
-   * a page that is actually wrong.
-   */
-  swapPlacements(a, b) {
-    const { document, offers, library } = get();
-    if (!document) return { ok: false, violations: [] };
-    if (a.pageId === b.pageId && a.slotId === b.slotId) return { ok: true, violations: [] };
+    select: (offerId) => set({ selectedOfferId: offerId }),
 
-    const pageA = document.pages.find((p) => p.id === a.pageId);
-    const pageB = document.pages.find((p) => p.id === b.pageId);
-    if (!pageA || !pageB) return { ok: false, violations: [] };
+    /*
+     * Exchange two tiles, on the same page or across pages.
+     *
+     * The offer and its hand-made corrections travel together: an
+     * editor who rewrote a headline and then moved the tile expects the
+     * headline to follow it, not to stay behind on the slot. Dropping
+     * onto an empty slot moves rather than swaps.
+     */
+    swapPlacements(from, to) {
+      if (from.pageId === to.pageId && from.slotId === to.slotId) return;
 
-    const placementA = pageA.placements.find((p) => p.slotId === a.slotId);
-    const placementB = pageB.placements.find((p) => p.slotId === b.slotId);
-    if (!placementA || !placementB) return { ok: false, violations: [] };
+      mutate((document) => {
+        const find = (at: { pageId: string; slotId: string }) =>
+          document.pages
+            .find((page) => page.id === at.pageId)
+            ?.placements.find((p) => p.slotId === at.slotId);
 
-    const templateA = library.templates.find((t) => t.id === pageA.templateId);
-    const templateB = library.templates.find((t) => t.id === pageB.templateId);
-    if (!templateA || !templateB) return { ok: false, violations: [] };
+        const source = find(from);
+        if (!source) return document;
+        const target = find(to);
 
-    const slotA = templateA.slots.find((s) => s.id === a.slotId);
-    const slotB = templateB.slots.find((s) => s.id === b.slotId);
-    const offerA = offers.get(placementA.offerId);
-    const offerB = offers.get(placementB.offerId);
-    if (!slotA || !slotB || !offerA || !offerB) return { ok: false, violations: [] };
+        const pages = document.pages.map((page) => {
+          if (page.id !== from.pageId && page.id !== to.pageId) return page;
 
-    const violations = [
-      ...checkPlacement(offerB, slotA, { template: templateA, profiles: new Map() }),
-      ...checkPlacement(offerA, slotB, { template: templateB, profiles: new Map() }),
-    ];
-    if (violations.length > 0) return { ok: false, violations };
+          const placements = page.placements
+            .map((placement) => {
+              const here = { pageId: page.id, slotId: placement.slotId };
+              if (here.pageId === from.pageId && here.slotId === from.slotId) {
+                // Nothing to take back from an empty target: this slot
+                // is emptied, and the filter below removes it.
+                return target
+                  ? { ...placement, offerId: target.offerId, overrides: target.overrides }
+                  : null;
+              }
+              if (here.pageId === to.pageId && here.slotId === to.slotId) {
+                return { ...placement, offerId: source.offerId, overrides: source.overrides };
+              }
+              return placement;
+            })
+            .filter((placement): placement is NonNullable<typeof placement> => placement !== null);
 
-    // Both tiles are now human-authored, so the solver must leave them be.
-    const pin = { pinned: true };
-    const next: CatalogDocument = {
-      ...document,
-      pages: document.pages.map((page) => {
-        if (page.id !== a.pageId && page.id !== b.pageId) return page;
-        return {
+          // A move onto a slot that held nothing has to create it.
+          if (page.id === to.pageId && !target) {
+            placements.push({
+              offerId: source.offerId,
+              slotId: to.slotId,
+              overrides: source.overrides,
+            });
+          }
+          return { ...page, placements };
+        });
+
+        return { ...document, pages };
+      });
+    },
+    setMaxPages: (pages) => set({ maxPages: Math.max(1, Math.min(60, pages)) }),
+    setBrief: (brief) => set({ brief }),
+
+    updateOverrides(offerId, patch) {
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => ({
           ...page,
-          placements: page.placements.map((placement) => {
-            if (page.id === a.pageId && placement.slotId === a.slotId) {
-              return { ...placement, offerId: placementB.offerId, overrides: { ...placement.overrides, ...pin } };
-            }
-            if (page.id === b.pageId && placement.slotId === b.slotId) {
-              return { ...placement, offerId: placementA.offerId, overrides: { ...placement.overrides, ...pin } };
-            }
-            return placement;
-          }),
-        };
-      }),
-    };
+          placements: page.placements.map((placement) =>
+            placement.offerId === offerId
+              ? { ...placement, overrides: { ...placement.overrides, ...patch } }
+              : placement),
+        })),
+      }));
+    },
 
-    set((state) => pushHistory(state, next));
-    return { ok: true, violations: [] };
-  },
+    movePage(pageId, delta) {
+      mutate((document) => {
+        const index = document.pages.findIndex((p) => p.id === pageId);
+        const target = index + delta;
+        if (index < 0 || target < 0 || target >= document.pages.length) return document;
+        const pages = [...document.pages];
+        const [moved] = pages.splice(index, 1);
+        pages.splice(target, 0, moved!);
+        return { ...document, pages };
+      });
+    },
 
-  /**
-   * "Make this bigger": moves an offer into one of its slot's declared
-   * promotion targets and sends the displaced offer back the other way.
-   * Resizing is expressed as a swap into a larger slot rather than free
-   * geometry so the page can never end up with holes or overlaps.
-   */
-  promotePlacement(address) {
-    const { document, library } = get();
-    if (!document) return { ok: false, violations: [] };
+    setPageTitle(pageId, title) {
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId ? { ...page, title } : page)),
+      }));
+    },
 
-    const page = document.pages.find((p) => p.id === address.pageId);
-    const template = library.templates.find((t) => t.id === page?.templateId);
-    const slot = template?.slots.find((s) => s.id === address.slotId);
-    if (!page || !template || !slot || slot.promotesTo.length === 0) {
-      return { ok: false, violations: [] };
-    }
+    undo() {
+      const { past, future, document } = get();
+      const previous = past[past.length - 1];
+      if (!previous || !document) return;
+      set({ past: past.slice(0, -1), document: previous, future: [document, ...future] });
+    },
 
-    for (const targetId of slot.promotesTo) {
-      const result = get().swapPlacements(address, { pageId: page.id, slotId: targetId });
-      if (result.ok) return result;
-    }
-    return { ok: false, violations: [] };
-  },
-
-  /** Re-solves a single page, honouring pins. "Try another layout". */
-  reshufflePage(pageId) {
-    const { document, offers, library } = get();
-    if (!document) return;
-    const page = document.pages.find((p) => p.id === pageId);
-    if (!page) return;
-
-    const pageOffers = page.placements
-      .map((p) => offers.get(p.offerId))
-      .filter((o): o is Offer => o !== undefined);
-
-    const currentTemplate = page.templateId;
-    const candidates = library.templates.filter(
-      (t) => t.slots.length === page.placements.length,
-    );
-    if (candidates.length === 0) return;
-
-    const solved = solvePageCandidates(pageOffers, candidates, { pageAspect: document.pageAspect });
-    // Prefer a genuinely different template so the button visibly does something.
-    const pick = solved.find((s) => s.templateId !== currentTemplate) ?? solved[0];
-    if (!pick) return;
-
-    const next: CatalogDocument = {
-      ...document,
-      pages: document.pages.map((p) =>
-        p.id === pageId ? { ...p, templateId: pick.templateId, placements: pick.placements } : p,
-      ),
-    };
-    set((state) => pushHistory(state, next));
-  },
-
-  movePage(pageId, direction) {
-    const { document } = get();
-    if (!document) return;
-    const index = document.pages.findIndex((p) => p.id === pageId);
-    const target = index + direction;
-    if (index === -1 || target < 0 || target >= document.pages.length) return;
-
-    const pages = [...document.pages];
-    const [moved] = pages.splice(index, 1);
-    if (!moved) return;
-    pages.splice(target, 0, moved);
-    set((state) => pushHistory(state, { ...document, pages }));
-  },
-
-  undo() {
-    const { past, document } = get();
-    const previous = past[past.length - 1];
-    if (!previous || !document) return;
-    persist(previous);
-    set({ document: previous, past: past.slice(0, -1), future: [document, ...get().future] });
-  },
-
-  redo() {
-    const { future, document } = get();
-    const next = future[0];
-    if (!next || !document) return;
-    persist(next);
-    set({ document: next, future: future.slice(1), past: [...get().past, document] });
-  },
-}));
+    redo() {
+      const { past, future, document } = get();
+      const next = future[0];
+      if (!next || !document) return;
+      set({ past: [...past, document], document: next, future: future.slice(1) });
+    },
+  };
+});

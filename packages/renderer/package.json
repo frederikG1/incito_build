@@ -7,7 +7,7 @@
   "exports": { ".": "./src/index.ts", "./styles.css": "./src/styles.css" },
   "dependencies": {
     "@incitio/schema": "0.1.0",
-    "@incitio/layout": "0.1.0"
+    "@incitio/brands": "0.1.0"
   },
   "peerDependencies": {
     "react": "^18.3.1",
