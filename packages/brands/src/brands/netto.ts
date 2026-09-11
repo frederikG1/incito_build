@@ -25,7 +25,7 @@ const TEMPLATES = [
     'hero hero hero hero b b',
     'hero hero hero hero c c',
     'd    d    d    e    e e',
-  ], { hero: ['hero', 1.14], b: 'standard', c: 'standard', d: 'standard', e: 'standard' }),
+  ], { hero: ['hero', 1.1], b: 'standard', c: 'standard', d: 'standard', e: 'standard' }),
 
   template('netto/grid-6', 'Seks felter', [
     'a a b b c c',
@@ -64,13 +64,13 @@ const TEMPLATES = [
     'a a a b b b',
     'a a a b b b',
     'c c c c c c',
-  ], { a: ['hero', 1.12], b: 'standard', c: 'feature' }),
+  ], { a: ['hero', 1.08], b: 'standard', c: 'feature' }),
 
   template('netto/stack-4', 'Hovedvare til højre', [
     'a a hero hero hero hero',
     'b b hero hero hero hero',
     'c c hero hero hero hero',
-  ], { hero: ['hero', 1.16], a: 'standard', b: 'standard', c: 'standard' }),
+  ], { hero: ['hero', 1.12], a: 'standard', b: 'standard', c: 'standard' }),
 
   template('netto/wide-5', 'Bred øverst, tre under', [
     'top  top  top  top  b b',
@@ -83,7 +83,7 @@ const TEMPLATES = [
     'hero hero hero b b c',
     'd    d    e    e f f',
   ], {
-    hero: ['hero', 1.14], b: 'standard', c: 'compact',
+    hero: ['hero', 1.1], b: 'standard', c: 'compact',
     d: 'standard', e: 'standard', f: 'standard',
   }),
 
@@ -92,7 +92,7 @@ const TEMPLATES = [
     'lead lead c c d d',
     'e    e    f f g g',
   ], {
-    lead: ['hero', 1.14], a: 'compact', b: 'compact', c: 'compact',
+    lead: ['hero', 1.1], a: 'compact', b: 'compact', c: 'compact',
     d: 'compact', e: 'standard', f: 'standard', g: 'standard',
   }),
 
@@ -137,8 +137,22 @@ export const NETTO: BrandDefinition = {
       // Netto sets the number in yellow inside a black tag, which is the
       // inverse of every other chain here and the whole visual signature.
       priceInk: '#ffdd00',
-      headingFont: "'Inter', system-ui, sans-serif",
-      bodyFont: "'Inter', system-ui, sans-serif",
+      /*
+       * Rubik, matched to the uge-38 book.
+       *
+       * Netto sets one family at several weights, not a display face
+       * over a text face, so both tokens name it. What settled the
+       * choice was the body copy in the red panel: a single-storey `g`
+       * with an open hook, an `a` that ends on a straight vertical
+       * terminal, round dots, and curves squared off just short of
+       * geometric. Rubik carries all four; Inter, which used to be
+       * named here, carries none of them.
+       *
+       * A stand-in for the chain's licensed face, not that face. See
+       * renderer/src/fonts/README.md.
+       */
+      headingFont: "'Rubik', system-ui, sans-serif",
+      bodyFont: "'Rubik', system-ui, sans-serif",
     },
     templates: TEMPLATES,
   }),

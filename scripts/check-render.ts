@@ -77,6 +77,26 @@ const findings = await page.evaluate(() => {
     return `${slot?.dataset['slotId'] ?? '?'}/${role.replace('tile--', '')}`;
   };
 
+  /*
+   * Does the markup still match the stylesheet?
+   *
+   * The check below measures geometry, and geometry looked fine on a
+   * page whose tile had been rewritten to utility classes the project
+   * does not ship: every element was unstyled, so nothing overflowed
+   * anything. A structural assertion catches that in one line, where
+   * the measurements cannot.
+   */
+  const required = ['.tile', '.tile__media', '.tile__info', '.price'];
+  for (const selector of required) {
+    if (window.document.querySelector(selector) === null) {
+      problems.push({
+        page: 0,
+        kind: 'markup no longer matches the stylesheet',
+        detail: `no element matches "${selector}" — the renderer and styles.css have diverged`,
+      });
+    }
+  }
+
   [...window.document.querySelectorAll('.page')].forEach((el, index) => {
     const n = index + 1;
     const bounds = el.getBoundingClientRect();
@@ -118,6 +138,27 @@ const findings = await page.evaluate(() => {
           detail: bleeds
             ? `${Math.round(over)}px ${where(img)} — lower this template's bleed`
             : `${Math.round(over)}px ${where(img)}`,
+        });
+      }
+    }
+
+    /*
+     * The price mark is SUPPOSED to overlap the product — that is the
+     * design. It must never overlap the product's NAME, which is the
+     * one thing a shopper has to be able to read next to the number.
+     */
+    for (const tile of el.querySelectorAll('.tile')) {
+      const mark = tile.querySelector('.price');
+      const label = tile.querySelector('.tile__name');
+      if (!mark || !label) continue;
+      const m = mark.getBoundingClientRect();
+      const t = label.getBoundingClientRect();
+      const hits = !(m.right < t.left || m.left > t.right || m.bottom < t.top || m.top > t.bottom);
+      if (hits) {
+        problems.push({
+          page: n,
+          kind: 'price mark covers the product name',
+          detail: `${(label.textContent ?? '').slice(0, 30)} — raise the mark`,
         });
       }
     }

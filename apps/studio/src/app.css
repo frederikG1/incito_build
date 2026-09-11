@@ -139,6 +139,42 @@ body {
 .sheet__title:focus { border-color: var(--hot); background: #fff; outline: none; }
 
 .sheet__meta { font-size: 12px; color: #6b7280; }
+
+/*
+ * The layout controls. `sheet__title` takes the slack, so the pickers
+ * keep their width and stay in the same place from page to page —
+ * a control that shifts sideways with the length of a page heading is
+ * a control you have to find again every time.
+ */
+.sheet__title { flex: 1 1 auto; min-width: 60px; }
+.sheet__gap { flex: 0 0 6px; }
+
+.sheet__pick {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.sheet__pick select {
+  font: inherit;
+  font-size: 12px;
+  color: #33363d;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+  background: #fff;
+  padding: 2px 4px;
+  max-width: 150px;
+}
+
+.bar__note {
+  font-size: 12px;
+  color: #b8c0cc;
+  white-space: nowrap;
+  cursor: default;
+}
 .sheet__bar button {
   font: inherit;
   border: 1px solid #d3d7dd;
@@ -200,6 +236,55 @@ body {
 }
 .inspector__field input[type='range'] { width: 100%; }
 
+.inspector__field small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #8b919b;
+}
+
+.inspector__group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 20px 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #8b919b;
+  border-top: 1px solid #e6e8ec;
+  padding-top: 12px;
+}
+
+.inspector__link {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--hot);
+  cursor: pointer;
+  margin-left: auto;
+}
+.inspector__link:hover { text-decoration: underline; }
+
+/* The shortcuts, spelled out. A direct-manipulation editor that does
+   not say what it responds to is just a picture of one. */
+.inspector__keys {
+  margin: 18px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid #e6e8ec;
+  list-style: none;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #8b919b;
+}
+.inspector__keys b { color: #4b5563; font-weight: 600; }
+
 .inspector__check {
   display: flex;
   gap: 8px;
@@ -208,9 +293,9 @@ body {
   color: #4b5563;
 }
 
-/* ------------------------------------------------------------ dragging
+/* -------------------------------------------------------- tile editor
  *
- * The editor's handles, layered over the renderer's slots. Only ever
+ * The editor's overlay, layered over the renderer's slots. Only ever
  * mounted through `slotDecorator`, which the print render does not pass
  * — so none of this can reach a PDF.
  */
@@ -218,13 +303,36 @@ body {
 .handle {
   position: absolute;
   inset: 0;
-  cursor: grab;
+  /*
+   * Above everything the tile can draw.
+   *
+   * The overlay is the editor's whole surface, and a tile element that
+   * outranks it takes the pointer away from it silently — no error,
+   * just a double-click that does nothing. The price mark has always
+   * sat at `z-index: 5`, so it was already unreachable; a box someone
+   * moves is lifted to 6 so it lands on top of what it was moved over.
+   * Ten clears both, inside the stacking context `.slot` establishes,
+   * so this cannot reach past its own cell.
+   */
+  z-index: 10;
+  cursor: pointer;
   border-radius: 4px;
-  border: 2px solid transparent;
-  transition: background 90ms, border-color 90ms;
+  /* Outline, not border: a border would inset the overlay's own
+     coordinate space, and the in-place text editor is positioned in it
+     — two pixels of drift between the input and the words it covers. */
+  transition: background 90ms, outline-color 90ms;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
 }
 
-.handle:active { cursor: grabbing; }
+/* Selected, the surface is the artwork's: drag it to move the picture
+   inside its frame. The swap gesture retreats to the corner grip. */
+.handle--armed { cursor: grab; }
+.handle--armed:active { cursor: grabbing; }
+.handle--editing { cursor: text; }
 
 .handle__grip {
   position: absolute;
@@ -237,14 +345,165 @@ body {
   color: #fff;
   background: rgb(0 0 0 / 0.45);
   opacity: 0;
+  cursor: grab;
   transition: opacity 90ms;
 }
 
-.slot:hover .handle__grip { opacity: 1; }
+.slot:hover .handle__grip,
+.handle--armed .handle__grip { opacity: 1; }
+.handle--editing .handle__grip { opacity: 0; }
 
 .handle--dragging { opacity: 0.35; }
 
 .handle--over {
-  border-color: var(--hot, #2d6cdf);
+  outline-color: var(--hot, #2d6cdf);
   background: rgb(45 108 223 / 0.14);
+}
+
+/* The live readout during a pan or zoom. Tabular figures so the numbers
+   do not jitter sideways while the pointer moves. */
+.handle__hud {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: rgb(0 0 0 / 0.62);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/*
+ * The box under the pointer, and the box in hand.
+ *
+ * Drawn in the overlay at a measured rectangle rather than as an
+ * outline on the tile's own elements. The tile is the print component:
+ * it renders the PDF as well as the screen, and giving it a notion of
+ * "selected element" would be an editor concept leaking into the thing
+ * that goes to press. The overlay knows the rectangle; only the overlay
+ * needs to.
+ */
+.handle__part {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 3px;
+  outline: 1px dashed color-mix(in srgb, var(--hot) 70%, transparent);
+  outline-offset: 2px;
+  background: rgb(45 108 223 / 0.07);
+}
+
+.handle__part > b {
+  position: absolute;
+  left: 0;
+  /* Above the box, and below it when the box is at the very top of the
+     tile — a label that hangs off the page cannot be read. */
+  bottom: calc(100% + 4px);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font: 600 10px/1.5 system-ui, sans-serif;
+  white-space: nowrap;
+  color: #fff;
+  background: var(--hot);
+  opacity: 0.85;
+}
+
+.handle__part:not(.handle__part--held) > b { opacity: 0; }
+.handle__part--held {
+  outline: 2px solid var(--hot);
+  background: rgb(45 108 223 / 0.1);
+}
+
+/* A box hard against the top of the tile has nowhere above it to hang
+   its label, so the label drops inside the box instead. */
+.handle__part--tight > b { bottom: auto; top: 2px; }
+
+/*
+ * The in-place text editor.
+ *
+ * It inherits the printed type from the element it covers — font, size,
+ * weight, colour, alignment are copied in TileEditor — so the only
+ * things set here are the ones that make it an input rather than a
+ * paragraph. Anything decorative would make the edit look different
+ * from the result, which is the one thing in-place editing must not do.
+ */
+.handle__text {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: 2px solid var(--hot);
+  outline-offset: 2px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.94);
+  resize: none;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------- tile elements
+ *
+ * Every box the tile draws, listed so that one taken off the page can
+ * be put back — the only way home for a hidden element, since a hidden
+ * element cannot be clicked.
+ */
+.inspector__parts {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.inspector__part {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #d7d9de;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.inspector__part-name {
+  border: 0;
+  background: none;
+  padding: 3px 7px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  color: #33363d;
+}
+
+/* The dot says "this one has been touched", so a tile someone worked on
+   a week ago does not have to be reconstructed by clicking through all
+   nine boxes. */
+.inspector__part-name > i {
+  font-style: normal;
+  color: var(--hot);
+  margin-left: 3px;
+}
+
+.inspector__part-eye {
+  border: 0;
+  border-left: 1px solid #e6e8ec;
+  background: none;
+  padding: 3px 6px;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  color: #9aa0aa;
+}
+
+.inspector__part-eye:hover { color: #33363d; }
+
+.inspector__part.is-held {
+  border-color: var(--hot);
+  box-shadow: inset 0 0 0 1px var(--hot);
+}
+
+.inspector__part.is-hidden .inspector__part-name {
+  text-decoration: line-through;
+  opacity: 0.5;
 }

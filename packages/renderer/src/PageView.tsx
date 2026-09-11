@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import type { Brand, CatalogPage, Offer, PageTemplate } from '@incitio/schema';
+import type { Brand, CatalogPage, Offer, PageTemplate, TilePart } from '@incitio/schema';
 import { brandCssVars } from '@incitio/schema';
 import { OfferTile } from './OfferTile.js';
 
@@ -15,6 +15,8 @@ export interface PageViewProps {
   pageIndex?: number;
   pageNumber?: number;
   selectedOfferId?: string | null;
+  /** Which box of the selected tile is in hand. Editor only. */
+  selectedPart?: TilePart | null;
   onSelectOffer?: (offerId: string) => void;
   /** Editor overlay (drop targets, handles). Kept out of the print view. */
   slotDecorator?: (slotId: string) => ReactNode;
@@ -41,6 +43,7 @@ export function PageView({
   pageIndex = 0,
   pageNumber,
   selectedOfferId,
+  selectedPart,
   onSelectOffer,
   slotDecorator,
 }: PageViewProps) {
@@ -109,6 +112,7 @@ export function PageView({
                   }
                   overrides={placement.overrides}
                   selected={selectedOfferId === offer.id}
+                  selectedPart={selectedOfferId === offer.id ? selectedPart : null}
                   {...(onSelectOffer ? { onSelect: onSelectOffer } : {})}
                 />
               ) : (

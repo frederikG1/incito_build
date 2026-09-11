@@ -30,7 +30,7 @@ const TEMPLATES = [
     'hero hero hero hero',
     'hero hero hero hero',
     'a    a    b    b',
-  ], { hero: ['hero', 1.12], a: 'standard', b: 'standard' }),
+  ], { hero: ['hero', 1.08], a: 'standard', b: 'standard' }),
 
   template('sb/stack-3', 'Stort produkt til højre', [
     'a hero hero hero',
@@ -42,7 +42,7 @@ const TEMPLATES = [
     'hero hero hero b',
     'hero hero hero b',
     'a    a    c    c',
-  ], { hero: ['hero', 1.16], a: 'standard', b: 'standard', c: 'standard' }),
+  ], { hero: ['hero', 1.12], a: 'standard', b: 'standard', c: 'standard' }),
 
   template('sb/grid-4', 'Fire lige felter', [
     'a a b b',
@@ -64,7 +64,7 @@ const TEMPLATES = [
     'hero hero hero hero',
     'a    a    b    b',
     'c    c    d    d',
-  ], { hero: ['hero', 1.08], a: 'standard', b: 'standard', c: 'standard', d: 'standard' }),
+  ], { hero: ['hero', 1.05], a: 'standard', b: 'standard', c: 'standard', d: 'standard' }),
 
   template('sb/grid-6', 'Seks felter', [
     'a a b b',
@@ -82,7 +82,7 @@ const TEMPLATES = [
   ], {
     // The lead breaks out of its cell and prints over the row below —
     // the size difference is what says which offer carries the page.
-    hero: ['hero', 1.08], a: 'compact', b: 'compact',
+    hero: ['hero', 1.05], a: 'compact', b: 'compact',
     c: 'compact', d: 'compact', e: 'standard',
   }),
 
@@ -167,8 +167,21 @@ export const SUPERBRUGSEN: BrandDefinition = {
       // The disc carries white; the plain numerals carry ink. See the
       // note on priceShape.
       priceInk: '#1a1a1a',
-      headingFont: "'Inter', system-ui, sans-serif",
-      bodyFont: "'Inter', system-ui, sans-serif",
+      /*
+       * Nunito Sans, matched to the week-37 book.
+       *
+       * Two letters decided it. SuperBrugsen's headlines carry an `a`
+       * with a curved exit stroke and a `t` cut at an angle across the
+       * ascender — of the faces tried against a zoom of "Husk at
+       * indløse dine samlemærker", only this one has both, and it is
+       * wide and round in the same way. One family at several weights,
+       * as the book prints it.
+       *
+       * A stand-in for Coop's licensed face, not that face. See
+       * renderer/src/fonts/README.md.
+       */
+      headingFont: "'Nunito Sans', system-ui, sans-serif",
+      bodyFont: "'Nunito Sans', system-ui, sans-serif",
     },
     templates: TEMPLATES,
   }),
@@ -187,7 +200,18 @@ export const SUPERBRUGSEN: BrandDefinition = {
     id: 'tjek',
     name: 'Tjek offers API',
     format: 'json',
-    path: '/feeds/superbrugsen-tjek-uge37.json',
+    /*
+     * The packshot file, not the week-37 one.
+     *
+     * Both are the same format and the same store, but week 37's
+     * `images.zoom` are CROPS OF THE PRINTED PAGE — the URL carries
+     * `x1r/y1r` coordinates into `p-21.webp` — so each one already
+     * contains the chain's own price bubble and fine print. Opening
+     * the editor on that sample shows every price twice and looks like
+     * a rendering bug. It is still there to build from; it is just the
+     * wrong thing to greet someone with.
+     */
+    path: '/feeds/superbrugsen-tjek.json',
     signature: { fields: ['heading', 'pricing', 'run_from'] },
     mapping: tjekOffers('superbrugsen', 'tilbud.json'),
   }, {

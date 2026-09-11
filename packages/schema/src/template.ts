@@ -87,3 +87,41 @@ export function validateTemplate(template: PageTemplate): string[] {
   }
   return problems;
 }
+
+/**
+ * How eagerly a slot wants the strongest offer. Assignment walks the
+ * slots in this order and hands out offers in the order the plan gave
+ * them, so the page's lead offer lands in the page's lead slot without
+ * any scoring, search or geometry.
+ */
+const ROLE_ORDER: Record<SlotRole, number> = {
+  hero: 0,
+  feature: 1,
+  standard: 2,
+  compact: 3,
+};
+
+/**
+ * Slots in assignment order.
+ *
+ * Sorted by role, then by where the slot appears in the template's own
+ * declaration — which is reading order, since a template is authored as
+ * its grid drawing. That keeps a page's second-strongest offer in the
+ * top-left standard slot rather than wherever the array happened to put
+ * it.
+ *
+ * It lives here rather than in the composer because the editor re-seats
+ * pages too: changing a page's layout by hand has to put the offers
+ * back in the same order the composer would have, or the same page
+ * would rank its offers one way when generated and another way when
+ * someone picked the identical template from a menu.
+ */
+export function slotAssignmentOrder(template: PageTemplate): TemplateSlot[] {
+  return template.slots
+    .map((slot, index) => ({ slot, index }))
+    .sort((a, b) => {
+      const byRole = ROLE_ORDER[a.slot.role] - ROLE_ORDER[b.slot.role];
+      return byRole !== 0 ? byRole : a.index - b.index;
+    })
+    .map((entry) => entry.slot);
+}

@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import type {
-  Offer, OfferLabel, PlacementOverrides, PriceShape, SlotRole, TilePart,
-} from '@incitio/schema';
-import { partOverride, tileArranged, PlacementOverrides as Overrides } from '@incitio/schema';
+import type { Offer, OfferLabel, PlacementOverrides, PriceShape, SlotRole } from '@incitio/schema';
 import { formatPrice, formatQuantity, splitPrice } from './format.js';
 
 /**
@@ -32,34 +29,8 @@ export interface OfferTileProps {
   priceShape: PriceShape;
   overrides?: PlacementOverrides;
   selected?: boolean;
-  /**
-   * Which single box of the tile the editor has hold of.
-   *
-   * Sits here beside `selected` for the same reason that one does: the
-   * print render simply never passes it, so the marker costs the PDF
-   * nothing and the editor does not need a second copy of this
-   * component to draw a selection on.
-   */
-  selectedPart?: TilePart | null;
   onSelect?: (offerId: string) => void;
 }
-
-/** A tile nobody has corrected. Parsed once; the shape never varies. */
-const UNTOUCHED: PlacementOverrides = Overrides.parse({});
-
-/**
- * Where a box grows from when it is scaled.
- *
- * The artwork and the price mark are objects with a middle, so they
- * grow around it. A line of type is anchored to where it starts
- * reading: growing a headline from its centre walks the first letter
- * left, away from everything the editor aligned it against.
- */
-const PART_ORIGIN: Partial<Record<TilePart, string>> = {
-  media: 'center',
-  price: 'center',
-  marks: 'left top',
-};
 
 /** How many variant images a tile shows before it stops being legible. */
 const MAX_PACK: Record<SlotRole, number> = {
@@ -135,60 +106,8 @@ export function packStyle(offerId: string, count: number, role: SlotRole): PackS
  * half-page hero down to a ninth-page filler.
  */
 export function OfferTile({
-  offer, role, priceShape, overrides, selected, selectedPart, onSelect,
+  offer, role, priceShape, overrides, selected, onSelect,
 }: OfferTileProps) {
-  const corrections = overrides ?? UNTOUCHED;
-
-  /**
-   * The attributes that make one box addressable, and put it where the
-   * editor left it.
-   *
-   * Offsets are spent in `cqw`/`cqh` — the page is the size container,
-   * so a box stays where it was put whether the page is a 240px
-   * thumbnail on screen or A4 at 300dpi under Chromium. A percentage
-   * would resolve against the box itself and every element would move a
-   * different distance for the same drag.
-   *
-   * An untouched box gets no style at all, not a style that happens to
-   * be the identity: a `transform` creates a containing block, and one
-   * on `.tile__media` would re-root the price mark hanging off it.
-   */
-  function box(id: TilePart) {
-    const marker = {
-      'data-part': id,
-      ...(selectedPart === id ? { 'data-part-selected': 'true' } : {}),
-    };
-    // The artwork is addressable like every other box but carries its
-    // own transform, in its own frame-relative units — see `mediaStyle`
-    // below. Handing it a second one here would move it twice.
-    if (id === 'media') return marker;
-
-    const part = partOverride(corrections, id);
-    if (part.offsetX === 0 && part.offsetY === 0 && part.scale === 1) return marker;
-
-    return {
-      ...marker,
-      style: {
-        transform: `translate(${part.offsetX}cqw, ${part.offsetY}cqh) scale(${part.scale})`,
-        transformOrigin: PART_ORIGIN[id] ?? 'left top',
-        /*
-         * Lifted, so what was just dragged lands on top of what it was
-         * dragged over. No `position` with it, deliberately: the price
-         * mark and the certification column are absolutely positioned
-         * against the artwork, and `position: relative` here would
-         * unpin them. Flex and grid items honour `z-index` without it,
-         * and every box in this tile is one or the other.
-         */
-        zIndex: 6,
-      } satisfies CSSProperties,
-    };
-  }
-
-  /** Whether this box prints at all. */
-  const shown = (id: TilePart) => !partOverride(corrections, id).hidden;
-  /** The editor's wording for a box that has no field of its own. */
-  const wording = (id: TilePart) => partOverride(corrections, id).text;
-
   /*
    * A price of 0 means there is no price, not that it is free.
    *
@@ -220,15 +139,7 @@ export function OfferTile({
   const tagRoom = MAX_TAGS[role];
   const promoCount = Math.min(promos.length, tagRoom);
 
-  /*
-   * The supporting line, the editor's if one was written.
-   *
-   * An override of `''` is not the same as no override: it is someone
-   * deciding this tile reads better without the line, and it has to
-   * survive a re-render or the edit looks like it did not take.
-   */
-  const description = overrides?.description ?? offer.description;
-  const showDescription = (role === 'hero' || role === 'feature') && description !== '';
+  const showDescription = (role === 'hero' || role === 'feature') && offer.description !== '';
   /*
    * The brand line, unless the name already says it.
    *
@@ -250,25 +161,13 @@ export function OfferTile({
   const showComparison = showMeta && offer.comparison !== null;
 
   const price = splitPrice(offer.price);
-  const hasBefore = offer.prePrice !== null && offer.prePrice > offer.price;
   const quantity = formatQuantity(
     offer.quantity.size, offer.quantity.unit, offer.quantity.pieceCount,
   );
 
-  /*
-   * The two lines the editor can rewrite that have no field of their
-   * own — the pack size and the unit price. Both are computed from the
-   * feed's numbers, and both are regularly wrong in a way only a person
-   * looking at the product can fix ("140 g" on a tray sold by the
-   * piece). An empty string is a real answer here and removes the line,
-   * the same way it does on the supporting line.
-   */
-  const quantityText = wording('quantity') ?? quantity;
-  const metaText = wording('meta');
-
   // Image nudges are stored normalised so they survive a template change.
   const mediaStyle: CSSProperties = {
-    transform: `translate(${corrections.imageOffsetX * 20}%, ${corrections.imageOffsetY * 20}%) scale(${corrections.imageScale})`,
+    transform: `translate(${(overrides?.imageOffsetX ?? 0) * 20}%, ${(overrides?.imageOffsetY ?? 0) * 20}%) scale(${overrides?.imageScale ?? 1})`,
   };
 
 
@@ -277,14 +176,6 @@ export function OfferTile({
     `tile--${role}`,
     isPacked && 'tile--packed',
     !hasPrice && 'tile--mechanic',
-    /*
-     * Once a box has been moved out of the place the template gave it,
-     * the tile stops clipping its own text block — otherwise the first
-     * drag out of `.tile__info` simply makes the line disappear, which
-     * reads as a broken editor rather than as a boundary. The slot is
-     * still a hard edge, so nothing escapes onto a neighbouring tile.
-     */
-    tileArranged(corrections) && 'tile--arranged',
     selected && 'is-selected',
   ].filter(Boolean).join(' ');
 
@@ -294,7 +185,7 @@ export function OfferTile({
       data-offer-id={offer.id}
       onClick={onSelect ? () => onSelect(offer.id) : undefined}
     >
-      <div className="tile__media" {...box('media')}>
+      <div className="tile__media">
         {isPacked ? (
           <div
             className={`tile__pack tile__pack--${arrangement}`}
@@ -328,72 +219,45 @@ export function OfferTile({
           </div>
         )}
 
-        {tagRoom > 0 && marks.length > 0 && shown('marks') && (
-          <ul className="tile__marks" {...box('marks')}>
+        {tagRoom > 0 && marks.length > 0 && (
+          <ul className="tile__marks">
             {marks.slice(0, tagRoom).map((label) => (
               <LabelMark key={`${label.kind}-${label.text}`} label={label} />
             ))}
           </ul>
         )}
-
-        {/*
-          * The price mark sits INSIDE the artwork box, pinned to its
-          * bottom-right corner and hanging over the edge.
-          *
-          * A leaflet does not stack a photograph above a price; it
-          * lands the price on the product like a sticker. As its own
-          * row in the tile's grid the mark left the product floating
-          * half a tile above its own number — measured at 473px of
-          * artwork and then a separate 112px price row — which is
-          * exactly what made a generated page read as a tidy web card
-          * rather than as print.
-          */}
-        {hasPrice && shown('price') && (
-          <div className={`price price--${priceShape}`} {...box('price')}>
-            {/* Small, struck through, hard against the offer price. The
-                comparison only lands if the two read as one mark. */}
-            {hasBefore && role !== 'compact' && (
-              <span className="price__before">
-                før {formatPrice(offer.prePrice!, offer.currency)}
-              </span>
-            )}
-            {/* The figure is one unbreakable unit. Inside a disc the mark
-                is square and narrow, and without this the øre wrapped onto
-                a second line and the price read as two numbers. */}
-            <span className="price__figure">
-              <span className="price__major">{price.major}</span>
-              <span className="price__minor">{price.minor === '00' ? ',-' : price.minor}</span>
-            </span>
-            {offer.savings !== null && offer.savings > 0 && role !== 'compact' && (
-              <span className="price__savings">
-                Spar {formatPrice(offer.savings, offer.currency)}
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
-      <div className="tile__info">
-        {showBrand && shown('brand') && (
-          <p className="tile__brand" {...box('brand')}>{wording('brand') ?? offer.brand}</p>
-        )}
-        {shown('name') && <h3 className="tile__name" {...box('name')}>{name}</h3>}
-        {quantityText && shown('quantity') && (
-          <p className="tile__quantity" {...box('quantity')}>{quantityText}</p>
-        )}
-        {showDescription && shown('description') && (
-          <p className="tile__description" {...box('description')}>{description}</p>
-        )}
+      {hasPrice && (
+        <div className={`price price--${priceShape}`}>
+          {/* The figure is one unbreakable unit. Inside a disc the mark
+              is square and narrow, and without this the øre wrapped onto
+              a second line and the price read as two numbers. */}
+          <span className="price__figure">
+            <span className="price__major">{price.major}</span>
+            <span className="price__minor">{price.minor === '00' ? ',-' : price.minor}</span>
+          </span>
+          {offer.savings !== null && offer.savings > 0 && role !== 'compact' && (
+            <span className="price__savings">
+              Spar {formatPrice(offer.savings, offer.currency)}
+            </span>
+          )}
+        </div>
+      )}
 
-        {/* The previous price has moved up onto the price mark, where a
-            leaflet prints it; what is left here is the unit price the
-            law requires. */}
-        <p className="tile__meta" hidden={!showMeta || !shown('meta')} {...box('meta')}>
-          {metaText !== null ? (
-            // An empty rewrite is the editor removing the line, the same
-            // way it is on the supporting line — not an empty span.
-            metaText !== '' && <span className="tile__comparison">{metaText}</span>
-          ) : showComparison && offer.comparison && (
+      <div className="tile__info">
+        {showBrand && <p className="tile__brand">{offer.brand}</p>}
+        <h3 className="tile__name">{name}</h3>
+        {quantity && <p className="tile__quantity">{quantity}</p>}
+        {showDescription && <p className="tile__description">{offer.description}</p>}
+
+        <p className="tile__meta" hidden={!showMeta}>
+          {offer.prePrice !== null && offer.prePrice > offer.price && (
+            <span className="tile__preprice">
+              Normalpris {formatPrice(offer.prePrice, offer.currency)}
+            </span>
+          )}
+          {showComparison && offer.comparison && (
             <span className="tile__comparison">
               {formatPrice(offer.comparison.value, offer.currency)} / {offer.comparison.unit}
             </span>
@@ -409,14 +273,9 @@ export function OfferTile({
         * middle — which reads as a rendering bug rather than as an
         * omission. A fixed row either fits whole or is not there.
         */}
-      {tagRoom > 0 && promos.length > 0 && shown('tags') && (
-        <ul className="tile__tags" {...box('tags')}>
-          {/* Rewritten, the row is the one chip the editor wrote. A
-              person retyping "Frit valg" means that chip, not a request
-              to relabel every promotion the feed happened to attach. */}
-          {wording('tags') !== null ? (
-            <li className="tag tag--custom">{wording('tags')}</li>
-          ) : promos.slice(0, tagRoom).map((label) => (
+      {tagRoom > 0 && promos.length > 0 && (
+        <ul className="tile__tags">
+          {promos.slice(0, tagRoom).map((label) => (
             <li key={`${label.kind}-${label.text}`} className={`tag tag--${label.kind}`}>
               {label.text}
             </li>

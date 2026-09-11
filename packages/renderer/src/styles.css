@@ -28,6 +28,43 @@
   box-sizing: border-box;
 }
 
+/* --------------------------------------------------------------- fonts
+ *
+ * One face per chain, and they are the point rather than decoration:
+ * every chain here printed in the same typeface until these arrived,
+ * which is the single loudest way a generated page announces itself.
+ *
+ * Variable, weights 400–900, latin subset — see `fonts/README.md` for
+ * what each one was matched against and why it is a stand-in rather
+ * than the chain's own licensed face.
+ *
+ * No `font-display`. The default blocks until the face is ready, which
+ * is what a print renderer wants: swapping mid-render would print a
+ * page laid out on one set of metrics and drawn with another. There is
+ * nothing to wait for anyway — `renderCatalogueHtml` inlines these as
+ * data URIs, so the page carries its own type.
+ */
+@font-face {
+  font-family: 'Rubik';
+  src: url(./fonts/rubik.woff2) format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Nunito Sans';
+  src: url(./fonts/nunitosans.woff2) format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url(./fonts/inter.woff2) format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+}
+
 /* ---------------------------------------------------------------- page */
 
 .catalog {
@@ -180,7 +217,16 @@
    * name push its last line out through the bottom. Marks are never
    * elastic, because half a price or half a chip reads as a bug.
    */
-  grid-template-rows: minmax(0, 1.7fr) auto minmax(0, 1fr) auto;
+  /*
+   * Artwork, words, tags — the price is no longer a row of its own.
+   *
+   * It hangs off the artwork's bottom-right corner, so the product and
+   * its number are one object. Measured before the change: 473px of
+   * artwork, then a separate 112px price row, then 100px of text. The
+   * product floated half a tile above its own price and the page read
+   * as a web card.
+   */
+  grid-template-rows: minmax(0, 1.7fr) minmax(0, auto) auto;
   gap: 0.6cqh;
   position: relative;
   cursor: default;
@@ -202,6 +248,7 @@
  * product. A definite cell plus `object-fit: contain` cannot crop.
  */
 .tile__media {
+  /* The positioning context for the price mark below. */
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -279,6 +326,16 @@
  * takes on a printed page — a group with a front, not a queue.
  */
 .tile__pack--stagger > img { margin-inline: -5%; transform: scale(0.95); }
+/*
+ * A lead tile is tall, and a row of three products in it is sized by
+ * the width of its track — three cans in a 370×900 box came out 300px
+ * tall with 600px of empty field above them. Overlapping hard widens
+ * each item's box and lets the row fill the height it has been given.
+ */
+.tile--hero .tile__pack--row > img,
+.tile--hero .tile__pack--stagger > img { margin-inline: -16%; }
+.tile--feature .tile__pack--row > img,
+.tile--feature .tile__pack--stagger > img { margin-inline: -12%; }
 .tile__pack--stagger > img:nth-child(odd) { transform: translateY(4%) scale(0.8); }
 
 /* Two rows. Anything from four items reads as a block, not a row. */
@@ -331,6 +388,54 @@
  */
 .tile__info > * { flex: 0 0 auto; max-width: 100%; }
 
+/*
+ * A word longer than its tile breaks rather than being sliced.
+ *
+ * `overflow: hidden` above is what keeps a long product name from
+ * pushing its last line out through the bottom of the tile, and it has
+ * to stay. But it clips horizontally too, and Danish retail names are
+ * frequently one long compound — "Cherrytomater", "kyllingebryst-
+ * filet", "storkøbsspegepølse". In a compact slot a sixth of the page
+ * wide there is no space to break at, so the word simply ran past the
+ * edge and was cut mid-glyph: "Cherrytom". The line-clamp's ellipsis
+ * never fired, because that is for too MANY lines, not for one line
+ * that is too wide.
+ *
+ * `anywhere` rather than `break-word` on purpose. Both break the word
+ * visually, but only `anywhere` also lets the box report a min-content
+ * width below the longest word — which is what a grid track sized by
+ * the template, not by its contents, needs in order not to be pushed
+ * wider by one product name. That is also what stopped the price mark
+ * on the narrowest Netto tile from being cut off by the page edge: the
+ * tile had been claiming the width of "Cherrytomater".
+ *
+ * `hyphens: auto` goes first so the break is a hyphenated one —
+ * "Cherry-tomater" rather than "Cherryto|mater" — and `anywhere`
+ * catches what a dictionary cannot break: SKUs, set-together brand
+ * names, anything in caps. Hyphenation follows the document's `lang`,
+ * which the print wrapper sets to `da`; a chain printing in another
+ * language needs that to say so, or it will be hyphenated by Danish
+ * rules. Where no dictionary is installed this simply does nothing and
+ * `anywhere` handles it.
+ */
+.tile__info > * { overflow-wrap: anywhere; hyphens: auto; }
+
+/*
+ * A tile with something moved on it stops clipping its own text block.
+ *
+ * `.tile__info` clips by default, and it has to: a long product name
+ * otherwise pushes its last line out through the bottom of the tile.
+ * But the first time someone drags the kilo price two millimetres to
+ * the right, that same clip eats it — which reads as the editor
+ * swallowing the edit rather than as a boundary being respected.
+ *
+ * Relaxed only for a tile that carries an offset, so an untouched page
+ * clips exactly as before, and only as far as the slot: `.slot` is
+ * still `overflow: hidden`, so nothing a person moves can land on the
+ * neighbouring offer.
+ */
+.tile--arranged .tile__info { overflow: visible; }
+
 .tile__brand {
   margin: 0;
   font-size: 1.5cqh;
@@ -364,6 +469,20 @@
 }
 
 .tile__meta { display: flex; flex-wrap: wrap; gap: 0 1.2cqw; }
+
+/*
+ * `hidden` has to actually hide.
+ *
+ * The browser's own `[hidden] { display: none }` lives in the user
+ * agent sheet, so ANY author rule that sets `display` beats it — and
+ * `.tile__meta` sets `display: flex` two lines up. The result was a
+ * unit price that printed on every compact tile in the book while the
+ * component said it was suppressed there, which is not a styling near
+ * miss: the tile was told to drop its least important line to fit and
+ * silently kept it. Stated for the whole tile rather than for this one
+ * box, because the next box to grow a `display` will hit it too.
+ */
+.tile [hidden] { display: none; }
 .tile__preprice { text-decoration: line-through; }
 
 .tile__description {
@@ -375,7 +494,7 @@
 
 /* A hero carries more words — brand, a longer name, a description — so
    it gets a larger share of the tile for them, not just bigger type. */
-.tile--hero { grid-template-rows: minmax(0, 1.8fr) auto minmax(0, 1.1fr) auto; }
+.tile--hero { grid-template-rows: minmax(0, 2fr) minmax(0, auto) auto; }
 .tile--hero .tile__name { font-size: 3cqh; }
 .tile--hero .tile__brand,
 .tile--hero .tile__quantity,
@@ -394,14 +513,13 @@
  */
 .tile--feature {
   grid-template-columns: 1fr 1.7fr;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   column-gap: 2cqw;
   align-items: center;
 }
-.tile--feature .tile__media { grid-area: 1 / 1 / 4 / 2; }
-.tile--feature .price       { grid-area: 1 / 2 / 2 / 3; }
-.tile--feature .tile__info  { grid-area: 2 / 2 / 3 / 3; align-self: start; }
-.tile--feature .tile__tags  { grid-area: 3 / 2 / 4 / 3; }
+.tile--feature .tile__media { grid-area: 1 / 1 / 3 / 2; }
+.tile--feature .tile__info  { grid-area: 1 / 2 / 2 / 3; align-self: center; }
+.tile--feature .tile__tags  { grid-area: 2 / 2 / 3 / 3; }
 .tile--feature .tile__name { font-size: 2.8cqh; }
 /*
  * The band's artwork is a photo PANEL, not a floating product: it fills
@@ -428,50 +546,119 @@
 /* --------------------------------------------------------------- price */
 
 /*
- * The price mark has exactly one knob: the font size of `.price`.
+ * The price mark: a sticker on the product, not a caption under it.
  *
- * Everything else — the øre, the savings flash, the disc, the tag —
- * is expressed in `em` against it, so changing a role's price size
- * moves the whole mark as one object. An earlier version sized the
- * pieces independently in page units, and a disc ended up narrower
- * than the digits it held and taller than the tile it sat in.
+ * Four things make it read as print rather than as a web card, and all
+ * four are deliberate:
+ *
+ *   1. It is ENORMOUS. A leaflet's price is the loudest thing on the
+ *      page by a wide margin, set at 900 weight with the line box
+ *      closed right down.
+ *   2. It OVERLAPS. Absolutely positioned against the artwork box and
+ *      hanging past its bottom-right corner, so it sits on the product.
+ *   3. The previous price is small, struck through and hard against the
+ *      offer price — the two only work read together.
+ *   4. It is slightly off-square. A few degrees of rotation is what
+ *      separates "applied by hand" from "laid out by a machine".
+ *
+ * One knob still drives the whole mark: the font size of `.price`.
+ * Everything inside is in `em` against it, so a role's mark moves as
+ * one object.
  */
 .price {
-  font-size: 3cqh;
+  position: absolute;
+  right: 1%;
+  /*
+   * Sits ON the product's lower right, overhanging the artwork box by
+   * a little rather than dropping below it. Hung further down it
+   * cleared the product and landed squarely on the product NAME, which
+   * trades one collision for a worse one.
+   */
+  bottom: 6%;
+  z-index: 5;
+
+  font-size: 5.4cqh;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.3em;
+  gap: 0.04em;
   font-family: var(--heading-font);
   font-weight: 900;
-  line-height: 0.95;
+  /* Closed right down: leaflet numerals sit on top of each other. */
+  line-height: 1;
+  letter-spacing: -0.04em;
   color: var(--price-ink);
   width: max-content;
-  max-width: 100%;
+  max-width: 62%;
+  /*
+   * Level. There is no sticker angle.
+   *
+   * This rule used to tilt every price mark on every chain by -4°, and
+   * the tag and the compact tile each tilted by their own amount on top
+   * of it — so no two prices in a book stood at the same angle, and
+   * none of them stood straight. It was invented, not observed.
+   *
+   * Both printed books say so plainly at zoom: Netto's black
+   * "+PRIS / 10.-" badge in the uge-38 catalogue is square to the page,
+   * and SuperBrugsen's red "1 dåse / 10,-" disc in week 37 is square to
+   * the page. A leaflet tilts its artwork — coupon sheets, spinning
+   * wheels, fanned packets. It does not tilt the number it is selling.
+   *
+   * If a chain is ever found that does, the tilt belongs in that
+   * chain's own block in the brand layer below, never here.
+   */
 }
 
-.tile--hero .price { font-size: 4.4cqh; }
-.tile--feature .price { font-size: 5cqh; }
-.tile--compact .price { font-size: 2.6cqh; }
+.tile--hero .price { font-size: 8.4cqh; }
+.tile--feature .price { font-size: 6.6cqh; }
+.tile--compact .price { font-size: 3.8cqh; }
 
-/* One unbreakable unit: inside a disc the øre must not wrap below the
-   kroner, or the price reads as two numbers. */
+/* One unbreakable unit: inside a disc the mark is narrow, and without
+   this the øre wrapped below the kroner and read as two numbers. */
 .price__figure {
   display: flex;
   align-items: baseline;
-  gap: 0.06em;
+  gap: 0.02em;
   white-space: nowrap;
+  line-height: 0.82;
 }
 
 .price__major { font-size: 1em; }
-.price__minor { font-size: 0.55em; }
-.price__savings { font-size: 0.34em; font-weight: 800; }
+.price__minor { font-size: 0.5em; font-weight: 900; }
 
-/* The rotated black tag Netto and the discounters print. */
+/*
+ * "før 25,-" — small, struck through, immediately above the number it
+ * is being compared with. Far apart the two are just two prices.
+ */
+.price__before {
+  font-size: 0.26em;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: line-through;
+  text-decoration-thickness: 0.08em;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.price__savings {
+  font-size: 0.28em;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+/*
+ * The black tag Netto and the discounters print — a hard-edged
+ * rectangle with the number knocked out in the chain's accent, sitting
+ * square to the page. See the note on `.price` about the angle that
+ * used to be here.
+ */
 .price--tag {
   background: var(--ink);
-  padding: 0.16em 0.3em;
-  border-radius: 0.22em;
-  transform: rotate(-2deg);
+  padding: 0.14em 0.26em 0.18em;
+  border-radius: 0.14em;
 }
 
 /*
@@ -479,22 +666,32 @@
  *
  * A minimum square rather than an aspect ratio: a two-digit price gets
  * a circle, and a long one widens into the rounded ellipse the printed
- * catalogue also uses instead of shrinking the type to fit.
+ * catalogue also uses instead of shrinking the type to fit. The white
+ * keyline is what lifts it off a busy photograph.
  */
 .price--disc {
   background: var(--brand);
+  color: #fff;
   border-radius: 50%;
-  min-width: 2.2em;
-  min-height: 2.2em;
-  padding: 0.3em 0.45em;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 0.1em;
+  min-width: 2.1em;
+  min-height: 2.1em;
+  padding: 0.24em 0.4em;
+  justify-content: center;
   text-align: center;
+  box-shadow: 0 0 0 0.06em #fff, 0 0.04em 0.2em rgb(0 0 0 / 0.22);
 }
 
-.price--plain { color: var(--price-ink); }
+/*
+ * No mark at all — the numerals alone, in the chain's price colour.
+ * Still needs to survive landing on a photograph, so it carries a
+ * paper-coloured halo rather than a box.
+ */
+.price--plain {
+  color: var(--price-ink);
+  text-shadow:
+    0 0 0.14em var(--ground), 0 0 0.14em var(--ground),
+    0 0 0.28em var(--ground), 0 0 0.28em var(--ground);
+}
 
 /* ---------------------------------------------------------------- tags */
 

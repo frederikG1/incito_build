@@ -65,6 +65,7 @@ export async function renderCataloguePdf(
 
   try {
     await page.goto(pathToFileURL(scratch).href, { waitUntil: 'load' });
+    await settleType(page);
     await settleImages(page, options.imageTimeoutMs ?? 20_000);
 
     return await page.pdf({
@@ -109,6 +110,7 @@ export async function renderCataloguePngs(
 
   try {
     await page.goto(pathToFileURL(scratch).href, { waitUntil: 'load' });
+    await settleType(page);
     await settleImages(page, options.imageTimeoutMs ?? 20_000);
 
     const shots: Buffer[] = [];
@@ -131,6 +133,22 @@ export async function renderCataloguePngs(
  * scrolled to, and a print render never scrolls. So loading is forced
  * eagerly first, then awaited.
  */
+/**
+ * Do not print until the chain's typeface is live.
+ *
+ * The faces are data URIs in the document, so there is nothing to fetch
+ * — but a face is not usable the instant the document loads, and a page
+ * printed in that window is laid out on the fallback's metrics and
+ * drawn with the real face's. Every line ends up a hair off the width
+ * it was measured at, which on a price mark is the difference between
+ * a centred numeral and one that leans. One await removes the race.
+ */
+async function settleType(page: import('playwright').Page): Promise<void> {
+  await page.evaluate(() => document.fonts.ready.then(() => undefined))
+    // An old Chromium without the API prints the way it always did.
+    .catch(() => undefined);
+}
+
 async function settleImages(page: import('playwright').Page, timeoutMs: number): Promise<void> {
   await page.evaluate(() => {
     for (const img of Array.from(document.images)) img.loading = 'eager';

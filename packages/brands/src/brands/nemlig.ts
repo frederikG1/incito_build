@@ -52,7 +52,7 @@ const TEMPLATES = [
   template('nemlig/split-4', 'Fremhævet vare og tre', [
     'hero hero hero a a a',
     'hero hero hero b b c',
-  ], { hero: ['hero', 1.12], a: 'standard', b: 'standard', c: 'standard' }),
+  ], { hero: ['hero', 1.08], a: 'standard', b: 'standard', c: 'standard' }),
 
   template('nemlig/band-6', 'Bånd øverst og fem under', [
     'band band band band band band',
@@ -66,7 +66,7 @@ const TEMPLATES = [
   template('nemlig/tower-5', 'Høj vare til venstre', [
     'lead lead a a b b',
     'lead lead c c d d',
-  ], { lead: ['hero', 1.14], a: 'standard', b: 'standard', c: 'standard', d: 'standard' }),
+  ], { lead: ['hero', 1.1], a: 'standard', b: 'standard', c: 'standard', d: 'standard' }),
 ];
 
 /**
@@ -94,6 +94,16 @@ export const NEMLIG: BrandDefinition = {
       ground: '#fbf3e4',
       ink: '#1a1a1a',
       priceInk: '#e2001a',
+      /*
+       * Inter, and here it is not a placeholder.
+       *
+       * The other two chains named Inter because nobody had chosen
+       * anything — and nothing loaded it, so all three printed in the
+       * system fallback. nemlig is the one brand in this repo that is
+       * a web shop rather than a printed book, and a neutral UI
+       * grotesk is its actual register. Now it is loaded rather than
+       * merely named.
+       */
       headingFont: "'Inter', system-ui, sans-serif",
       bodyFont: "'Inter', system-ui, sans-serif",
     },

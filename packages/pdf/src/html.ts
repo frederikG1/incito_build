@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
@@ -10,7 +11,36 @@ const require = createRequire(import.meta.url);
 
 /** The catalogue stylesheet, inlined so the page needs no network. */
 function stylesheet(): string {
-  return readFileSync(require.resolve('@incitio/renderer/styles.css'), 'utf8');
+  const file = require.resolve('@incitio/renderer/styles.css');
+  return inlineFonts(readFileSync(file, 'utf8'), dirname(file));
+}
+
+/**
+ * Carry the typefaces into the document as data URIs.
+ *
+ * The stylesheet names them relatively — `url(./fonts/rubik.woff2)` —
+ * which is what the editor's bundler wants. The print page is written
+ * somewhere else entirely (beside the assets, or a temp directory), so
+ * that same relative path would resolve to nothing there and every
+ * chain would quietly print in the fallback again. Which is exactly the
+ * state this pipeline was in before the faces existed: three chains
+ * naming a font nobody had installed.
+ *
+ * Base64 rather than an absolute `file://` URL, so a rendered HTML
+ * proof can be mailed, committed or opened on another machine and still
+ * be the page that was approved. Three latin-subset variable faces cost
+ * about 150 KB before encoding.
+ */
+function inlineFonts(css: string, base: string): string {
+  return css.replace(/url\(\.\/fonts\/([\w.-]+\.woff2)\)/g, (whole, name: string) => {
+    try {
+      const data = readFileSync(join(base, 'fonts', name)).toString('base64');
+      return `url(data:font/woff2;base64,${data})`;
+    } catch {
+      // A missing face is a worse page, not a failed print run.
+      return whole;
+    }
+  });
 }
 
 export interface RenderHtmlOptions {

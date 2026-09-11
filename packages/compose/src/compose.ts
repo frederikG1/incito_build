@@ -3,10 +3,9 @@ import type {
   CatalogDocument,
   CatalogPage,
   Offer,
-  PageTemplate,
   Placement,
-  SlotRole,
 } from '@incitio/schema';
+import { slotAssignmentOrder } from '@incitio/schema';
 import { resolveTemplate } from '@incitio/brands';
 import {
   chooseTemplate,
@@ -31,38 +30,6 @@ export interface ComposeResult {
   overflow: string[];
   /** Pages whose planned template was replaced, and why. */
   substitutions: { pageId: string; asked: string; used: string; reason: string }[];
-}
-
-/**
- * How eagerly a slot wants the strongest offer. Assignment walks the
- * slots in this order and hands out offers in the order the plan gave
- * them, so the page's lead offer lands in the page's lead slot without
- * any scoring, search or geometry.
- */
-const ROLE_ORDER: Record<SlotRole, number> = {
-  hero: 0,
-  feature: 1,
-  standard: 2,
-  compact: 3,
-};
-
-/**
- * Slots in assignment order.
- *
- * Sorted by role, then by where the slot appears in the template's own
- * declaration — which is reading order, since a template is authored as
- * its grid drawing. That keeps a page's second-strongest offer in the
- * top-left standard slot rather than wherever the array happened to put
- * it.
- */
-function assignmentOrder(template: PageTemplate) {
-  return template.slots
-    .map((slot, index) => ({ slot, index }))
-    .sort((a, b) => {
-      const byRole = ROLE_ORDER[a.slot.role] - ROLE_ORDER[b.slot.role];
-      return byRole !== 0 ? byRole : a.index - b.index;
-    })
-    .map((entry) => entry.slot);
 }
 
 /**
@@ -131,7 +98,7 @@ export function composeCatalog(
     recent.push(template.id);
     if (recent.length > RECENT_TEMPLATE_MEMORY) recent.shift();
 
-    const slots = assignmentOrder(template);
+    const slots = slotAssignmentOrder(template);
     const placements: Placement[] = [];
 
     pageOffers.forEach((offer, position) => {
@@ -144,9 +111,11 @@ export function composeCatalog(
         overrides: {
           pinned: false,
           displayName: null,
+          description: null,
           imageScale: 1,
           imageOffsetX: 0,
           imageOffsetY: 0,
+          parts: {},
         },
       });
     });

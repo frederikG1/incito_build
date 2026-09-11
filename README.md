@@ -71,9 +71,46 @@ npm run dev:studio    # http://localhost:5173
 
 Vælg kæde, upload ugens feed, generér, ret, hent PDF.
 
-Du kan rette i hånden bagefter: træk en vare over på en anden for at
-bytte dem — også på tværs af sider — ret overskriften på siden, skub
-billedet i en flise, eller omdøb en vare. Cmd+Z fortryder.
+Retningen bagefter foregår på siden, ikke i en formular. Klik en vare og
+ret den som i et billedprogram:
+
+| | |
+|---|---|
+| Klik | vælg varen |
+| Træk | byt to varer — også på tværs af sider |
+| Klik igen | tag fat i det element du peger på |
+| Træk på et valgt element | flyt det |
+| ⌘/ctrl + scroll, eller knib | ændr størrelsen på det |
+| Dobbeltklik på en tekst | ret den dér hvor den står |
+| Piletaster | flyt elementet — med shift længere |
+| `+` `−` `0` | større, mindre, nulstil |
+| ⌫ | tag elementet af siden |
+| Esc / ⌘Z | slip elementet, så flisen / fortryd |
+
+Hver synlig kasse i flisen er sit eget element — billede, pris,
+certifikater, mærke, overskrift, mængde, underlinje, enhedspris,
+mærkater. Billedet er ikke et særtilfælde længere, bare den kasse der
+er valgt når ingen anden er. Panelet til højre lister dem alle, så en
+kasse du har taget af siden kan hentes tilbage — den kan jo ikke
+klikkes på.
+
+Sidens form styres i bjælken over den:
+
+| | |
+|---|---|
+| Varer | hvor mange tilbud siden bærer — resten går i reserve |
+| Layout | hvilket af kædens layouts med det antal pladser |
+| ⟳ | næste layout med lige så mange varer |
+| Sæt i fokus | flyt den valgte vare op i sidens hovedplads |
+
+Reserven er hvert tilbud i dokumentet som ingen side viser, og antallet
+står i topbjælken. At skære en side fra otte til tre ødelægger ingenting
+— sætter du den tilbage, kommer de fem igen.
+
+Panelet til højre er den præcise halvdel af det samme: nøjagtige tal,
+alle felter ét sted. Begge skriver de samme `overrides` på placeringen,
+så en rettelse overlever en ny generering — og en hel træk-bevægelse er
+ét tryk på ⌘Z, ikke halvtreds.
 
 **Husk at lukke begge servere ned igen** når du er færdig.
 

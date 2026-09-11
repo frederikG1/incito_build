@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { validateTemplate } from '@incitio/schema';
 import {
@@ -92,6 +93,34 @@ describe('page-to-page variety', () => {
   it('gives every ground a distinct value', () => {
     const tints = getBrand('superbrugsen').brand.groundTints;
     expect(new Set(tints).size).toBe(tints.length);
+  });
+
+  it('gives no two chains the same typeface', () => {
+    /*
+     * All three named Inter once, and nothing loaded it — so every
+     * chain printed in the system fallback and the books were
+     * typographically identical. That is the single loudest tell that
+     * a page was generated rather than designed, and it survived
+     * because no test could see it.
+     */
+    const faces = brandIds().map((id) => getBrand(id).brand.tokens.headingFont);
+    expect(new Set(faces).size).toBe(faces.length);
+  });
+
+  it('names a face the stylesheet actually ships', () => {
+    // A token naming a font nobody bundled is not a typeface, it is a
+    // fallback with extra steps.
+    const css = readFileSync(
+      new URL('../../../renderer/src/styles.css', import.meta.url), 'utf8',
+    );
+    const served = [...css.matchAll(/font-family:\s*'([^']+)'/g)].map((m) => m[1]);
+    for (const id of brandIds()) {
+      const { tokens } = getBrand(id).brand;
+      for (const token of [tokens.headingFont, tokens.bodyFont]) {
+        const named = token.match(/'([^']+)'/)?.[1];
+        expect(served, `${id} names ${named}`).toContain(named);
+      }
+    }
   });
 });
 
