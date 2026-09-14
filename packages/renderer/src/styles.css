@@ -870,6 +870,79 @@
 .price__minor { font-size: 0.5em; font-weight: 900; }
 
 /*
+ * "20,-" — the kroner mark, as the chains actually print it.
+ *
+ * NOT the two characters typed side by side, which is what this was.
+ * Measured off SuperBrugsen's own page — p05, the red disc reading
+ * "20,-", scanned pixel by pixel against a cap height of 69px:
+ *
+ *   the dash is a SOLID BAR SITTING ABOVE THE COMMA, 0.29 cap wide and
+ *   0.16 cap tall, its top edge 0.42 cap above the baseline;
+ *   6px of clear air below it — 0.09 cap — then the comma, which runs
+ *   from 0.17 cap above the baseline to 0.16 cap BELOW it;
+ *   the whole mark starts 0.09 cap right of the last numeral.
+ *
+ * Typed as ",-" the two land side by side on the baseline, the comma at
+ * half the printed size and the hyphen floating to its right. It reads
+ * as a comma followed by a hyphen — which is the single clearest tell
+ * that a page was typed rather than laid out.
+ *
+ * Spent in `cap` rather than `em` because that is the unit the
+ * measurement is in, and because the chains do not share a typeface:
+ * Rubik's cap height and Nunito Sans's differ, and an `em` value tuned
+ * on one prints a hair wrong on the other. `cap` resolves against this
+ * element's own font, so the mark stays the same fraction of the
+ * numerals beside it whatever the chain is set in.
+ */
+.price__kr {
+  position: relative;
+  /*
+   * Deliberately the numerals' own size, even though nothing here is
+   * set at it: `cap` resolves against the element's own font, so
+   * keeping this at 1em makes every measurement below read in the same
+   * unit the reference was scanned in. The comma is shrunk on its own
+   * span instead — two sizes on one element is what made the first
+   * attempt at this un-tunable, because changing the comma moved the
+   * bar.
+   */
+  font-size: 1em;
+  font-weight: 900;
+  /* The air the printed mark leaves after the last numeral, less
+     the comma's own left side bearing. */
+  margin-left: 0.07cap;
+}
+
+/*
+ * The comma. 0.7 of the numerals, which is where the scan puts it —
+ * not the 0.5 that `.price__minor` uses for real øre, and not the full
+ * size either.
+ */
+.price__kr > span { font-size: 0.7em; }
+
+/*
+ * The bar. A drawn rectangle, not a hyphen: the printed one is 0.29 cap
+ * wide where these faces' hyphens are nearer 0.45, and it carries the
+ * numerals' stroke weight rather than the punctuation's.
+ *
+ * `bottom` is measured from this element's own bottom edge. That edge
+ * is NOT the baseline: `.price__kr` is a flex item of `.price__figure`,
+ * so it is blockified and its box is a line box — which `.price__figure`
+ * sets to `line-height: 0.82`. The constant therefore folds together the
+ * printed 0.26 cap above the baseline and that line box's own overhang,
+ * and it is tuned in Chromium rather than derived. Change the figure's
+ * line-height and this moves with it.
+ */
+.price__kr > i {
+  position: absolute;
+  left: 0;
+  bottom: 0.41cap;
+  width: 0.29cap;
+  height: 0.16cap;
+  background: currentColor;
+  border-radius: 0.03cap;
+}
+
+/*
  * "før 25,-" — small, struck through, immediately above the number it
  * is being compared with. Far apart the two are just two prices.
  */

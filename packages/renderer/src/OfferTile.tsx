@@ -401,7 +401,11 @@ export function OfferTile({
                 a second line and the price read as two numbers. */}
             <span className="price__figure">
               <span className="price__major">{price.major}</span>
-              <span className="price__minor">{price.minor === '00' ? ',-' : price.minor}</span>
+              {/* A whole-krone price ends in the kroner mark, which is a
+                  lockup and not two characters — see `.price__kr`. */}
+              {price.minor === '00'
+                ? <span className="price__kr"><i aria-hidden="true" /><span>,</span></span>
+                : <span className="price__minor">{price.minor}</span>}
             </span>
             {offer.savings !== null && offer.savings > 0 && role !== 'compact' && (
               <span className="price__savings">
