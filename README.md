@@ -114,6 +114,57 @@ så en rettelse overlever en ny generering — og en hel træk-bevægelse er
 
 **Husk at lukke begge servere ned igen** når du er færdig.
 
+## Genskab en trykt side
+
+Tryk **Genskab side** i topbjælken. Panelet har tre trin, og de er de tre
+input pipelinen har:
+
+| | |
+|---|---|
+| 1. Referencen | et foto, et screenshot eller en PDF af den side du vil efterligne |
+| 2. Varerne | ugens feed — samme upload som når du bygger en hel avis |
+| 3. Retning | én valgfri sætning, fx “kød skal føre siden” |
+
+Bagefter står referencen på lærredet ved siden af den nye side, sammen
+med hvordan den blev læst: gitteret, den målte bundfarve, hvilken læser
+der kørte, hvad kaldet kostede — og casting, plads for plads, med
+modellens egen begrundelse for hver vare.
+
+Hvad der sker under trinnene:
+
+1. **Referencen bliver ét billede.** En PDF rasteriseres med pdf.js inde
+   i den Chromium repoet i forvejen starter for at printe. Sidens
+   bundfarve *måles* i marginerne — den spørges der ikke om, for den er
+   et faktum om billedet.
+2. **Feedet bliver `Offer[]`** gennem kædens egen læser i
+   `@incitio/ingest`. Samme vej ind som `npm run build:catalogue`; en fil
+   der ikke passer til kæden afvises med hvilke felter der mangler.
+3. **Claude caster.** Modellen får siden og tilbuddene i ét kald og
+   svarer med et gitter, roller og hvilket tilbud der hører til hvilken
+   plads. Svaret er *strukturelt* JSON — schemaet er sendt med som
+   output-format, så et svar i den forkerte form er et fejlet kald, ikke
+   noget parseren skal rydde op i. Modellen returnerer aldrig
+   koordinater, CSS eller farver: kædens eget stylesheet tegner siden.
+
+Ud kommer et helt almindeligt `CatalogDocument`. Editoren, gem-knappen
+og PDF-knappen ved ikke at siden er kommet denne vej.
+
+Layoutet hører ikke til kædens ordforråd — ingen har tegnet det, og det
+beskriver én trykt side — så det rejser med i `document.templates` i
+stedet for at lande i kædens layout-liste for altid. Det samme gælder
+den målte bundfarve, som sidder på siden i `page.ground`.
+
+Samme pipeline fra terminalen:
+
+```bash
+npm run match -- --ref .data/reference/superbrugsen/p08.jpg
+npm run match -- --ref ~/avis.pdf --page 4 --brand superbrugsen
+npm run match -- --ref opslag.png --feed ~/uge38.json --note "mørkere bund"
+```
+
+Den skriver PNG, HTML og JSON til `.data/out/` sammen med referencen.
+Ét kald koster typisk $0.04–0.09.
+
 ## En kæde har flere feeds
 
 SuperBrugsen leverer to formater, og begge er rigtige:
@@ -229,6 +280,7 @@ Gør det samme for en ny kæde.
 | `@incitio/brands` | Kæderegistret: skabeloner, tokens, feed-mapping, isolation |
 | `@incitio/compose` | Udvælgelse, deterministisk plan, plan → dokument |
 | `@incitio/curator` | Claude-kurateringen, med kategorisortering som fallback |
+| `@incitio/match` | Genskab en trykt side: rasterisering, målt bund, vision-casting |
 | `@incitio/renderer` | React-komponenter + stylesheet |
 | `@incitio/pdf` | HTML-dokument, PDF og PNG-korrektur via Playwright |
 | `@incitio/pipeline` | De fire trin bundet sammen — CLI og API bruger samme |
@@ -243,6 +295,8 @@ npm run typecheck
 npm run build:catalogue   # feed → JSON + HTML + PDF
                           #   --feed <fil>  --offers N  --pages N  --source <id>
 npm run render            # gen-render et bygget katalog
+npm run match             # genskab én trykt side med ugens varer
+                          #   --ref <billede|pdf>  --page N  --feed <fil>  --note "…"
 npm run refs              # hent designreferencer
 npm run check             # rendér i Chromium og find afskæring
 ```

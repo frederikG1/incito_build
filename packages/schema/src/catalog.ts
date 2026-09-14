@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Offer } from './offer.js';
+import { PageTemplate } from './template.js';
 
 /**
  * The boxes a tile is made of.
@@ -197,6 +198,18 @@ export const CatalogPage = z.object({
   placements: z.array(Placement),
   /** Why the curator grouped these offers. Shown in the editor, not printed. */
   rationale: z.string().default(''),
+  /**
+   * This page's own field, overriding the chain's rotation.
+   *
+   * Set only when the page was rebuilt from a reference whose ground was
+   * MEASURED — see `sampleGround` in `@incitio/match`. It is not a theme
+   * and it is not editorial licence: `pageGround` still decides the
+   * colour of every ordinary page, and a chain's identity is still the
+   * one thing a document may not carry a copy of. What it carries here
+   * is a fact about a printed page somebody handed us, and without it a
+   * page rebuilt from a teal spread comes back sand.
+   */
+  ground: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
 });
 export type CatalogPage = z.infer<typeof CatalogPage>;
 
@@ -223,6 +236,21 @@ export const CatalogDocument = z.object({
    * placement's `offerId` indexes into this list.
    */
   offers: z.array(Offer).default([]),
+  /**
+   * Layouts this document brought with it, on top of the chain's own.
+   *
+   * A template read off one reference page — see `npm run match` — is
+   * not part of the chain's vocabulary: nobody drew it, it describes one
+   * printed page, and adding it to the brand would offer it in the
+   * layout picker of every unrelated page forever. But a document whose
+   * layout lived only in the memory of the process that generated it
+   * could not be saved, reopened or printed, so it travels here.
+   *
+   * Resolved BEFORE the brand's own set, and only ever within this
+   * document. Isolation is unaffected: these come out of the same
+   * request that built the page, never out of another tenant's brand.
+   */
+  templates: z.array(PageTemplate).default([]),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

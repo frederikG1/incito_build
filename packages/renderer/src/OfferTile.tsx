@@ -125,6 +125,28 @@ export function packStyle(offerId: string, count: number, role: SlotRole): PackS
 }
 
 /**
+ * Where a box sits once someone has moved it.
+ *
+ * Lifted, so what was just dragged lands on top of what it was dragged
+ * over. It has to clear every layer the stylesheet gives a tile — the
+ * words are at 20 and the price mark at 30 — because this is an INLINE
+ * style and it wins: at 6, which is what it was while the tile's own
+ * layers were still 2–5, dragging the price mark quietly dropped it
+ * from 30 to 6 and it went behind the words it was being moved onto.
+ * A box that vanishes when you move it reads as a broken editor.
+ *
+ * No `position` alongside it, deliberately: the price mark and the
+ * certification column are absolutely positioned against the artwork,
+ * and `position: relative` here would unpin them. Flex and grid items
+ * honour `z-index` without it, and every box in this tile is one or the
+ * other.
+ *
+ * Checked against the stylesheet in `overlay.test.ts`, together with
+ * the editor overlay that has to stay above this in turn.
+ */
+const LIFTED = 35;
+
+/**
  * One offer, drawn at whatever size its slot gives it.
  *
  * There are no "small" and "large" variants of this component — there is
@@ -171,15 +193,7 @@ export function OfferTile({
       style: {
         transform: `translate(${part.offsetX}cqw, ${part.offsetY}cqh) scale(${part.scale})`,
         transformOrigin: PART_ORIGIN[id] ?? 'left top',
-        /*
-         * Lifted, so what was just dragged lands on top of what it was
-         * dragged over. No `position` with it, deliberately: the price
-         * mark and the certification column are absolutely positioned
-         * against the artwork, and `position: relative` here would
-         * unpin them. Flex and grid items honour `z-index` without it,
-         * and every box in this tile is one or the other.
-         */
-        zIndex: 6,
+        zIndex: LIFTED,
       } satisfies CSSProperties,
     };
   }

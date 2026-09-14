@@ -122,7 +122,22 @@
   /* The grid is the page; a masthead is a strip above it. Left to grow,
      a three-word section name pushed the offers off the sheet. */
   max-height: 16cqh;
-  overflow: hidden;
+  /*
+   * `clip` with a margin, not `hidden`.
+   *
+   * The guard above has to stay — but a heading is type, and type hangs
+   * below its own line box: the script half is set at 1.12em on a line
+   * box of 1em (see `.page__title`), so the tail of every g, j and y
+   * reached 12px past the masthead's edge and `hidden` cut it off
+   * square. Measured on "Snacks og slik" at A4.
+   *
+   * Clipping 2cqh further out lets the descenders finish. They land in
+   * the grid's own top padding — 2.5cqh — so nothing is drawn over an
+   * offer, and the masthead does not grow by a pixel: the fix costs the
+   * page no height, which raising the line-height would have.
+   */
+  overflow: clip;
+  overflow-clip-margin: 2cqh;
 }
 
 .page__logo { height: 6cqh; width: auto; }

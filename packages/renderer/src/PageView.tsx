@@ -50,6 +50,14 @@ export function PageView({
 }: PageViewProps) {
   const style: CSSProperties = {
     ...brandCssVars(brand, pageIndex),
+    /*
+     * A page rebuilt from a reference brings its own field.
+     *
+     * Last, so it beats the chain's rotation — and only when it is set,
+     * which is only ever for a page whose ground was measured off a
+     * printed page. See `CatalogPage.ground`.
+     */
+    ...(page.ground ? { '--ground': page.ground } : {}),
     aspectRatio: String(brand.pageAspect),
   } as CSSProperties;
 

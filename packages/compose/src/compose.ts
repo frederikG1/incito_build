@@ -127,6 +127,10 @@ export function composeCatalog(
       subtitle: planned.subtitle,
       placements,
       rationale: planned.rationale,
+      // The chain's rotation decides the field here. A measured ground
+      // only exists for a page rebuilt from a reference — see
+      // `CatalogPage.ground`.
+      ground: null,
     });
   });
 
@@ -141,6 +145,9 @@ export function composeCatalog(
       name: options.name,
       brandId: brand.id,
       pages,
+      // The composer lays out on the chain's OWN layouts, so a composed
+      // document never brings one of its own.
+      templates: [],
       // Only what actually reached a page: a document carrying the whole
       // feed would grow without bound and would let a deleted offer come
       // back on the next edit.

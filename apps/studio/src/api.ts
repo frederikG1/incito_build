@@ -153,3 +153,68 @@ export async function fetchFeed(path: string): Promise<string> {
   if (!response.ok) throw new Error(`kunne ikke hente feedet (${response.status})`);
   return response.text();
 }
+
+/* --------------------------------------------------- genskab en side */
+
+export interface ReproduceRequest {
+  /** The reference page, base64 — an image, or a PDF to take a page of. */
+  file: string;
+  /** Which page of a PDF. Ignored for an image. */
+  pageNumber?: number;
+  /** This week's feed, as the chain publishes it. */
+  feed: string;
+  note?: string;
+  referenceName?: string;
+}
+
+export interface ReproduceReply {
+  document: CatalogDocument;
+  /**
+   * The chain carrying the one layout this page needs.
+   *
+   * A page rebuilt from a reference sits on a grid nobody drew for the
+   * chain, so it is not in the brand the profile endpoint returned. The
+   * editor renders with this one instead; the layout also travels inside
+   * `document.templates`, which is what makes it survive a save and a
+   * print.
+   */
+  brand: Brand;
+  template: { id: string; name: string; areas: string[] };
+  /** The field, measured in the reference's margins. Not guessed. */
+  ground: string;
+  /** What went where, and why. Shown beside the rebuilt page. */
+  casting: { slotId: string; offerId: string; role: string; why: string }[];
+  source: { id: string; name: string; reason: string };
+  /** What the model was shown, as a data URL, for comparing side by side. */
+  reference: string;
+  offersInFeed: number;
+  poolSize: number;
+  rejected: number;
+  usage: { inputTokens: number; outputTokens: number };
+  elapsedMs: number;
+}
+
+/**
+ * Rebuild a published page with this week's products.
+ *
+ * Everything runs server-side: the key stays there, and rasterising a
+ * page of a PDF needs a Chromium the browser cannot launch. This request
+ * carries a picture and a feed, and nothing else.
+ */
+export async function reproducePage(
+  brandId: string,
+  request: ReproduceRequest,
+): Promise<ReproduceReply> {
+  const response = await fetch(`${BASE}/brand/reproduce`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) await fail(response);
+  const body = (await response.json()) as ReproduceReply;
+  return {
+    ...body,
+    document: CatalogDocument.parse(body.document),
+    brand: Brand.parse(body.brand),
+  };
+}

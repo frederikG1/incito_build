@@ -13,7 +13,7 @@
     "dev:api": "npm run dev -w @incitio/server",
     "build": "npm run build -w @incitio/studio",
     "test": "vitest run",
-    "typecheck": "tsc -b packages/schema packages/ingest packages/brands packages/compose packages/curator packages/pipeline packages/pdf packages/server && tsc --noEmit -p apps/studio",
+    "typecheck": "tsc -b packages/schema packages/ingest packages/brands packages/compose packages/curator packages/match packages/pipeline packages/pdf packages/server && tsc --noEmit -p apps/studio",
     "sample-data": "node scripts/make-sample-data.mjs",
     "refs": "node ./node_modules/.bin/vite-node scripts/fetch-references.ts",
     "derive:templates": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/derive-templates.ts",

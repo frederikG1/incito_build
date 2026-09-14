@@ -39,6 +39,22 @@ export interface StudioState {
   error: string | null;
   note: string | null;
 
+  /*
+   * Rebuilding a published page, which is a different job from building
+   * a catalogue and is kept visibly separate in the UI.
+   *
+   * `reference` is what the user picked, held as base64 because that is
+   * what the endpoint takes and the file itself cannot survive a state
+   * update. `reproduction` is what came back — the page is in
+   * `document` like any other, and this is everything ABOUT it: what was
+   * shown to the model, what it put where, and what it cost.
+   */
+  reproduceOpen: boolean;
+  reference: { name: string; base64: string; isPdf: boolean } | null;
+  referencePage: number;
+  reproduceNote: string;
+  reproduction: api.ReproduceReply | null;
+
   selectedOfferId: string | null;
   /**
    * Which single box of the selected tile is in hand.
@@ -62,6 +78,14 @@ export interface StudioState {
   build: (options?: { skipCuration?: boolean; fresh?: boolean }) => Promise<void>;
   save: () => Promise<void>;
   downloadPdf: () => Promise<void>;
+
+  setReproduceOpen: (open: boolean) => void;
+  /** The page to rebuild: an image, or a PDF to take one page of. */
+  setReference: (file: File) => Promise<void>;
+  setReferencePage: (page: number) => void;
+  setReproduceNote: (note: string) => void;
+  /** Send the reference and the feed, and put the rebuilt page on the canvas. */
+  reproduce: () => Promise<void>;
 
   select: (offerId: string | null) => void;
   selectPart: (part: TilePart | null) => void;
@@ -112,6 +136,16 @@ export interface StudioState {
   movePage: (pageId: string, delta: number) => void;
   setPageTitle: (pageId: string, title: string) => void;
   /**
+   * This page's own ground colour, or `null` to hand it back to the
+   * chain's rotation.
+   *
+   * A page-level edit rather than a brand-level one on purpose: the
+   * chain's palette is its identity and is not the editor's to rewrite,
+   * but the field of ONE page rebuilt from a printed reference is a
+   * property of that page. See `CatalogPage.ground`.
+   */
+  setPageGround: (pageId: string, ground: string | null) => void;
+  /**
    * Lay this page out differently.
    *
    * The offers stay and keep their corrections; only the shape they
@@ -139,6 +173,21 @@ export interface StudioState {
 }
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * Bytes as base64, in chunks.
+ *
+ * `btoa(String.fromCharCode(...bytes))` is the one-liner and it throws
+ * on anything bigger than the argument limit — which a 4 MB page scan
+ * comfortably is. 32k at a time is well under it and costs nothing.
+ */
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return window.btoa(binary);
+}
 
 /** A placement nobody has corrected yet. */
 const FRESH: PlacementOverrides = {
@@ -252,6 +301,11 @@ export const useStudio = create<StudioState>((set, get) => {
     busy: null,
     error: null,
     note: null,
+    reproduceOpen: false,
+    reference: null,
+    referencePage: 1,
+    reproduceNote: '',
+    reproduction: null,
     selectedOfferId: null,
     selectedPart: null,
     maxPages: 6,
@@ -292,6 +346,11 @@ export const useStudio = create<StudioState>((set, get) => {
         selectedPart: null,
         past: [],
         future: [],
+        // A reference page and its rebuild belong to one chain as much
+        // as a feed does — see the note above.
+        reference: null,
+        reproduction: null,
+        reproduceOpen: false,
       });
       try {
         window.localStorage.setItem(BRAND_KEY, brandId);
@@ -369,6 +428,9 @@ export const useStudio = create<StudioState>((set, get) => {
           selectedOfferId: null,
           selectedPart: null,
           busy: null,
+          // The canvas now shows a catalogue, not a rebuilt page, so the
+          // comparison strip has nothing left to compare.
+          reproduction: null,
           note: notes.join(' · '),
           ...(reply.curationError ? { error: reply.curationError } : {}),
         });
@@ -408,6 +470,89 @@ export const useStudio = create<StudioState>((set, get) => {
         link.click();
         URL.revokeObjectURL(url);
         set({ busy: null, note: 'PDF hentet' });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+
+    setReproduceOpen: (open) => set({ reproduceOpen: open, error: null }),
+
+    /*
+     * The file, read once and kept as base64.
+     *
+     * A `File` cannot be held in state across a re-render any more
+     * usefully than its bytes can, and base64 is what the endpoint
+     * takes — so the conversion happens at the moment of choosing,
+     * where a failure is still attributable to the file the user just
+     * picked.
+     */
+    async setReference(file: File) {
+      set({ busy: 'Læser referencen…', error: null });
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        set({
+          reference: {
+            name: file.name,
+            base64: toBase64(bytes),
+            // Read from the bytes, not the name: what matters is
+            // whether a page has to be picked out of it.
+            isPdf: String.fromCharCode(...bytes.subarray(0, 5)) === '%PDF-',
+          },
+          referencePage: 1,
+          busy: null,
+          note: `Reference klar: ${file.name}`,
+        });
+      } catch (error) {
+        set({ busy: null, error: `Kunne ikke læse ${file.name} (${message(error)})` });
+      }
+    },
+
+    setReferencePage: (page) => set({ referencePage: Math.max(1, Math.round(page) || 1) }),
+    setReproduceNote: (note) => set({ reproduceNote: note }),
+
+    /*
+     * The rebuilt page arrives as an ordinary document, so everything
+     * the editor already does — dragging a tile, nudging a price,
+     * saving, printing — works on it unchanged.
+     *
+     * The brand is replaced by the one the reply carries. A page read
+     * off a reference sits on a grid that is not in the chain's set,
+     * and without it the canvas would render "ukendt skabelon" over a
+     * page that is perfectly valid.
+     */
+    async reproduce() {
+      const { brandId, feed, reference, referencePage, reproduceNote } = get();
+      if (!brandId || !reference) return;
+
+      set({ busy: 'Claude læser siden…', error: null, note: null });
+      try {
+        const reply = await api.reproducePage(brandId, {
+          file: reference.base64,
+          feed: feed?.text ?? '',
+          referenceName: reference.name,
+          ...(reference.isPdf ? { pageNumber: referencePage } : {}),
+          ...(reproduceNote.trim() ? { note: reproduceNote.trim() } : {}),
+        });
+
+        set({
+          document: reply.document,
+          brand: reply.brand,
+          reproduction: reply,
+          reproduceOpen: false,
+          past: [],
+          future: [],
+          selectedOfferId: null,
+          selectedPart: null,
+          busy: null,
+          note: [
+            `Genskabt efter ${reference.name}`,
+            `${reply.casting.length} varer`,
+            `bund ${reply.ground} målt i marginen`,
+            `${(reply.elapsedMs / 1000).toFixed(1)}s`,
+            ...(reply.rejected > 0 ? [`${reply.rejected} plads(er) udeladt`] : []),
+          ].join(' · '),
+        });
       } catch (error) {
         set({ busy: null, error: message(error) });
       }
@@ -572,6 +717,23 @@ export const useStudio = create<StudioState>((set, get) => {
         ...document,
         pages: document.pages.map((page) => (page.id === pageId ? { ...page, title } : page)),
       }));
+    },
+
+    setPageGround(pageId, ground) {
+      // Six hex digits or nothing. A half-typed "#ff" in the field must
+      // not reach the document: the schema rejects it on save, and the
+      // rejection would surface three actions later as "invalid
+      // document" with no mention of a colour.
+      const value = ground === null ? null
+        : /^#[0-9a-fA-F]{6}$/.test(ground) ? ground.toLowerCase()
+          : undefined;
+      if (value === undefined) return;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId ? { ...page, ground: value } : page)),
+      // One gesture, one undo step: dragging a colour wheel fires on
+      // every pixel, exactly like panning artwork.
+      }), `ground:${pageId}`);
     },
 
     benched() {

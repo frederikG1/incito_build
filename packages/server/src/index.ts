@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { CatalogDocument } from '@incitio/schema';
 import { findBrand, listBrands, type BrandDefinition } from '@incitio/brands';
 import { buildCatalogue } from '@incitio/pipeline';
+import { matchPage, MatchError } from '@incitio/match';
 import { renderCataloguePdf } from '@incitio/pdf';
 import { Store } from './db.js';
 
@@ -190,6 +191,106 @@ export function createApp(store: Store, options: AppOptions = {}) {
     } catch (error) {
       // A feed that does not match the chain is a user error, not a bug.
       return c.json({ error: error instanceof Error ? error.message : 'build failed' }, 422);
+    }
+  });
+
+  /**
+   * Rebuild a published page with this week's products.
+   *
+   * The three stages of `@incitio/match` run here rather than in the
+   * browser, for the same reason curation does: the Anthropic key stays
+   * in the server's environment, and rasterising a PDF page needs a
+   * Chromium the browser cannot launch. The client sends a picture and a
+   * feed and gets back a finished document.
+   *
+   * The reference arrives base64-encoded in JSON rather than as
+   * multipart. It is one file per request, it is already being read into
+   * memory to be sent to the model, and a JSON body keeps this route the
+   * same shape as every other route in this file. The 24 MB cap is the
+   * 18 MB the API accepts for an image, plus base64's third.
+   */
+  const ReproduceRequest = z.object({
+    /** The reference page, base64. An image, or a PDF to take a page of. */
+    file: z.string().min(1).max(24_000_000),
+    /** Which page of a PDF. Ignored for an image. */
+    pageNumber: z.number().int().positive().max(400).optional(),
+    feed: z.string().max(20_000_000).default(''),
+    sourceId: z.string().max(40).optional(),
+    note: z.string().max(2000).optional(),
+    poolSize: z.number().int().min(4).max(200).optional(),
+    /** Shown back to the editor; never used as a path. */
+    referenceName: z.string().max(200).optional(),
+  });
+
+  app.post('/api/brand/reproduce', async (c) => {
+    const definition = c.get('brand');
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = ReproduceRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+    if (!process.env['ANTHROPIC_API_KEY']) {
+      return c.json(
+        { error: 'ingen API-nøgle', detail: 'Sæt ANTHROPIC_API_KEY i .env og genstart API-serveren.' },
+        503,
+      );
+    }
+
+    let file: Buffer;
+    try {
+      // `base64` decoding never throws — it drops what it cannot read —
+      // so an empty result is the only signal that the upload was not
+      // base64 at all.
+      file = Buffer.from(parsed.data.file, 'base64');
+      if (file.length === 0) throw new Error('tom fil');
+    } catch {
+      return c.json({ error: 'referencen kunne ikke afkodes' }, 400);
+    }
+
+    try {
+      const result = await matchPage(definition.brand.id, {
+        file,
+        feedText: parsed.data.feed,
+        catalogId: `${definition.brand.id}-reproduce`,
+        ...(parsed.data.pageNumber ? { pageNumber: parsed.data.pageNumber } : {}),
+        ...(parsed.data.sourceId ? { sourceId: parsed.data.sourceId } : {}),
+        ...(parsed.data.note ? { note: parsed.data.note } : {}),
+        ...(parsed.data.poolSize ? { poolSize: parsed.data.poolSize } : {}),
+        ...(parsed.data.referenceName ? { referenceName: parsed.data.referenceName } : {}),
+      });
+
+      return c.json({
+        document: result.document,
+        // The chain carrying the one layout this page needs. The editor
+        // renders with it; the layout itself also travels inside the
+        // document, which is what makes it survive a save and a print.
+        brand: result.brand,
+        template: result.template,
+        ground: result.ground,
+        casting: result.casting,
+        source: result.source,
+        // What the model was shown, so the editor can put the two pages
+        // side by side. PNG for a PDF page, the original otherwise.
+        reference: `data:${result.reference.type};base64,${result.reference.image.toString('base64')}`,
+        offersInFeed: result.offersInFeed,
+        poolSize: result.poolSize,
+        rejected: result.rejected,
+        usage: result.usage,
+        elapsedMs: result.elapsedMs,
+      });
+    } catch (error) {
+      // A page the model could not read, or a feed that does not match
+      // the chain, is a user error and says so. Anything else is a bug
+      // and should not be dressed up as one.
+      if (error instanceof MatchError) return c.json({ error: error.message }, 422);
+      return c.json({ error: error instanceof Error ? error.message : 'reproduce failed' }, 500);
     }
   });
 

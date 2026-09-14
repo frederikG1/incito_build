@@ -5,6 +5,7 @@ import { partLimits } from '@incitio/schema';
 import { useStudio } from './state.js';
 import { Inspector } from './Inspector.js';
 import { TileEditor } from './TileEditor.js';
+import { Comparison, Reproduce } from './Reproduce.js';
 
 export function App() {
   const s = useStudio();
@@ -162,6 +163,18 @@ export function App() {
           <span>Upload feed</span>
         </label>
 
+        {/* A second way in, kept beside the feed upload because it
+            takes the same feed — but its own button, because rebuilding
+            ONE published page is a different job from generating a
+            book and merging the two would hide both. */}
+        <button
+          className={s.reproduceOpen ? 'primary' : ''}
+          onClick={() => s.setReproduceOpen(!s.reproduceOpen)}
+          title="Genskab en trykt side med denne uges varer"
+        >
+          Genskab side
+        </button>
+
         <div className="bar__gap" />
 
         <button onClick={s.undo} disabled={s.past.length === 0}>Fortryd</button>
@@ -197,6 +210,8 @@ export function App() {
         </div>
       )}
 
+      <Reproduce />
+
       <div className="app__body">
         <main
           className="canvas"
@@ -209,16 +224,25 @@ export function App() {
           {!s.document && s.brand && (
             <p className="empty">
               {s.feed
-                ? <>Feed klar: <code>{s.feed.source}</code>. Tryk <strong>Generér</strong>.</>
+                ? <>
+                    Feed klar: <code>{s.feed.source}</code>. Tryk <strong>Generér</strong> for en
+                    hel avis — eller <strong>Genskab side</strong> for at efterligne én trykt side.
+                  </>
                 : 'Upload denne uges feed for at komme i gang.'}
             </p>
           )}
+
+          <Comparison />
 
           {s.document && s.brand && s.document.pages.map((page, index) => {
             const brand = s.brand!;
             // Resolved within this chain's own set — a template id from
             // another chain simply does not exist here.
-            const template = resolveTemplate(brand, page.templateId);
+            // The chain's own layouts, then any the document brought
+            // with it — a page rebuilt from a reference sits on a grid
+            // nobody drew for the chain. See `CatalogDocument.templates`.
+            const template = resolveTemplate(brand, page.templateId)
+              ?? s.document!.templates.find((t) => t.id === page.templateId);
             if (!template) {
               return (
                 <div className="sheet" key={page.id}>

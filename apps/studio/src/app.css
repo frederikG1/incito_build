@@ -304,17 +304,25 @@ body {
   position: absolute;
   inset: 0;
   /*
-   * Above everything the tile can draw.
+   * Above everything the tile can draw. NOT a round number picked for
+   * looks — it has to beat the renderer's highest, and it is checked:
+   * see `overlay.test.ts`.
    *
    * The overlay is the editor's whole surface, and a tile element that
-   * outranks it takes the pointer away from it silently — no error,
-   * just a double-click that does nothing. The price mark has always
-   * sat at `z-index: 5`, so it was already unreachable; a box someone
-   * moves is lifted to 6 so it lands on top of what it was moved over.
-   * Ten clears both, inside the stacking context `.slot` establishes,
-   * so this cannot reach past its own cell.
+   * outranks it takes the pointer away from it silently. There is no
+   * error and nothing looks wrong: `elementsFromPoint` still finds the
+   * box, the panel still lists it, ⌫ still takes it off the page — only
+   * the press never reaches the overlay, so the box cannot be picked up
+   * or double-clicked. Which is exactly what happened when the tile's
+   * own layers were raised for the bleed work: `.tile__info` went to 20
+   * and the price mark to 30, and this sat at 10 underneath both. The
+   * artwork has no z-index, which is why panning the picture went on
+   * working and made the rest look like a mystery.
+   *
+   * 40 clears the renderer's 30, inside the stacking context `.slot`
+   * establishes, so it still cannot reach past its own cell.
    */
-  z-index: 10;
+  z-index: 40;
   cursor: pointer;
   border-radius: 4px;
   /* Outline, not border: a border would inset the overlay's own
@@ -507,3 +515,254 @@ body {
   text-decoration: line-through;
   opacity: 0.5;
 }
+
+/* ------------------------------------------------------ genskab en side */
+
+/*
+ * A strip under the toolbar rather than a modal.
+ *
+ * The panel's second step is "the feed", and the feed is uploaded from
+ * the toolbar directly above it — a modal would grey out the one control
+ * the step tells you to use.
+ */
+.repro {
+  flex: 0 0 auto;
+  background: #fff;
+  border-bottom: 1px solid #d9dce1;
+  padding: 18px 22px 16px;
+}
+
+.repro__head { position: relative; max-width: 900px; }
+.repro__head h2 { margin: 0 0 4px; font-size: 16px; }
+.repro__head p { margin: 0 0 14px; font-size: 13px; color: #6b7280; max-width: 66ch; }
+
+.repro__close {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  border: none;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #8b919b;
+  cursor: pointer;
+}
+
+.repro__steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repro__steps li { display: flex; gap: 10px; align-items: start; }
+
+/* The number is the whole progress indicator: filled once the step has
+   what it needs, outlined while it is still the one to do. */
+.repro__steps b {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #c8ccd4;
+  color: #6b7280;
+}
+.repro__steps .is-done b { background: #1c7a45; border-color: #1c7a45; color: #fff; }
+.repro__steps .is-now b { border-color: var(--hot); color: var(--hot); }
+
+.repro__steps h3 { margin: 2px 0 3px; font-size: 13px; }
+.repro__steps h3 i { font-weight: 400; color: #8b919b; font-style: normal; }
+.repro__steps p { margin: 0 0 8px; font-size: 12px; color: #6b7280; }
+
+.repro__file input { display: none; }
+.repro__file span {
+  display: inline-block;
+  font-size: 12px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  border: 1px dashed #c0c5cd;
+  cursor: pointer;
+  color: #33363d;
+}
+.repro__file span:hover { border-color: var(--hot); color: var(--hot); }
+
+.repro__chosen {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-style: normal;
+  color: #1c5c34;
+  word-break: break-all;
+}
+.repro__chosen--none { color: #8a6b12; }
+
+.repro__page { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: #6b7280; }
+.repro__page input { font: inherit; width: 64px; padding: 4px 6px; border: 1px solid #d3d7dd; border-radius: 5px; }
+
+.repro__note {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+}
+
+.repro__foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eceef1;
+}
+.repro__hint { margin: 0; flex: 1 1 auto; font-size: 12px; color: #6b7280; max-width: 70ch; }
+.repro__foot button {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--hot);
+  background: var(--hot);
+  color: #fff;
+  cursor: pointer;
+}
+.repro__foot button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ------------------------------------------------------- comparison */
+
+/*
+ * The reference beside how it was read.
+ *
+ * On the canvas, at the sheet's own width, so the rebuilt page renders
+ * directly underneath it and the two can be judged in one look.
+ */
+.compare {
+  width: 100%;
+  max-width: 720px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 1.35fr;
+  gap: 18px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #dfe2e7;
+  border-radius: 8px;
+}
+
+.compare__ref { margin: 0; }
+.compare__ref img {
+  width: 100%;
+  display: block;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.14);
+}
+.compare__ref figcaption { margin-top: 6px; font-size: 11px; color: #8b919b; }
+
+.compare__read h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #8b919b;
+}
+.compare__read h3 + * { margin-top: 0; }
+.compare__read dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 0 0 16px;
+  font-size: 12px;
+}
+.compare__read dt { color: #6b7280; }
+.compare__read dd { margin: 0; }
+.compare__read dd code { font-size: 11px; color: #33363d; }
+.compare__read dd small { color: #8b919b; }
+
+.compare__swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  border: 1px solid rgb(0 0 0 / 0.15);
+  vertical-align: -1px;
+}
+
+.compare__cast { margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.compare__cast li {
+  display: grid;
+  grid-template-columns: 42px 64px 1fr;
+  gap: 4px 8px;
+  padding: 4px 0;
+  border-top: 1px solid #eceef1;
+}
+.compare__cast b { font-weight: 600; color: #33363d; }
+.compare__role { color: #8b919b; }
+.compare__name { color: #33363d; }
+.compare__cast em {
+  grid-column: 2 / -1;
+  font-style: italic;
+  color: #6b7280;
+}
+
+.compare__dropped { margin: 10px 0 0; font-size: 12px; color: #8a6b12; }
+
+/* ------------------------------------------------------- sidens bund */
+
+.ground { display: flex; align-items: center; gap: 8px; }
+
+/*
+ * The swatch IS the colour input.
+ *
+ * A native `input[type=color]` draws its own chrome and its own inner
+ * border, which at 30px reads as a broken button rather than as the
+ * page's colour. Sized to zero inside a label painted with the value,
+ * so the whole square is the control and shows exactly the colour it
+ * sets.
+ */
+.ground__swatch {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid rgb(0 0 0 / 0.18);
+  cursor: pointer;
+  overflow: hidden;
+}
+.ground__swatch input { opacity: 0; width: 100%; height: 100%; cursor: pointer; border: none; padding: 0; }
+
+.ground__hex {
+  font: inherit;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  width: 88px;
+  padding: 6px 8px;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+  text-transform: lowercase;
+}
+
+.ground__pick {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ground__pick:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.ground__pick:disabled { opacity: 0.5; cursor: progress; }
+
+.ground__note { margin: 6px 0 0; font-size: 11px; color: #8b919b; }
+.ground__note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* With nothing selected the panel is a hint sheet; the ground control
+   above it still needs to read as a control, not as part of the hint. */
+.inspector--empty .inspector__group { margin-top: 0; border-top: none; padding-top: 0; }
+.inspector--empty .ground__note { margin-bottom: 18px; }

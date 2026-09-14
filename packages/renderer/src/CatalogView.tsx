@@ -32,7 +32,15 @@ export function CatalogView({
   return (
     <div className="catalog">
       {document.pages.map((page, index) => {
-        const template = resolveTemplate(brand, page.templateId);
+        /*
+         * The chain's own layouts first, then any the document brought
+         * with it — see `CatalogDocument.templates`. A page rebuilt
+         * from a reference sits on a layout nobody drew for the chain,
+         * and without this fallback it would print as "unknown
+         * template" everywhere except the session that generated it.
+         */
+        const template = resolveTemplate(brand, page.templateId)
+          ?? document.templates.find((t) => t.id === page.templateId);
         if (!template) {
           return (
             <div className="page page--error" key={page.id}>

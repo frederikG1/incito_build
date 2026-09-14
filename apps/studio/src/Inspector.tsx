@@ -1,8 +1,126 @@
+import { useState } from 'react';
 import {
-  TILE_PARTS, TILE_PART_NAMES, partLimits, partOverride, partTouched,
+  TILE_PARTS, TILE_PART_NAMES, pageGround, partLimits, partOverride, partTouched,
 } from '@incitio/schema';
 import type { TilePart } from '@incitio/schema';
 import { useStudio } from './state.js';
+
+/**
+ * The browser's own screen colour picker.
+ *
+ * Chromium only, which is what this editor is developed and printed in
+ * — and the one that matters, because the whole point is to sample a
+ * colour off the reference page displayed beside the rebuilt one, and
+ * only a screen-wide picker can reach a pixel in another element's
+ * image. Where it is missing, the swatch below is an ordinary
+ * `input[type=color]` and nothing else changes.
+ */
+interface EyeDropperApi {
+  new (): { open: () => Promise<{ sRGBHex: string }> };
+}
+const eyeDropper = (): EyeDropperApi | null =>
+  (window as unknown as { EyeDropper?: EyeDropperApi }).EyeDropper ?? null;
+
+/**
+ * The page's field, and where to get it from.
+ *
+ * A page-level control living in the tile panel, because this is where
+ * everything else about how the page looks is changed — and because the
+ * colour it is usually being matched to is the reference page sitting
+ * on the canvas two hundred pixels to the left. The pipette reads a
+ * pixel straight off it.
+ *
+ * It writes `page.ground`, never the brand's tokens: the chain's
+ * palette is its identity, and one rebuilt page is not a reason to
+ * repaint every page the chain will ever print. Empty means the chain
+ * decides, which is what every ordinary page does.
+ */
+function PageGround() {
+  const { document, brand, selectedOfferId, setPageGround } = useStudio();
+  const [dropping, setDropping] = useState(false);
+
+  if (!document || !brand || document.pages.length === 0) return null;
+
+  /*
+   * The page the panel is about: the one holding the selected tile, or
+   * the first one. A ground belongs to a page and the panel belongs to
+   * a tile, so the tile is what says which page is meant — and with
+   * nothing selected there is usually only one page anyway, because
+   * that is what "genskab en side" produces.
+   */
+  const index = Math.max(
+    0,
+    document.pages.findIndex((page) =>
+      page.placements.some((p) => p.offerId === selectedOfferId)),
+  );
+  const page = document.pages[index]!;
+  const chains = pageGround(brand, index);
+  const value = page.ground ?? chains;
+  const pipette = eyeDropper();
+
+  return (
+    <>
+      <h3 className="inspector__group">
+        Sidens bund
+        {page.ground && (
+          <button className="inspector__link" onClick={() => setPageGround(page.id, null)}>
+            Nulstil
+          </button>
+        )}
+      </h3>
+
+      <div className="ground">
+        <label className="ground__swatch" style={{ background: value }}>
+          <input
+            type="color"
+            value={value}
+            onChange={(e) => setPageGround(page.id, e.target.value)}
+            aria-label="Bundfarve"
+          />
+        </label>
+
+        <input
+          className="ground__hex"
+          type="text"
+          value={value}
+          spellCheck={false}
+          onChange={(e) => {
+            const raw = e.target.value.trim();
+            setPageGround(page.id, raw.startsWith('#') ? raw : `#${raw}`);
+          }}
+          aria-label="Hex-kode"
+        />
+
+        {pipette && (
+          <button
+            className="ground__pick"
+            disabled={dropping}
+            title="Hold pipetten over farven på referencen"
+            onClick={async () => {
+              setDropping(true);
+              try {
+                const picked = await new pipette().open();
+                setPageGround(page.id, picked.sRGBHex);
+              } catch {
+                // Escape closes the picker and rejects. Nothing to say:
+                // the user cancelled on purpose.
+              } finally {
+                setDropping(false);
+              }
+            }}
+          >⌖ Pipette</button>
+        )}
+      </div>
+
+      <p className="ground__note">
+        {page.ground
+          ? <>Sat på siden. {brand.name}s egen er <code>{chains}</code>.</>
+          : <>{brand.name}s egen farve for side {index + 1}.</>}
+        {pipette && ' Pipetten kan tage farven direkte fra referencebilledet.'}
+      </p>
+    </>
+  );
+}
 
 /**
  * The boxes whose wording lives on the box itself.
@@ -38,6 +156,9 @@ export function Inspector() {
   if (!document || !selectedOfferId) {
     return (
       <aside className="inspector inspector--empty">
+        {/* Page-level, so it is reachable with nothing selected — which
+            is the state a freshly rebuilt page opens in. */}
+        <PageGround />
         <p>Klik på en vare for at rette den.</p>
         <ul className="inspector__keys">
           <li><b>Træk</b> en vare over på en anden for at bytte dem</li>
@@ -88,6 +209,8 @@ export function Inspector() {
         <dt>Kategori</dt><dd>{offer.category}</dd>
         <dt>Varenr.</dt><dd>{offer.id}</dd>
       </dl>
+
+      <PageGround />
 
       <h3 className="inspector__group">Tekst</h3>
 

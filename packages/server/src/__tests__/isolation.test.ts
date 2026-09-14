@@ -10,6 +10,7 @@ function doc(brandId: string, id = 'c1'): CatalogDocument {
     brandId,
     pages: [],
     offers: [],
+    templates: [],
     createdAt: '2026-09-08T00:00:00.000Z',
     updatedAt: '2026-09-08T00:00:00.000Z',
   };
