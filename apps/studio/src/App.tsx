@@ -6,6 +6,7 @@ import { useStudio } from './state.js';
 import { Inspector } from './Inspector.js';
 import { TileEditor } from './TileEditor.js';
 import { Comparison, Reproduce } from './Reproduce.js';
+import { DecorBar } from './DecorBar.js';
 
 export function App() {
   const s = useStudio();
@@ -196,11 +197,19 @@ export function App() {
         >
           {s.busy ? <><span className="spinner" aria-hidden="true" /> {s.busy}</> : 'Generér med AI'}
         </button>
+        {/*
+          * Mood artwork used to live here as one nameless field and a
+          * button. It moved to `DecorBar` below the toolbar when it
+          * gained a second field: they steer two different models, and
+          * that only reads if each one is labelled.
+          */}
         <button onClick={() => void s.save()} disabled={!s.document || Boolean(s.busy)}>Gem</button>
         <button onClick={() => void s.downloadPdf()} disabled={!s.document || Boolean(s.busy)}>
           PDF
         </button>
       </header>
+
+      <DecorBar />
 
       {s.error && <div className="banner banner--error">{s.error}</div>}
       {s.note && !s.error && <div className="banner banner--ok">{s.note}</div>}
@@ -208,6 +217,13 @@ export function App() {
         <div className="banner banner--hint">
           AI-kuratering er slået fra. Læg din nøgle i <code>.env</code> som{' '}
           <code>ANTHROPIC_API_KEY=sk-ant-…</code> og genstart API-serveren.
+        </div>
+      )}
+      {s.brand && s.curationReady && !s.decorReady && (
+        <div className="banner banner--hint">
+          Stemningsbilleder er slået fra. Læg <code>GEMINI_API_KEY=…</code> i{' '}
+          <code>.env</code> og genstart API-serveren. Billedmodellerne kræver
+          desuden fakturering på Google-projektet.
         </div>
       )}
 

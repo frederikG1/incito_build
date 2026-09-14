@@ -305,10 +305,32 @@ billeder der ikke sælger noget og ikke findes i noget feed.
 rører ikke en eneste placering:
 
 ```bash
+npm run decorate -- --probe "a loose handful of whole almonds"
 npm run decorate -- .data/out/superbrugsen-baseline.json --dry
 npm run decorate -- .data/out/superbrugsen-baseline.json
+npm run decorate -- .data/out/superbrugsen-baseline.json --style "akvarel"
 npm run render   -- .data/out/superbrugsen-baseline.json
 ```
+
+To retninger, to modeller — de kan ikke byttes om:
+
+| | går til | bestemmer |
+|---|---|---|
+| `--brief "efterår"` | tekstmodellen | **hvad** hver side viser |
+| `--style "akvarel"` | billedmodellen | **hvordan** det tegnes |
+
+`--style` lægges *oven i* den faste prompt, aldrig i stedet for — den
+står efter håndværket og før baggrundskontrakten, så kontrakten har det
+sidste ord og udklippet stadig har hvidt at skære fra. Den er også en
+del af cachenøglen: omformulér, og du får en ny tegning.
+
+I studioet er det samme to felter i striben **Stemningsbillede** under
+værktøjslinjen, med *Vis den fulde prompt* der markerer dine egne ord i
+den færdige prompt.
+
+`--probe` er den mindste test: ét motiv, ét billedkald, intet katalog.
+Den kører den rigtige vej — samme prompt, model, udklip og cache — og
+lægger resultatet i `.data/out/probe-raw.png` og `probe-cut.png`.
 
 Trinnet er to modelkald af meget forskellig pris:
 
@@ -332,17 +354,25 @@ mandel og melet på et rundstykke skal blive. Motivet lander i
 > en rate limit, men er et abonnement. Tekstkaldet i trin 1 virker uden.
 > `--dry` er derfor brugbar med det samme; resten kræver fakturering
 > slået til på Google-projektet.
+>
+> Målt 14-09-2026 mod en gratis nøgle: `gemini-2.5-flash-image` og
+> `gemini-3.1-flash-image` svarer begge `limit: 0`. Der er ingen gratis
+> billedmodel at falde tilbage på. Når det ændrer sig, er modellen et
+> miljøvariabel-skift og ikke en kodeændring — sæt `GEMINI_IMAGE_MODEL`
+> i `.env`, eller `--image-model` på kommandolinjen. Studioet viser
+> hvilken model der kaldes, under felterne.
 
 ## Kommandoer
 
 ```bash
-npm test                  # 188 tests
+npm test                  # 194 tests
 npm run typecheck
 npm run build:catalogue   # feed → JSON + HTML + PDF
                           #   --feed <fil>  --offers N  --pages N  --source <id>
 npm run render            # gen-render et bygget katalog
 npm run decorate          # læg genererede stemningsbilleder på siderne
                           #   --dry  --offline  --brief "…"  --image-model <id>
+                          #   --probe "<motiv>"  ét billede, uden katalog
 npm run match             # genskab én trykt side med ugens varer
                           #   --ref <billede|pdf>  --page N  --feed <fil>  --note "…"
 npm run refs              # hent designreferencer

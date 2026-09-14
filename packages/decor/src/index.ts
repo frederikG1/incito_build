@@ -39,6 +39,17 @@ export interface DecorateOptions extends GeminiOptions {
   brand?: Brand;
   /** Editor direction, same spirit as the curator's `brief`. */
   brief?: string;
+  /**
+   * The editor's own words, added verbatim to EVERY image prompt.
+   *
+   * A different knob from `brief` and worth keeping apart: `brief`
+   * steers the text model's choice of WHAT each page depicts, and never
+   * reaches the image model. This reaches only the image model and says
+   * nothing about the choice. Asking for "akvarel" through `brief` gets
+   * you a watercolour-ish subject drawn as a photograph; asking through
+   * `style` gets you the watercolour.
+   */
+  style?: string;
   /** Image model, when it should differ from the text model. */
   imageModel?: string;
   /** Reuse one Chromium across the run. */
@@ -130,8 +141,15 @@ export async function decorate(
     const subject = byPage.get(page.id);
     if (!subject) { skipped += 1; continue; }
 
+    /*
+     * The style goes into the prompt, which is also the cache key — so
+     * a changed direction is a new drawing rather than yesterday's
+     * almonds served back under a new instruction. That falls out of
+     * `decorStore` hashing the prompt and is the reason it does.
+     */
     const prompt = imagePrompt(subject.motif, {
       ...(options.brand ? { brandName: options.brand.name } : {}),
+      ...(options.style ? { style: options.style } : {}),
     });
     const at = store.pathFor(prompt);
 

@@ -6,6 +6,7 @@ import { findBrand, listBrands, type BrandDefinition } from '@incitio/brands';
 import { buildCatalogue } from '@incitio/pipeline';
 import { matchPage, MatchError } from '@incitio/match';
 import { renderCataloguePdf } from '@incitio/pdf';
+import { decorate, DEFAULT_IMAGE_MODEL } from '@incitio/decor';
 import { Store } from './db.js';
 
 export { Store } from './db.js';
@@ -142,6 +143,111 @@ export function createApp(store: Store, options: AppOptions = {}) {
 
   app.get('/api/brand/curation/status', (c) =>
     c.json({ configured: Boolean(process.env['ANTHROPIC_API_KEY']) }));
+
+  /*
+   * Reports the image model as well as the key.
+   *
+   * Which model is about to be billed is the one fact the editor cannot
+   * see from the studio and the first thing they ask when a drawing
+   * fails, because on this API the failure is a billing setting on a
+   * named model — so the name belongs on screen, not in a log.
+   */
+  app.get('/api/brand/decor/status', (c) =>
+    c.json({
+      configured: Boolean(process.env['GEMINI_API_KEY']),
+      imageModel: DEFAULT_IMAGE_MODEL,
+    }));
+
+  const DecorRequest = z.object({
+    document: CatalogDocument,
+    brief: z.string().max(2000).optional(),
+    /**
+     * The editor's own words for the image model, added to every prompt
+     * on top of the fixed craft. Capped well below `brief`: it is a
+     * direction, and `imagePrompt` trims it to 300 characters anyway so
+     * it cannot drown out the white-background contract the cut-out
+     * step depends on.
+     */
+    style: z.string().max(500).optional(),
+    /** Answer from the cache only — never call the image model. */
+    offline: z.boolean().optional(),
+  });
+
+  /**
+   * Paint mood artwork behind a document's offers.
+   *
+   * Takes the whole document and gives a whole document back, rather
+   * than patching pages in place: decoration is a pass over a finished
+   * catalogue, and the editor already knows how to swap one document for
+   * another — that is what undo is built on.
+   *
+   * `assetDir` is required. Without a directory to write into, the
+   * generated artwork would have nowhere to live and the page would name
+   * a file nobody could serve, so this refuses rather than producing a
+   * document full of broken references.
+   */
+  app.post('/api/brand/decor', async (c) => {
+    const definition = c.get('brand');
+
+    if (!options.assetDir) {
+      return c.json(
+        { error: 'serveren har ingen assetDir at gemme billeder i' },
+        503,
+      );
+    }
+    if (!process.env['GEMINI_API_KEY']) {
+      return c.json(
+        {
+          error: 'ingen API-nøgle',
+          detail: 'Sæt GEMINI_API_KEY i .env og genstart API-serveren.',
+        },
+        503,
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = DecorRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+    /*
+     * The document must belong to the chain the request is acting as.
+     * Everything else here is scoped by the brand middleware; a document
+     * arrives in the BODY, so it is the one thing that could carry
+     * another tenant's id past it.
+     */
+    if (parsed.data.document.brandId !== definition.brand.id) {
+      return c.json({ error: 'dokumentet tilhører en anden kæde' }, 403);
+    }
+
+    try {
+      const result = await decorate(parsed.data.document, {
+        assetRoot: options.assetDir,
+        brand: definition.brand,
+        ...(parsed.data.brief ? { brief: parsed.data.brief } : {}),
+        ...(parsed.data.style ? { style: parsed.data.style } : {}),
+        ...(parsed.data.offline ? { offline: true } : {}),
+      });
+      return c.json({
+        document: result.document,
+        drawn: result.drawn,
+        skipped: result.skipped,
+        cached: result.cached,
+        // Never thrown by `decorate` — a page that could not be drawn is
+        // reported so the editor can say which, and why.
+        errors: result.errors,
+        usage: result.usage ?? null,
+      });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : 'decor failed' }, 500);
+    }
+  });
 
   app.post('/api/brand/build', async (c) => {
     const definition = c.get('brand');

@@ -11,6 +11,7 @@
   "dependencies": {
     "@incitio/schema": "0.1.0",
     "@incitio/brands": "0.1.0",
+    "@incitio/decor": "0.1.0",
     "@incitio/renderer": "0.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

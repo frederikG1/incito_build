@@ -15,6 +15,19 @@
 export interface PromptOptions {
   /** The chain, for the register the artwork is drawn in. */
   brandName?: string;
+  /**
+   * The editor's own words, added to every image on top of the craft
+   * below — "skudt ovenfra", "mørk baggrund, efterår", "akvarel".
+   *
+   * Placed after the craft and BEFORE the contract on purpose: the
+   * contract gets the last word, so a direction that happens to
+   * contradict it ("on a wooden table") does not silently take the
+   * white field away from the cut-out step. It can still lose that
+   * argument with the model — which is exactly what `decorate`'s
+   * `kept > 0.97` guard catches and reports, rather than printing a
+   * photograph with corners.
+   */
+  style?: string;
 }
 
 const CONTRACT = [
@@ -33,11 +46,30 @@ const CRAFT = [
   'sharp focus throughout, shot slightly from above.',
 ].join(' ');
 
+/**
+ * How much of the editor's direction survives into the prompt.
+ *
+ * A cap, not a courtesy: the contract is what keeps the artwork usable,
+ * and three paragraphs of pasted direction ahead of it simply drowns it
+ * out. 300 characters is more than any of the directions this field was
+ * built for and far less than a wall of text.
+ */
+export const STYLE_LIMIT = 300;
+
+/** The editor's words, trimmed to one clause that ends in a full stop. */
+export function normaliseStyle(style: string): string {
+  const text = style.trim().replace(/\s+/g, ' ').slice(0, STYLE_LIMIT).trim();
+  if (!text) return '';
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 /** The prompt for one motif. */
 export function imagePrompt(motif: string, options: PromptOptions = {}): string {
+  const style = normaliseStyle(options.style ?? '');
   return [
     `${motif.trim().replace(/\.$/, '')}.`,
     CRAFT,
+    style,
     CONTRACT,
     options.brandName
       ? `Styled for ${options.brandName}, a Danish supermarket. Nordic, fresh, unfussy.`

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Offer, CatalogPage } from '@incitio/schema';
-import { imagePrompt } from '../prompt.js';
+import { imagePrompt, normaliseStyle, STYLE_LIMIT } from '../prompt.js';
 import { decorStore } from '../store.js';
 import { reconcile, type PageBrief, type SubjectRow } from '../subject.js';
 
@@ -51,6 +51,60 @@ describe('imagePrompt', () => {
 
   it('does not double the motif full stop', () => {
     expect(imagePrompt('a halved orange.')).not.toContain('orange..');
+  });
+});
+
+describe("the editor's own direction", () => {
+  it('reaches the prompt verbatim, on top of the craft that is always there', () => {
+    const prompt = imagePrompt('a sprig of rosemary', { style: 'akvarel, dæmpede farver' });
+    expect(prompt).toContain('akvarel, dæmpede farver.');
+    // Added to the automatic wording, never instead of it — that is the
+    // whole point of the field, and the thing a refactor could quietly
+    // undo by making it a replacement.
+    expect(prompt).toContain('Editorial food photography');
+    expect(prompt).toContain('a sprig of rosemary');
+  });
+
+  /*
+   * Order is load-bearing, not cosmetic. The contract is what the
+   * cut-out step flood-fills against, so a direction like "on a dark
+   * wooden table" must be argued with AFTER it is stated, not before —
+   * otherwise the last thing the model reads is the thing that breaks
+   * the step.
+   */
+  it('is stated before the contract, so the contract has the last word', () => {
+    const prompt = imagePrompt('a halved orange', { style: 'mørk træbordplade' });
+    expect(prompt.indexOf('mørk træbordplade'))
+      .toBeLessThan(prompt.indexOf('pure white background'));
+  });
+
+  it('is capped, so a pasted essay cannot drown the contract out', () => {
+    const prompt = imagePrompt('almonds', { style: 'x'.repeat(STYLE_LIMIT + 200) });
+    expect(prompt).toContain('pure white background');
+    expect(prompt).not.toContain('x'.repeat(STYLE_LIMIT + 1));
+  });
+
+  it('changes nothing when empty or blank', () => {
+    const plain = imagePrompt('almonds');
+    expect(imagePrompt('almonds', { style: '' })).toBe(plain);
+    expect(imagePrompt('almonds', { style: '   ' })).toBe(plain);
+  });
+
+  it('ends the direction with a full stop, without doubling one', () => {
+    expect(normaliseStyle('akvarel')).toBe('akvarel.');
+    expect(normaliseStyle('akvarel.')).toBe('akvarel.');
+    expect(normaliseStyle('hvorfor ikke?')).toBe('hvorfor ikke?');
+  });
+
+  /*
+   * The cache is keyed on the prompt, so this falls out for free — but
+   * it is the property people rely on without knowing it: reword the
+   * direction, get a new drawing rather than yesterday's under a new
+   * instruction.
+   */
+  it('makes a reworded direction a different drawing', () => {
+    expect(imagePrompt('almonds', { style: 'akvarel' }))
+      .not.toBe(imagePrompt('almonds', { style: 'blyantstegning' }));
   });
 });
 

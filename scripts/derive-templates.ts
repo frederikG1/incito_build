@@ -191,8 +191,8 @@ const labelled = pages.flatMap((file, i) => [
 
 process.stdout.write('læser      …');
 const stream = client.messages.stream({
-  model: flag('model', 'claude-opus-5'),
-  max_tokens: 32000,
+  model: flag('model', 'claude-sonnet-5'),
+  max_tokens: 28000,
   system: SYSTEM,
   thinking: { type: 'adaptive' },
   output_config: { format: jsonSchemaOutputFormat(SCHEMA), effort: 'high' },

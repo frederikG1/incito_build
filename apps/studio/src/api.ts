@@ -60,6 +60,74 @@ export async function fetchCurationStatus(brandId: string): Promise<boolean> {
   }
 }
 
+export interface DecorStatus {
+  /** Whether the server holds a GEMINI_API_KEY — mood artwork needs one. */
+  configured: boolean;
+  /** The model that will be billed, so the studio can name it on screen. */
+  imageModel: string;
+}
+
+export async function fetchDecorStatus(brandId: string): Promise<DecorStatus> {
+  try {
+    const response = await fetch(`${BASE}/brand/decor/status`, { headers: headers(brandId) });
+    if (!response.ok) return { configured: false, imageModel: '' };
+    const body = (await response.json()) as Partial<DecorStatus>;
+    return { configured: Boolean(body.configured), imageModel: body.imageModel ?? '' };
+  } catch {
+    return { configured: false, imageModel: '' };
+  }
+}
+
+export interface DecorResult {
+  document: CatalogDocument;
+  drawn: number;
+  skipped: number;
+  cached: number;
+  errors: { pageId: string; message: string }[];
+}
+
+/**
+ * Two directions, deliberately not one field.
+ *
+ * They go to different models and answering "what" with "how" is how a
+ * single field misbehaves: "akvarel" in `brief` makes the text model
+ * pick watercolour-ish SUBJECTS and still hands the image model the
+ * house photography prompt.
+ */
+export interface DecorDirection {
+  /** Steers WHICH motif each page gets. Reaches the text model only. */
+  brief?: string;
+  /** Added to every image prompt. Reaches the image model only. */
+  style?: string;
+}
+
+/**
+ * Paint mood artwork behind the offers.
+ *
+ * Returns a whole document, which the editor swaps in as one undoable
+ * change — the same shape every other generating call here has.
+ */
+export async function decorateDocument(
+  brandId: string,
+  document: CatalogDocument,
+  direction: DecorDirection = {},
+): Promise<DecorResult> {
+  const brief = direction.brief?.trim();
+  const style = direction.style?.trim();
+  const response = await fetch(`${BASE}/brand/decor`, {
+    method: 'POST',
+    headers: { ...headers(brandId), 'content-type': 'application/json' },
+    body: JSON.stringify({
+      document,
+      ...(brief ? { brief } : {}),
+      ...(style ? { style } : {}),
+    }),
+  });
+  if (!response.ok) await fail(response);
+  const body = (await response.json()) as Omit<DecorResult, 'document'> & { document: unknown };
+  return { ...body, document: CatalogDocument.parse(body.document) };
+}
+
 export interface BuildReply {
   document: CatalogDocument;
   /** Which reader ran, and what it matched on. */

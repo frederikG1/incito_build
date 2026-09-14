@@ -31,13 +31,37 @@ export const DEFAULT_TEXT_MODEL = 'gemini-3.5-flash';
  * on the free tier gets `limit: 0` and a 429, not a smaller quota. See
  * `describe` below, which says so in as many words rather than letting
  * it read as a transient rate limit.
+ *
+ * Measured 2026-09-14 against a free-tier key, by asking ListModels for
+ * every image-capable model and then actually calling them:
+ * `gemini-2.5-flash-image` and `gemini-3.1-flash-image` both answer
+ * `limit: 0` for `generate_content_free_tier_requests`. There is no
+ * cheaper one to fall back to and no free one to prefer — the choice is
+ * billing or no artwork. So this is an env var rather than a constant:
+ * the day a tier or a model changes, it is a line in `.env` and a
+ * restart, not a release.
  */
-export const DEFAULT_IMAGE_MODEL = 'gemini-2.5-flash-image';
+export const DEFAULT_IMAGE_MODEL = process.env['GEMINI_IMAGE_MODEL']
+  || 'gemini-2.5-flash-image';
+
+/** See `GeminiOptions.timeoutMs` for why this is not 90s any more. */
+export const DEFAULT_TIMEOUT_MS = 180_000;
 
 export interface GeminiOptions {
   apiKey?: string;
   model?: string;
-  /** Abort the request after this long. Generation is slow; hanging is worse. */
+  /**
+   * Abort the request after this long. Generation is slow; hanging is
+   * worse.
+   *
+   * The default was 90s and had to move: measured 2026-09-14, this API
+   * took 42s to answer the single word "OK" on the pinned text model,
+   * and `thinkingBudget: 0` is accepted and then ignored — the reply
+   * still comes back with a thought signature. A whole page of offers
+   * is a longer prompt than that, so 90s was timing out the FREE step
+   * and making the feature look broken for a reason that has nothing to
+   * do with the feature.
+   */
   timeoutMs?: number;
   /** Tries before giving up, for the statuses `retryable` admits. Default 4. */
   attempts?: number;
@@ -88,7 +112,7 @@ async function once(
   options: GeminiOptions,
 ): Promise<{ ok: true; payload: Payload } | { ok: false; status: number; message: string }> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 90_000);
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   let response: Response;
   try {
     response = await fetch(`${ENDPOINT}/${model}:generateContent`, {
@@ -99,7 +123,7 @@ async function once(
     });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new GeminiError(`Gemini svarede ikke inden for ${(options.timeoutMs ?? 90_000) / 1000}s`);
+      throw new GeminiError(`Gemini svarede ikke inden for ${(options.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000}s`);
     }
     throw new GeminiError(`Kunne ikke nå Gemini: ${describeNetwork(error)}`);
   } finally {

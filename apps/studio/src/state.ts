@@ -35,6 +35,20 @@ export interface StudioState {
   document: CatalogDocument | null;
 
   curationReady: boolean;
+  /** Whether the server holds a GEMINI_API_KEY. Mood artwork needs one. */
+  decorReady: boolean;
+  /** The image model that will be billed, named on screen beside the button. */
+  decorModel: string;
+  /** Direction for the motif choice — the decor step's own brief. */
+  decorNote: string;
+  /**
+   * The editor's own words for the image model, added to every prompt.
+   *
+   * Separate from `decorNote` because they reach different models:
+   * `decorNote` decides WHAT a page depicts and never leaves the text
+   * step; this decides HOW it is drawn and never reaches the text step.
+   */
+  decorStyle: string;
   busy: string | null;
   error: string | null;
   note: string | null;
@@ -86,6 +100,9 @@ export interface StudioState {
   setReproduceNote: (note: string) => void;
   /** Send the reference and the feed, and put the rebuilt page on the canvas. */
   reproduce: () => Promise<void>;
+  setDecorNote: (value: string) => void;
+  setDecorStyle: (value: string) => void;
+  decorate: () => Promise<void>;
 
   select: (offerId: string | null) => void;
   selectPart: (part: TilePart | null) => void;
@@ -298,6 +315,10 @@ export const useStudio = create<StudioState>((set, get) => {
     feed: null,
     document: null,
     curationReady: false,
+    decorReady: false,
+    decorModel: '',
+    decorNote: '',
+    decorStyle: '',
     busy: null,
     error: null,
     note: null,
@@ -365,8 +386,9 @@ export const useStudio = create<StudioState>((set, get) => {
          * starts empty and waits for an upload.
          */
         const sample = profile.sources.find((source) => source.path);
-        const [curationReady, text] = await Promise.all([
+        const [curationReady, decor, text] = await Promise.all([
           api.fetchCurationStatus(brandId),
+          api.fetchDecorStatus(brandId),
           sample?.path ? api.fetchFeed(sample.path) : Promise.resolve(null),
         ]);
         set({
@@ -374,6 +396,8 @@ export const useStudio = create<StudioState>((set, get) => {
           brand: profile.brand,
           sources: profile.sources,
           curationReady,
+          decorReady: decor.configured,
+          decorModel: decor.imageModel,
           feed: text && sample?.path
             ? { text, source: sample.path.split('/').pop() ?? sample.path }
             : null,
@@ -552,6 +576,52 @@ export const useStudio = create<StudioState>((set, get) => {
             `${(reply.elapsedMs / 1000).toFixed(1)}s`,
             ...(reply.rejected > 0 ? [`${reply.rejected} plads(er) udeladt`] : []),
           ].join(' · '),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    setDecorNote: (value) => set({ decorNote: value }),
+    setDecorStyle: (value) => set({ decorStyle: value }),
+
+    /**
+     * Paint mood artwork behind the offers on every page.
+     *
+     * Pushed onto the history like any other edit, so it is one ⌘Z — the
+     * whole point of returning a document rather than patching pages.
+     * Nothing else about the catalogue moves: decoration runs over a
+     * finished layout and touches no placement.
+     *
+     * The note says how many pages were deliberately left plain, because
+     * that is the number people query. A page with no motif looks like a
+     * failure and is usually the model correctly refusing to put a
+     * photograph of toilet paper behind the toilet paper.
+     */
+    async decorate() {
+      const { brandId, document, decorNote, decorStyle, past } = get();
+      if (!brandId || !document) return;
+
+      set({ busy: 'Gemini tegner…', error: null, note: null });
+      try {
+        const reply = await api.decorateDocument(brandId, document, {
+          brief: decorNote,
+          style: decorStyle,
+        });
+        set({
+          document: reply.document,
+          past: [...past.slice(-29), document],
+          future: [],
+          busy: null,
+          note: [
+            `${reply.drawn} side(r) fik et stemningsbillede`,
+            ...(reply.cached > 0 ? [`${reply.cached} fra cache`] : []),
+            ...(reply.skipped > 0 ? [`${reply.skipped} bevidst uden`] : []),
+          ].join(' · '),
+          // Reported, not thrown: pages that DID get artwork are kept.
+          ...(reply.errors.length > 0
+            ? { error: reply.errors.map((e) => e.message).join(' · ') }
+            : {}),
         });
       } catch (error) {
         set({ busy: null, error: message(error) });
