@@ -10,13 +10,21 @@ import { withAssetBase } from './assets.js';
 const require = createRequire(import.meta.url);
 
 /** The catalogue stylesheet, inlined so the page needs no network. */
-function stylesheet(): string {
+function stylesheet(brand: Brand): string {
   const file = require.resolve('@incitio/renderer/styles.css');
-  return inlineFonts(readFileSync(file, 'utf8'), dirname(file));
+  return inlineFonts(readFileSync(file, 'utf8'), dirname(file), familiesOf(brand));
+}
+
+/** Every family this chain's tokens name, in the order they fall back. */
+function familiesOf(brand: Brand): Set<string> {
+  const { headingFont, bodyFont, scriptFont } = brand.tokens;
+  const stacks = [headingFont, bodyFont, scriptFont ?? headingFont].join(',');
+  return new Set([...stacks.matchAll(/'([^']+)'/g)].flatMap((m) => m[1] ?? []));
 }
 
 /**
- * Carry the typefaces into the document as data URIs.
+ * Carry this chain's typefaces into the document as data URIs, and
+ * leave every other chain's behind.
  *
  * The stylesheet names them relatively — `url(./fonts/rubik.woff2)` —
  * which is what the editor's bundler wants. The print page is written
@@ -28,17 +36,36 @@ function stylesheet(): string {
  *
  * Base64 rather than an absolute `file://` URL, so a rendered HTML
  * proof can be mailed, committed or opened on another machine and still
- * be the page that was approved. Three latin-subset variable faces cost
- * about 150 KB before encoding.
+ * be the page that was approved.
+ *
+ * BRAND-SCOPED, and that is not an optimisation.
+ *
+ * This used to inline every face the stylesheet mentioned into every
+ * print run, which was merely wasteful while all four were open-licence
+ * stand-ins. SuperBrugsen now sets in COOP, which Coop Danmark licenses
+ * exclusively and which may not be passed to a third party — so a Netto
+ * proof that embedded it would be handing Coop's typeface to Coop's
+ * competitor, in a file built to be mailed around. A `@font-face` this
+ * chain does not name is dropped whole rather than left pointing at a
+ * path that will not resolve.
+ *
+ * The saving is real too: a page carries one chain's type, not four.
  */
-function inlineFonts(css: string, base: string): string {
-  return css.replace(/url\(\.\/fonts\/([\w.-]+\.woff2)\)/g, (whole, name: string) => {
+function inlineFonts(css: string, base: string, families: Set<string>): string {
+  return css.replace(/@font-face\s*\{[^}]*\}/g, (block) => {
+    const family = block.match(/font-family:\s*'([^']+)'/)?.[1];
+    const file = block.match(/url\(\.\/fonts\/([\w.-]+\.woff2)\)/)?.[1];
+    if (!family || !file) return block;
+    if (!families.has(family)) return '';
     try {
-      const data = readFileSync(join(base, 'fonts', name)).toString('base64');
-      return `url(data:font/woff2;base64,${data})`;
+      const data = readFileSync(join(base, 'fonts', file)).toString('base64');
+      return block.replace(
+        /url\(\.\/fonts\/[\w.-]+\.woff2\)/,
+        `url(data:font/woff2;base64,${data})`,
+      );
     } catch {
       // A missing face is a worse page, not a failed print run.
-      return whole;
+      return block;
     }
   });
 }
@@ -79,7 +106,7 @@ export function renderCatalogueHtml(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(document.name)}</title>
-<style>${stylesheet()}</style>
+<style>${stylesheet(brand)}</style>
 <style>
   /*
    * Print geometry, scoped to print.

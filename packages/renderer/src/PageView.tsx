@@ -113,6 +113,29 @@ export function PageView({
       data-page-id={page.id}
       data-template-id={template.id}
     >
+      {/*
+        * Generated mood artwork, behind everything.
+        *
+        * Before the masthead in source order and pinned by the
+        * stylesheet, so it can never take a click or push a layout: the
+        * grid is the page, and this is paint on the wall behind it.
+        */}
+      {page.decorations.map((decor) => (
+        <img
+          key={decor.id}
+          className={`page__decor page__decor--${decor.anchor}`}
+          src={decor.imageUrl}
+          alt=""
+          aria-hidden="true"
+          data-decor-subject={decor.subject}
+          style={{
+            '--decor-scale': String(decor.scale),
+            '--decor-rotate': `${decor.rotate}deg`,
+            '--decor-opacity': String(decor.opacity),
+          } as CSSProperties}
+        />
+      ))}
+
       {(page.title || brand.logoUrl) && (
         <header className="page__masthead">
           {brand.logoUrl && <img className="page__logo" src={brand.logoUrl} alt="" />}

@@ -1,6 +1,59 @@
 import { z } from 'zod';
-import { Offer } from './offer.js';
+import { ImageRef, Offer } from './offer.js';
 import { PageTemplate } from './template.js';
+
+/** Where on the page a decoration is pinned. */
+export const DECOR_ANCHORS = [
+  'top-left', 'top-right', 'bottom-left', 'bottom-right',
+] as const;
+export type DecorAnchor = (typeof DECOR_ANCHORS)[number];
+
+/**
+ * One piece of generated mood artwork.
+ *
+ * A printed leaflet is not only packshots. SuperBrugsen's own p01 runs a
+ * plate of smørrebrød off the top-left corner behind the pålæg offers —
+ * artwork that sells nothing and is not in any feed. That is what this
+ * is: filler with a subject, tied to an offer so it is never merely
+ * decorative wallpaper.
+ *
+ * It is DOCUMENT data, not brand data, and deliberately so. A chain's
+ * identity may not be copied into a catalogue (see `CatalogDocument`),
+ * but what this week's page depicts is exactly the sort of thing that
+ * belongs to the week rather than to the chain — and it has to survive
+ * being saved, reopened and printed on another machine.
+ *
+ * The image itself is a reference, never bytes: generation is expensive
+ * and cached on disk by prompt, so a document that embedded the PNG
+ * could not share that cache and would grow by a megabyte a page.
+ */
+export const PageDecoration = z.object({
+  id: z.string().min(1),
+  imageUrl: ImageRef,
+  /**
+   * What it depicts, in the feed's own language — "en håndfuld mandler".
+   * Kept so a person can see WHY this image is on the page, and so a
+   * re-run can tell "same subject, new drawing" from "new subject".
+   */
+  subject: z.string().default(''),
+  /** The offer it was derived from, when it came from one. */
+  offerId: z.string().nullable().default(null),
+  anchor: z.enum(DECOR_ANCHORS),
+  /**
+   * Share of the PAGE's width, so the artwork scales with the sheet the
+   * same way everything else does — a thumbnail and A4 are one design.
+   */
+  scale: z.number().min(0.05).max(0.6).default(0.26),
+  /**
+   * A few degrees, because a pasted-on element is the one thing on this
+   * page that may sit off-square — unlike the price mark, which the
+   * chains print level. See the note on `.price`.
+   */
+  rotate: z.number().min(-30).max(30).default(0),
+  /** Held back behind the offers when it would otherwise compete. */
+  opacity: z.number().min(0.05).max(1).default(1),
+});
+export type PageDecoration = z.infer<typeof PageDecoration>;
 
 /**
  * The boxes a tile is made of.
@@ -210,6 +263,14 @@ export const CatalogPage = z.object({
    * page rebuilt from a teal spread comes back sand.
    */
   ground: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
+  /**
+   * Generated mood artwork, drawn behind the offers.
+   *
+   * Capped at three because this is seasoning: a page that is mostly
+   * filler has stopped being a leaflet. Defaulted to empty, so every
+   * catalogue saved before this existed still parses.
+   */
+  decorations: z.array(PageDecoration).max(3).default([]),
 });
 export type CatalogPage = z.infer<typeof CatalogPage>;
 

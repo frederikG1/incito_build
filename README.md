@@ -15,7 +15,13 @@ Rå feed ind, trykklar PDF ud. Fire trin, i den rækkefølge:
         │         @incitio/brands
    4. RENDERING   @incitio/renderer   React → HTML/CSS
                   @incitio/pdf        Chromium → PDF
+
+   (5. STEMNING)  @incitio/decor      Gemini: motiv pr. side, genereret
+                                      billede, baggrund skåret fra
 ```
+
+Trin 5 er valgfrit og kører *efter* de andre, på et færdigt dokument —
+se [Stemningsbilleder](#stemningsbilleder).
 
 Ingen billedgenkendelse. Layout er deterministisk: modellen bestemmer
 *hvad* der står sammen, skabelonen bestemmer *hvor* det står, og
@@ -27,6 +33,7 @@ kan diffes og kan rettes i hånden.
 ```bash
 npm install
 cp .env.example .env      # læg din ANTHROPIC_API_KEY i den
+                          # GEMINI_API_KEY kun til `npm run decorate`
 ```
 
 Byg en avis fra kommandolinjen:
@@ -280,6 +287,7 @@ Gør det samme for en ny kæde.
 | `@incitio/brands` | Kæderegistret: skabeloner, tokens, feed-mapping, isolation |
 | `@incitio/compose` | Udvælgelse, deterministisk plan, plan → dokument |
 | `@incitio/curator` | Claude-kurateringen, med kategorisortering som fallback |
+| `@incitio/decor` | Gemini: motivvalg, billedgenerering, baggrundsudklip, cache |
 | `@incitio/match` | Genskab en trykt side: rasterisering, målt bund, vision-casting |
 | `@incitio/renderer` | React-komponenter + stylesheet |
 | `@incitio/pdf` | HTML-dokument, PDF og PNG-korrektur via Playwright |
@@ -287,14 +295,54 @@ Gør det samme for en ny kæde.
 | `@incitio/server` | Hono-API, SQLite, kæde-scoping |
 | `apps/studio` | Editoren |
 
+## Stemningsbilleder
+
+En trykt avis er ikke kun packshots. SuperBrugsens egen forside lader et
+fad smørrebrød løbe ud af øverste venstre hjørne bag pålægstilbuddene —
+billeder der ikke sælger noget og ikke findes i noget feed.
+
+`npm run decorate` laver dem. Den kører på et **færdigbygget** katalog og
+rører ikke en eneste placering:
+
+```bash
+npm run decorate -- .data/out/superbrugsen-baseline.json --dry
+npm run decorate -- .data/out/superbrugsen-baseline.json
+npm run render   -- .data/out/superbrugsen-baseline.json
+```
+
+Trinnet er to modelkald af meget forskellig pris:
+
+1. **Ét tekstkald for hele bogen**, der vælger motiv pr. side — og lige
+   så ofte vælger *ingenting*. Det er den halvdel der bærer: den største
+   vare på SuperBrugsens p05 er Lotus toiletpapir, og et foto af
+   toiletpapir er ikke stemning, det er det modsatte. Rengøring, papir,
+   batterier og dyrefoder får intet. `--dry` viser valgene og genererer
+   ikke noget — kør den først.
+2. **Ét billedkald pr. side der overlevede**, minus alt der allerede
+   ligger i cachen.
+
+Baggrunden skæres fra i Chromium med floodfill fra kanten — ikke "hvid
+bliver gennemsigtig", for det hvide i et halveret æg, glansen på en
+mandel og melet på et rundstykke skal blive. Motivet lander i
+`data/decor/`, navngivet efter sin prompt, så en genkørsel er et
+`stat()` og ikke en regning. `--offline` bruger kun cachen.
+
+> **Billedgenerering kræver fakturering hos Google.** En nøgle på gratis
+> niveau får `limit: 0` og en 429 på *alle* billedmodeller — det ligner
+> en rate limit, men er et abonnement. Tekstkaldet i trin 1 virker uden.
+> `--dry` er derfor brugbar med det samme; resten kræver fakturering
+> slået til på Google-projektet.
+
 ## Kommandoer
 
 ```bash
-npm test                  # 157 tests
+npm test                  # 188 tests
 npm run typecheck
 npm run build:catalogue   # feed → JSON + HTML + PDF
                           #   --feed <fil>  --offers N  --pages N  --source <id>
 npm run render            # gen-render et bygget katalog
+npm run decorate          # læg genererede stemningsbilleder på siderne
+                          #   --dry  --offline  --brief "…"  --image-model <id>
 npm run match             # genskab én trykt side med ugens varer
                           #   --ref <billede|pdf>  --page N  --feed <fil>  --note "…"
 npm run refs              # hent designreferencer

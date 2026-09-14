@@ -30,5 +30,22 @@ export function withAssetBase(document: CatalogDocument, base: string): CatalogD
     })),
   });
 
-  return { ...document, offers: document.offers.map(rewrite) };
+  /*
+   * Decorations carry the same root-relative form and break the same
+   * way — `/decor/ab12cd.png` under `file://` is the filesystem root.
+   * They are on the page, not on an offer, so `rewrite` above never
+   * sees them.
+   */
+  return {
+    ...document,
+    offers: document.offers.map(rewrite),
+    pages: document.pages.map((page) => (
+      page.decorations.length === 0
+        ? page
+        : {
+          ...page,
+          decorations: page.decorations.map((d) => ({ ...d, imageUrl: resolve(d.imageUrl) })),
+        }
+    )),
+  };
 }

@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 data/image-cache/
+# Generated mood artwork — a cache addressed by prompt, rebuilt on demand
+# by `npm run decorate`. Regenerable, and some of it is megabytes.
+data/decor/
 *.db
 *.db-journal
 *.db-wal

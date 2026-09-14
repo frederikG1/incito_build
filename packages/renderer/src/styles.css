@@ -34,9 +34,11 @@
  * every chain here printed in the same typeface until these arrived,
  * which is the single loudest way a generated page announces itself.
  *
- * Variable, weights 400–900, latin subset — see `fonts/README.md` for
- * what each one was matched against and why it is a stand-in rather
- * than the chain's own licensed face.
+ * Latin subset, weights 400–900 — see `fonts/README.md` for what each
+ * one was matched against. Three of them are variable faces standing in
+ * for a chain's licensed type; SuperBrugsen's COOP is that licensed
+ * type, in two static weights, and is the one to copy the approach of
+ * when a chain hands over its own font.
  *
  * No `font-display`. The default blocks until the face is ready, which
  * is what a print renderer wants: swapping mid-render would print a
@@ -51,10 +53,39 @@
   font-style: normal;
 }
 
+/*
+ * COOP — the real thing, and the only face here that is.
+ *
+ * Coop Danmark's own corporate typeface (Elias Stenalt Werner / IDna
+ * Group, 2018), supplied rather than matched. It replaced Nunito Sans,
+ * which was a stand-in chosen by eye: set at the same size against the
+ * week-37 book, this one breaks "613-736 g. Kg-pris maks. 32,63." on
+ * the same word at the same width, which a look-alike does not do.
+ *
+ * TWO STATIC WEIGHTS, not a variable axis — 400 and 700 are all Coop
+ * ships. The ranges below are therefore a partition, not a claim: the
+ * stylesheet asks for 500 (a subtitle), 800 (headings, `.price__before`)
+ * and 900 (`.price`), and every one of those has to land on a face that
+ * exists. Declaring the bold as `700 900` is what makes 800 and 900
+ * resolve to it outright rather than by Chromium's nearest-match, and
+ * stops the renderer smearing a synthetic bold over an already-bold
+ * drawing — which is what a price mark set at 900 would otherwise get.
+ *
+ * Licensed, not open. See `fonts/README.md`; this file is inlined into
+ * a print run only for the chains that name it — see
+ * `pdf/src/html.ts`.
+ */
 @font-face {
-  font-family: 'Nunito Sans';
-  src: url(./fonts/nunitosans.woff2) format('woff2');
-  font-weight: 400 900;
+  font-family: 'COOP';
+  src: url(./fonts/coop-400.woff2) format('woff2');
+  font-weight: 400 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'COOP';
+  src: url(./fonts/coop-700.woff2) format('woff2');
+  font-weight: 700 900;
   font-style: normal;
 }
 
@@ -193,12 +224,72 @@
   opacity: 0.75;
 }
 
+/* ----------------------------------------------------------- decoration
+ *
+ * Generated mood artwork — see `@incitio/decor` and `PageDecoration`.
+ *
+ * Paint on the wall behind the page. It is `position: absolute` against
+ * the page box and `pointer-events: none`, which together mean it can
+ * neither push a grid track nor take a click from the editor: adding one
+ * to a page changes where nothing else sits.
+ *
+ * NO `z-index`, on purpose. The tile layers start at 20 and the price
+ * mark at 30 (see the note on `.slot`), and anything declared here would
+ * have to be lower than both to be behind them — at which point it is
+ * simpler to have no stacking position at all and let source order do
+ * it. PageView renders these before the masthead for exactly that
+ * reason, and `overlay.test.ts` keeps the layers above honest.
+ *
+ * Sized as a share of the PAGE's width rather than its own pixels, so a
+ * motif is the same fraction of the sheet in a 200px thumbnail and at
+ * A4 — the rule the whole stylesheet is built on.
+ */
+.page__decor {
+  position: absolute;
+  width: calc(var(--decor-scale, 0.26) * 100cqw);
+  height: auto;
+  opacity: var(--decor-opacity, 1);
+  transform: rotate(var(--decor-rotate, 0deg));
+  pointer-events: none;
+  /*
+   * Hangs off the edge it is anchored to, which is what separates a
+   * decoration from a fifth product: a leaflet's atmosphere runs out of
+   * the page, it does not sit politely inside a margin.
+   *
+   * SPENT IN `cqw`, NOT PER CENT — the same trap that cost this
+   * stylesheet two broken renders on padding. A percentage inset
+   * resolves against the CONTAINING BLOCK, so `bottom: -14%` is 14% of
+   * the page's HEIGHT, not of the artwork: at A4 that is −325px on an
+   * element 310px tall, and the page clips, so the decoration rendered
+   * as nothing at all with the markup, the file and the rewritten URL
+   * all perfectly correct.
+   *
+   * The artwork is `--decor-scale × 100cqw` wide, so 14% of its own
+   * width is `--decor-scale × 14cqw`. Both insets are then a share of
+   * the artwork, the bleed is the same on the vertical edge as on the
+   * horizontal one, and it holds from thumbnail to A4.
+   */
+  --decor-bleed: calc(var(--decor-scale, 0.26) * -14cqw);
+}
+
+.page__decor--top-left { top: var(--decor-bleed); left: var(--decor-bleed); }
+.page__decor--top-right { top: var(--decor-bleed); right: var(--decor-bleed); }
+.page__decor--bottom-left { bottom: var(--decor-bleed); left: var(--decor-bleed); }
+.page__decor--bottom-right { bottom: var(--decor-bleed); right: var(--decor-bleed); }
+
 .page__grid {
   flex: 1 1 auto;
   display: grid;
   gap: 1.4cqh;
   padding: 2.5cqh 4cqw;
   min-height: 0;
+  /*
+   * The grid establishes a stacking position of its own so the artwork
+   * behind it stays behind it. Without this a decoration anchored to a
+   * bottom corner painted over the offers there — source order alone
+   * does not survive the tile layers' own `z-index`.
+   */
+  position: relative;
 }
 
 .page__foot {
@@ -889,13 +980,15 @@
  *
  * Spent in `cap` rather than `em` because that is the unit the
  * measurement is in, and because the chains do not share a typeface:
- * Rubik's cap height and Nunito Sans's differ, and an `em` value tuned
- * on one prints a hair wrong on the other. `cap` resolves against this
- * element's own font, so the mark stays the same fraction of the
- * numerals beside it whatever the chain is set in.
+ * Rubik's cap height and COOP's differ, and an `em` value tuned on one
+ * prints a hair wrong on the other. COOP alone settles it: its regular
+ * caps stand at 0.700 em and its bold at 0.676, so even inside a single
+ * family an `em` constant would drift between a tile's name and the
+ * price beside it. `cap` resolves against this element's own font, so
+ * the mark stays the same fraction of the numerals beside it whatever
+ * the chain is set in.
  */
 .price__kr {
-  position: relative;
   /*
    * Deliberately the numerals' own size, even though nothing here is
    * set at it: `cap` resolves against the element's own font, so
@@ -924,20 +1017,34 @@
  * wide where these faces' hyphens are nearer 0.45, and it carries the
  * numerals' stroke weight rather than the punctuation's.
  *
- * `bottom` is measured from this element's own bottom edge. That edge
- * is NOT the baseline: `.price__kr` is a flex item of `.price__figure`,
- * so it is blockified and its box is a line box — which `.price__figure`
- * sets to `line-height: 0.82`. The constant therefore folds together the
- * printed 0.26 cap above the baseline and that line box's own overhang,
- * and it is tuned in Chromium rather than derived. Change the figure's
- * line-height and this moves with it.
+ * ANCHORED TO THE BASELINE, which is the whole trick.
+ *
+ * This was an absolutely positioned box at `bottom: 0.41cap`, measured
+ * from `.price__kr`'s own bottom edge — and that edge is not the
+ * baseline. `.price__kr` is a flex item, so it is blockified and its box
+ * is a line box whose overhang below the baseline depends on the
+ * FONT's descent. One constant therefore could not be right for four
+ * faces, and measurement said it was right for none of them: against
+ * the printed 0.26 cap the bar sat at 0.288 in Nunito Sans, 0.296 in
+ * COOP, 0.307 in Rubik and 0.344 in Inter — nemlig's mark was out by a
+ * third of the offset it was supposed to have.
+ *
+ * An inline-block aligned `baseline` has its bottom MARGIN edge on the
+ * baseline, so `margin-bottom` lifts the bar off the baseline directly
+ * and the line box stops being part of the sum. The same declaration
+ * now measures 0.254–0.257 cap across all four faces, which is the
+ * scan's 0.26 to within a rounding of the cap height itself.
+ *
+ * `margin-right` cancels the advance so the comma sets at the same x
+ * the bar starts at — what `left: 0` used to do.
  */
 .price__kr > i {
-  position: absolute;
-  left: 0;
-  bottom: 0.41cap;
+  display: inline-block;
+  vertical-align: baseline;
   width: 0.29cap;
   height: 0.16cap;
+  margin-bottom: 0.26cap;
+  margin-right: -0.29cap;
   background: currentColor;
   border-radius: 0.03cap;
 }

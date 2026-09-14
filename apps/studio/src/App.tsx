@@ -104,6 +104,7 @@ export function App() {
    */
   const bench = s.benched();
 
+
   return (
     <div className="app">
       <header className="bar">

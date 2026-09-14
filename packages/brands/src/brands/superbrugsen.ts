@@ -197,20 +197,25 @@ export const SUPERBRUGSEN: BrandDefinition = {
       // note on priceShape.
       priceInk: '#1a1a1a',
       /*
-       * Nunito Sans, matched to the week-37 book.
+       * COOP — the chain's own face, not a match for it.
        *
-       * Two letters decided it. SuperBrugsen's headlines carry an `a`
-       * with a curved exit stroke and a `t` cut at an angle across the
-       * ascender — of the faces tried against a zoom of "Husk at
-       * indløse dine samlemærker", only this one has both, and it is
-       * wide and round in the same way. One family at several weights,
-       * as the book prints it.
+       * This token used to name Nunito Sans, picked by eye off the
+       * week-37 book and honest about being a stand-in. Coop supplied
+       * the real thing (Elias Stenalt Werner / IDna Group, 2018), so
+       * the guessing stops here.
        *
-       * A stand-in for Coop's licensed face, not that face. See
-       * renderer/src/fonts/README.md.
+       * What proved it is the same file: set at the book's own size,
+       * COOP breaks "Lotus Comfort toiletpapir / eller Premium
+       * køkkenrulle" after `toiletpapir` and runs "613-736 g. Kg-pris
+       * maks. 32,63." to within a pixel of the printed line's width.
+       * A look-alike matches the letterforms; only the face itself
+       * matches the line breaks.
+       *
+       * Two static weights — see the `@font-face` note in styles.css
+       * for why 800 and 900 still land somewhere real.
        */
-      headingFont: "'Nunito Sans', system-ui, sans-serif",
-      bodyFont: "'Nunito Sans', system-ui, sans-serif",
+      headingFont: "'COOP', system-ui, sans-serif",
+      bodyFont: "'COOP', system-ui, sans-serif",
       /*
        * The second half of a section heading, and the one thing a
        * single family could not express.
@@ -227,7 +232,7 @@ export const SUPERBRUGSEN: BrandDefinition = {
        * A stand-in for Coop's licensed script, not that script. See
        * renderer/src/fonts/README.md.
        */
-      scriptFont: "'Shantell Sans', 'Nunito Sans', system-ui, sans-serif",
+      scriptFont: "'Shantell Sans', 'COOP', system-ui, sans-serif",
     },
     templates: TEMPLATES,
   }),

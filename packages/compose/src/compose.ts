@@ -131,6 +131,9 @@ export function composeCatalog(
       // only exists for a page rebuilt from a reference — see
       // `CatalogPage.ground`.
       ground: null,
+      // Composition lays out offers; mood artwork is a later pass over
+      // a finished page — see `@incitio/decor`.
+      decorations: [],
     });
   });
 
