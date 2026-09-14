@@ -1,4 +1,4 @@
-import type { CatalogDocument } from '@incitio/schema';
+import { Brand, type CatalogDocument, type PageTemplate } from '@incitio/schema';
 import { ingestCsv, ingestJson, type IngestIssue, type LabelDictionary } from '@incitio/ingest';
 import {
   findSource, getBrand, resolveSource,
@@ -42,6 +42,19 @@ export interface BuildOptions {
    * pages". Omit and the budget decides.
    */
   offerCount?: number;
+  /**
+   * Extra layouts for this chain, on top of the ones its brand file
+   * declares — see `npm run derive:templates`, which reads them off the
+   * chain's own published pages.
+   *
+   * Passed in rather than loaded here because the pipeline is a library
+   * and does not own a filesystem. NOT exposed by the HTTP API: the
+   * brand is still resolved from `brandId`, so tenant isolation holds
+   * for every caller, but a route that forwarded this from a request
+   * body would hand one tenant a way to inject another's shapes. The
+   * CLI is the only caller.
+   */
+  extraTemplates?: PageTemplate[];
 }
 
 export interface BuildResult extends ComposeResult {
@@ -76,7 +89,18 @@ export async function buildCatalogue(
   options: BuildOptions = {},
 ): Promise<BuildResult> {
   const definition: BrandDefinition = getBrand(brandId);
-  const { brand } = definition;
+  /*
+   * Derived layouts go FIRST so a draw at a given capacity can actually
+   * reach them; the brand's own set stays behind them, because this
+   * widens the vocabulary rather than replacing it. Re-parsed through
+   * `Brand` so a caller cannot smuggle in anything the schema rejects.
+   */
+  const brand = options.extraTemplates?.length
+    ? Brand.parse({
+      ...definition.brand,
+      templates: [...options.extraTemplates, ...definition.brand.templates],
+    })
+    : definition.brand;
 
   /*
    * Which reader runs. Naming one skips detection — useful when a

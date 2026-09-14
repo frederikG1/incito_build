@@ -1,6 +1,6 @@
-import type { Brand, Offer } from '@incitio/schema';
+import type { Brand, Offer, PageTemplate } from '@incitio/schema';
 import { brandCapacities, templatesForCount } from '@incitio/brands';
-import { compareByImportance } from './importance.js';
+import { compareByImportance, leadContrast, LEAD_CONTRAST_THRESHOLD } from './importance.js';
 
 /**
  * The contract between curation (step 2) and the template engine (step 3).
@@ -117,6 +117,11 @@ export function seededRandom(seed: string): () => number {
   };
 }
 
+/** Whether a layout prints one of its offers larger than the others. */
+function hasLeadSlot(template: PageTemplate): boolean {
+  return template.slots.some((s) => s.role === 'hero' || s.role === 'feature');
+}
+
 /**
  * Pick one of the brand's templates for a page of `count` offers,
  * avoiding whatever the last few pages used.
@@ -132,6 +137,13 @@ export function chooseTemplate(
   count: number,
   recent: string[],
   random: () => number,
+  /**
+   * How far this page's strongest offer stands above the rest — see
+   * `leadContrast`. Omit and the choice is made on rotation alone,
+   * which is the old behaviour and what a caller with no offers in
+   * hand (the editor's template menu) wants.
+   */
+  contrast?: number,
 ): string {
   const exact = templatesForCount(brand, count);
   const roomy = brand.templates
@@ -139,8 +151,27 @@ export function chooseTemplate(
     .sort((a, b) => a.slots.length - b.slots.length);
   const pool = exact.length > 0 ? exact : roomy.length > 0 ? roomy : brand.templates;
 
-  const fresh = pool.filter((t) => !recent.includes(t.id));
-  const eligible = fresh.length > 0 ? fresh : pool;
+  /*
+   * Shape follows the offers.
+   *
+   * Rotation alone was picking `grid-4`, `grid-6` and `grid-8` for most
+   * pages — layouts whose slots are all the same role — so every price
+   * on a page came out the same size and the book had no hierarchy to
+   * read. The templates that carry a hero existed the whole time and
+   * were simply never reached, because nothing in the choice knew
+   * whether the page had anything worth leading with.
+   *
+   * Narrowed rather than forced: if the chain owns no layout of the
+   * right kind at this count, the full pool still answers. A missing
+   * hero template must not cost the page its offers.
+   */
+  const wanted = contrast === undefined
+    ? pool
+    : pool.filter((t) => hasLeadSlot(t) === (contrast >= LEAD_CONTRAST_THRESHOLD));
+  const shaped = wanted.length > 0 ? wanted : pool;
+
+  const fresh = shaped.filter((t) => !recent.includes(t.id));
+  const eligible = fresh.length > 0 ? fresh : shaped;
   return eligible[Math.floor(random() * eligible.length)]!.id;
 }
 
@@ -227,7 +258,7 @@ export function planByCategory(
    * way a real leaflet does, while staying seeded so two runs of the
    * same catalogue still match.
    */
-  const pageSize = (limit: number) => {
+  const pageSize = (limit: number, contrast: number) => {
     const fits = capacities.filter((c) => c <= limit);
     if (fits.length === 0) return smallest;
     if (evenPages) {
@@ -236,7 +267,21 @@ export function planByCategory(
       const wanted = Math.ceil(offers.length / maxPages);
       return [...fits].sort((a, b) => Math.abs(a - wanted) - Math.abs(b - wanted))[0]!;
     }
-    const from = fits.slice(Math.floor(fits.length / 2));
+    /*
+     * A page led by a standout is given FEWER offers, not more.
+     *
+     * Always drawing from the larger half was the old rule, and it is
+     * why the book had no quiet pages: every layout came out six- or
+     * eight-up, which leaves a hero nowhere to be a hero. The printed
+     * book does the opposite — its strongest offer gets a page with
+     * one or two others on it, and the ordinary items are what fill an
+     * eight-up grid. Splitting the range by contrast reproduces that
+     * from the feed's own weighting.
+     */
+    const half = Math.floor(fits.length / 2);
+    const from = contrast >= LEAD_CONTRAST_THRESHOLD
+      ? fits.slice(0, Math.max(1, half))
+      : fits.slice(half);
     return from[Math.floor(random() * from.length)]!;
   };
 
@@ -267,8 +312,26 @@ export function planByCategory(
      * count the reverse holds — a category that can fill a page gets
      * one to itself, and the heading stays a true claim.
      */
+    /*
+     * The candidates this page will be drawn from, in the order it
+     * would take them. Their spread decides both how many offers the
+     * page gets and which layout holds them, so it is measured before
+     * either is fixed — a page cannot be sized against a hierarchy it
+     * has not looked at yet.
+     *
+     * Capped at the largest layout the chain owns: reading the whole
+     * remaining tail would let an offer that lands three pages later
+     * decide this page's shape.
+     */
     const pure = !evenPages && left >= smallest;
-    const target = pure ? pageSize(left) : pageSize(remaining);
+    const candidates = pure
+      ? section.offers.slice(within, within + maxOffersPerPage(brand))
+      : sections.slice(sectionIndex).flatMap((s, i) => (
+        i === 0 ? s.offers.slice(within) : s.offers
+      )).slice(0, maxOffersPerPage(brand));
+    const contrast = leadContrast(candidates);
+
+    const target = pure ? pageSize(left, contrast) : pageSize(remaining, contrast);
 
     const taken: string[] = [];
     const titles = new Map<string, number>();
@@ -295,13 +358,13 @@ export function planByCategory(
 
     if (taken.length === 0) break;
 
-    const templateId = chooseTemplate(brand, taken.length, recent, random);
+    const templateId = chooseTemplate(brand, taken.length, recent, random, contrast);
     recent.push(templateId);
     if (recent.length > RECENT_TEMPLATE_MEMORY) recent.shift();
 
     const [lead] = [...titles.entries()].sort((a, b) => b[1] - a[1])[0]!;
     pages.push({
-      title: titleCase(lead),
+      title: sectionHeading(lead),
       // Only ever set when a category genuinely spilled, and the title
       // is always the majority — so "m.m." means "and a few others",
       // which is true, rather than papering over an arbitrary mix.
@@ -315,10 +378,26 @@ export function planByCategory(
   return { pages, dropped: offers.filter((o) => !placed.has(o.id)).map((o) => o.id) };
 }
 
-function titleCase(value: string): string {
-  return value
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+/**
+ * A category name as a Danish section heading.
+ *
+ * Danish capitalises the first word of a heading and nothing else, so
+ * the feed's own string is very nearly right already and the job is to
+ * leave it alone. The previous version title-cased every word and
+ * printed "Vin Og Spiritus" and "Snacks Og Slik" across the top of the
+ * page — English house style applied to Danish copy, and the single
+ * most conspicuous error in the rendered book.
+ *
+ * The one thing worth correcting is a feed that shouts: several export
+ * these as "VIN OG SPIRITUS", and setting that as-is under a heading
+ * rule that is already uppercase for some brands loses the split
+ * between the two faces. Mixed case is left exactly as it arrived,
+ * because a lowercase word after the first may well be a brand name.
+ */
+function sectionHeading(value: string): string {
+  const trimmed = value.trim().replace(/[\s_-]+/g, ' ');
+  if (!trimmed) return trimmed;
+  const shouting = trimmed === trimmed.toUpperCase() && /\p{Lu}/u.test(trimmed);
+  const base = shouting ? trimmed.toLowerCase() : trimmed;
+  return base.charAt(0).toUpperCase() + base.slice(1);
 }

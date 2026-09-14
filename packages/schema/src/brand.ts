@@ -19,6 +19,21 @@ export const BrandTokens = z.object({
   priceInk: Hex,
   headingFont: z.string().min(1),
   bodyFont: z.string().min(1),
+  /**
+   * A second face for the trailing half of a section heading.
+   *
+   * Not decoration. SuperBrugsen sets a heading in two faces on one
+   * line — "Krone" in the heavy grotesk, "marked" in a red marker
+   * script — and a whole-page theme the same way, with the grotesk
+   * carrying the noun and the script carrying the qualifier under it.
+   * One face cannot express that, which is why it is a token rather
+   * than a CSS detail.
+   *
+   * Null is the honest default and the Netto/nemlig behaviour: a chain
+   * that prints one face gets `--script-font` resolving to its heading
+   * font, so the masthead is free to name it unconditionally.
+   */
+  scriptFont: z.string().min(1).nullable().default(null),
 });
 export type BrandTokens = z.infer<typeof BrandTokens>;
 
@@ -111,5 +126,8 @@ export function brandCssVars(brand: Brand, pageIndex = 0): Record<string, string
     '--price-ink': brand.tokens.priceInk,
     '--heading-font': brand.tokens.headingFont,
     '--body-font': brand.tokens.bodyFont,
+    // Falls back to the heading face so the masthead can spend
+    // `--script-font` without asking whether this chain has one.
+    '--script-font': brand.tokens.scriptFont ?? brand.tokens.headingFont,
   };
 }

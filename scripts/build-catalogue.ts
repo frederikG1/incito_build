@@ -13,7 +13,8 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
-import { defaultSource, getBrand, listBrands } from '@incitio/brands';
+import { defaultSource, findSource, getBrand, listBrands } from '@incitio/brands';
+import { Brand, PageTemplate } from '@incitio/schema';
 import { parseLabelDictionary, EMPTY_LABEL_DICTIONARY } from '@incitio/ingest';
 import { buildCatalogue } from '@incitio/pipeline';
 import { renderCataloguePdf, renderCataloguePngs, renderCatalogueHtml } from '@incitio/pdf';
@@ -34,7 +35,43 @@ try {
   console.error(`ukendt kæde "${brandId}". Kendte: ${listBrands().map((b) => b.id).join(', ')}`);
   process.exit(1);
 }
-const { brand } = definition;
+/*
+ * Extra layouts read off the chain's own published pages, from
+ * `npm run derive:templates`.
+ *
+ * Merged onto the brand here rather than baked into the brand file,
+ * because that is the whole claim being tested: a template is DATA, so
+ * widening a chain's vocabulary should touch nothing downstream.
+ * Assignment, rendering, the editor and the PDF never learn where a
+ * template came from — they see one list, and a derived layout is
+ * validated by the same `PageTemplate.parse` the hand-drawn ones are.
+ */
+const templateArg = flag('templates');
+const brand = definition.brand;
+let derivedTemplates: PageTemplate[] = [];
+if (templateArg) {
+  const file = JSON.parse(
+    readFileSync(resolve(process.cwd(), templateArg.replace(/^~/, process.env['HOME'] ?? '~')), 'utf8'),
+  ) as { brandId?: string; templates?: unknown[] };
+  if (file.brandId && file.brandId !== brandId) {
+    console.error(`skabelonfilen tilhører "${file.brandId}", ikke "${brandId}"`);
+    process.exit(1);
+  }
+  derivedTemplates = (file.templates ?? []).map((t) => PageTemplate.parse(t));
+}
+
+/*
+ * The brand the RENDERER sees.
+ *
+ * The pipeline merges the derived layouts itself, but the render calls
+ * below take a brand of their own and resolve each page's `templateId`
+ * against it — so handing them the unmerged brand would build a
+ * catalogue fine and then fail to draw exactly the pages this flag
+ * exists to produce.
+ */
+const renderBrand = derivedTemplates.length > 0
+  ? Brand.parse({ ...brand, templates: [...derivedTemplates, ...brand.templates] })
+  : brand;
 
 const pages = Number(flag('pages', '6'));
 const offers = flag('offers') ? Number(flag('offers')) : undefined;
@@ -63,7 +100,12 @@ const labels = (() => {
 })();
 
 console.log(`kæde       ${brand.name} (${brand.id})`);
-console.log(`skabeloner ${brand.templates.length} egne layouts`);
+console.log(
+  `skabeloner ${brand.templates.length} egne layouts`
+  + (derivedTemplates.length > 0
+    ? ` + ${derivedTemplates.length} afledt fra ${templateArg}`
+    : ''),
+);
 console.log(`kilder     ${definition.sources.map((s) => s.id).join(', ')}`);
 
 /*
@@ -71,9 +113,25 @@ console.log(`kilder     ${definition.sources.map((s) => s.id).join(', ')}`);
  * Reading an arbitrary path is the point: the whole exercise is that a
  * store hands over a file, and it will not be sitting in the repo.
  */
+/*
+ * `--source` names one of the chain's own sample files, and it used to
+ * name only the READER: the path stayed the default source's, so
+ * `--source coop-export` handed the Tjek file to the Coop reader and
+ * printed "0 tilbud, 0 afviste rækker" — a signature mismatch, which
+ * looks exactly like an empty feed. Each source carries its own path;
+ * selecting one now selects its file too.
+ */
+const namedSource = sourceId ? findSource(definition, sourceId) : undefined;
+if (sourceId && !namedSource) {
+  console.error(
+    `ukendt kilde "${sourceId}". Kendte: ${definition.sources.map((s) => s.id).join(', ')}`,
+  );
+  process.exit(1);
+}
+
 const feedText = feedArg
   ? readFileSync(resolve(process.cwd(), feedArg.replace(/^~/, process.env['HOME'] ?? '~')), 'utf8')
-  : read(`data${defaultSource(definition).path}`);
+  : read(`data${(namedSource ?? defaultSource(definition)).path}`);
 
 const started = Date.now();
 const result = await buildCatalogue(brandId, feedText, {
@@ -83,6 +141,7 @@ const result = await buildCatalogue(brandId, feedText, {
   labels,
   ...(offers !== undefined ? { offerCount: offers } : {}),
   ...(sourceId ? { sourceId } : {}),
+  ...(derivedTemplates.length > 0 ? { extraTemplates: derivedTemplates } : {}),
   ...(flag('brief') ? { brief: flag('brief') } : {}),
 });
 const elapsed = ((Date.now() - started) / 1000).toFixed(1);
@@ -125,14 +184,14 @@ writeFileSync(`${stem}.json`, JSON.stringify(result.document, null, 2));
 // The standalone proof lives outside the asset root, so it needs a base
 // for the demo feed's root-relative image paths. Hosted feeds carry
 // absolute URLs and are unaffected by it.
-writeFileSync(`${stem}.html`, renderCatalogueHtml(result.document, brand, {
+writeFileSync(`${stem}.html`, renderCatalogueHtml(result.document, renderBrand, {
   assetBase: pathToFileURL(`${assetDir}/`).href,
 }));
 console.log(`\nskrev      ${stem}.json`);
 console.log(`skrev      ${stem}.html`);
 
 if (has('png')) {
-  const shots = await renderCataloguePngs(result.document, brand, { assetDir });
+  const shots = await renderCataloguePngs(result.document, renderBrand, { assetDir });
   shots.forEach((shot, i) => {
     writeFileSync(`${stem}-p${String(i + 1).padStart(2, '0')}.png`, shot);
   });
@@ -141,7 +200,7 @@ if (has('png')) {
 
 if (!has('no-pdf')) {
   process.stdout.write('printer    …');
-  const pdf = await renderCataloguePdf(result.document, brand, { assetDir });
+  const pdf = await renderCataloguePdf(result.document, renderBrand, { assetDir });
   writeFileSync(`${stem}.pdf`, pdf);
   console.log(`\rprintede   ${stem}.pdf  (${(pdf.length / 1024).toFixed(0)} KB)`);
 }

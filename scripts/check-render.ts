@@ -17,7 +17,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeFileSync, rmSync } from 'node:fs';
 import { chromium } from 'playwright';
-import { CatalogDocument } from '@incitio/schema';
+import { Brand, CatalogDocument, PageTemplate } from '@incitio/schema';
 import { getBrand } from '@incitio/brands';
 import { renderCatalogueHtml } from '@incitio/pdf';
 
@@ -31,7 +31,26 @@ if (!path) {
 const document = CatalogDocument.parse(
   JSON.parse(readFileSync(resolve(process.cwd(), path), 'utf8')),
 );
-const { brand } = getBrand(document.brandId);
+/*
+ * Derived layouts, when the catalogue was built with them.
+ *
+ * Without this the checker resolves the brand from its id alone and
+ * silently skips every page whose template it cannot find — so the
+ * layouts most worth measuring, the ones nobody drew by hand, would
+ * report clean because they never rendered at all.
+ */
+const templateArg = process.argv.slice(2).find((a) => a.startsWith('--templates='))?.slice(12);
+const base = getBrand(document.brandId).brand;
+const brand = templateArg
+  ? Brand.parse({
+    ...base,
+    templates: [
+      ...(JSON.parse(readFileSync(resolve(process.cwd(), templateArg), 'utf8')).templates ?? [])
+        .map((t: unknown) => PageTemplate.parse(t)),
+      ...base.templates,
+    ],
+  })
+  : base;
 const assetDir = fileURLToPath(new URL('data', ROOT));
 
 const html = renderCatalogueHtml(document, brand, {
@@ -43,9 +62,41 @@ writeFileSync(scratch, html);
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 900, height: 1300 } });
 await page.goto(pathToFileURL(scratch).href, { waitUntil: 'load' });
+/*
+ * Make the artwork actually load before measuring it.
+ *
+ * Tiles carry `loading="lazy"`, which is right for the editor and
+ * wrong here: a catalogue is far taller than any viewport, so on a
+ * 21-page book only 72 of 220 images had ever entered one. The rest
+ * stayed at `complete === false` forever, and the wait below timed out
+ * against a condition that could never become true.
+ *
+ * That is the worst possible failure mode for this script. An image
+ * with no natural dimensions cannot be reported as cut off, so a run
+ * measuring two thirds of the book came back with FEWER findings and
+ * read as the cleaner result. Raising the timeout does nothing —
+ * measured, it stays at 72 — because nothing was in flight.
+ *
+ * Dropping the lazy flag is enough — Chromium starts the fetch as soon
+ * as the attribute changes, with no scrolling needed. This is exactly
+ * what `settleImages` in @incitio/pdf does before printing, which is
+ * why the PDF and the PNG proofs were right the whole time and only
+ * the checker was reading a partial book. Kept in step with it
+ * deliberately: a checker that loads the page differently from the
+ * printer is measuring something nobody ships.
+ *
+ * The timeout is still swallowed afterwards — a checker that refuses
+ * to report anything because one image is slow is useless — and the
+ * count printed below says how much of the book the findings cover.
+ */
+await page.evaluate(() => {
+  for (const img of window.document.images) img.loading = 'eager';
+});
 await page
   .waitForFunction(() => [...window.document.images].every((i) => i.complete), undefined, {
-    timeout: 30_000,
+    // Scaled to the book: the artwork comes from the chain's image
+    // service over the network, not from disk.
+    timeout: Math.min(180_000, 20_000 + document.pages.length * 6_000),
   })
   .catch(() => undefined);
 

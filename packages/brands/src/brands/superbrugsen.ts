@@ -75,6 +75,35 @@ const TEMPLATES = [
     d: 'standard', e: 'standard', f: 'standard',
   }),
 
+  /*
+   * A second flat six-up, because one was not enough.
+   *
+   * Template choice now follows the offers: a page whose offers are all
+   * of a weight gets a layout with no hero, and `sb/grid-6` was the
+   * only one SuperBrugsen owned. Three consecutive level categories
+   * therefore printed the identical page three times — the exact
+   * failure the rotation memory exists to prevent, reached from the
+   * other side. Same count and the same flat roles, a different shape:
+   * three to a row rather than two, so the rhythm changes without
+   * anything pretending to outrank anything.
+   *
+   * The cells are deliberately EQUAL. A first attempt varied their
+   * widths — `d d d e e f` across the lower row — and equal roles in
+   * unequal cells is the worst of both: `object-fit: contain` drew one
+   * product four times the size of its neighbour while the type stayed
+   * identical, so the page claimed a hierarchy the offers did not have.
+   * A flat layout has to be flat in its geometry too.
+   */
+  template('sb/row-6', 'Tre og tre', [
+    'a a b b c c',
+    'a a b b c c',
+    'd d e e f f',
+    'd d e e f f',
+  ], {
+    a: 'standard', b: 'standard', c: 'standard',
+    d: 'standard', e: 'standard', f: 'standard',
+  }),
+
   template('sb/lead-6', 'Hovedvare og fem mindre', [
     'hero hero hero b',
     'hero hero hero c',
@@ -182,6 +211,23 @@ export const SUPERBRUGSEN: BrandDefinition = {
        */
       headingFont: "'Nunito Sans', system-ui, sans-serif",
       bodyFont: "'Nunito Sans', system-ui, sans-serif",
+      /*
+       * The second half of a section heading, and the one thing a
+       * single family could not express.
+       *
+       * The book sets "Krone" in the grotesk and "marked" in a red
+       * marker script beside it, and puts a whole-page theme the same
+       * way — "Festival" over "Stort udvalg til din fryser". Settled
+       * against a zoom of both lines: upright rather than slanted, one
+       * stroke weight throughout, rounded terminals, and a `g` whose
+       * descender opens rather than loops. Caveat leans and thins at
+       * the same size; Patrick Hand has the skeleton but ships no
+       * weight axis, so it cannot be both a subtitle and a headline.
+       *
+       * A stand-in for Coop's licensed script, not that script. See
+       * renderer/src/fonts/README.md.
+       */
+      scriptFont: "'Shantell Sans', 'Nunito Sans', system-ui, sans-serif",
     },
     templates: TEMPLATES,
   }),
@@ -251,7 +297,37 @@ export const SUPERBRUGSEN: BrandDefinition = {
         if (!Array.isArray(varer) || varer.length === 0) return null;
         return (varer[0] as { CategoryName?: string }).CategoryName ?? null;
       },
-      description: 'InfoTextVarebeskrivelse',
+      /*
+       * The fine print, and the chain writes it itself.
+       *
+       * `InfoText` is the whole printed line — "Dybfrost. Flere
+       * varianter. 300-370 g. Kg-pris maks. 63,33. Frit valg." — and
+       * it is present on all 160 week-36 entries. This used to read
+       * `InfoTextVarebeskrivelse`, which is only its FIRST fragment
+       * ("Dybfrost."), so the page dropped the legally required
+       * comparison price and every qualifier with it.
+       *
+       * The component fields are still there, and on 138 of the 160 an
+       * `InfoText` reconstructed from them matches exactly; on the
+       * other 22 it differs only in punctuation, and always in
+       * `InfoText`'s favour ("kl. I." rather than "kl. I"). So the
+       * assembled field is the one to trust rather than something to
+       * rebuild.
+       *
+       * `Quantity` — "1 pose.", "1 flaske." — is appended because that
+       * is where the printed page puts it: at the end of the same
+       * sentence, not on a line of its own. It is modelled separately
+       * as a piece count for the unit-price maths, which states no
+       * words and so prints none.
+       */
+      description: (row) => {
+        const line = String(row['InfoText'] ?? '').trim();
+        const unit = String(row['Quantity'] ?? '').trim();
+        if (!unit) return line || null;
+        // The feed is inconsistent about the closing full stop.
+        const closed = /[.!?]$/.test(unit) ? unit : `${unit}.`;
+        return [line, closed].filter(Boolean).join(' ');
+      },
       price: 'Price',
       prePrice: 'NormalPrice',
       savings: 'Save',
@@ -304,10 +380,18 @@ export const SUPERBRUGSEN: BrandDefinition = {
           labels.push(...resolveLabels(dictionary, logos.map((l) => String(l ?? ''))));
         }
 
-        const free = String(row['InfoTextFritvalg'] ?? '').trim();
-        if (free) labels.push({ kind: 'custom', text: free });
-        const variants = String(row['InfoTextFlerevarianter'] ?? '').trim();
-        if (variants) labels.push({ kind: 'custom', text: variants });
+        /*
+         * "Frit valg." and "Flere varianter." are NOT chips.
+         *
+         * They used to be pushed here as custom labels, and the page
+         * printed a dark rounded badge saying "Frit valg." on almost
+         * every tile — which reads as a promotional mechanic the chain
+         * is pushing, like a multibuy. It is neither. Both strings are
+         * fine print, both are already inside `InfoText`, and the
+         * printed book sets them in the small line under the headline
+         * along with the kilo price. Chipping them said something
+         * false and said it twice.
+         */
         if (Number(row['MemberPrice']) > 0) {
           labels.push({ kind: 'member', text: `Medlemspris ${row['MemberPrice']}` });
         }

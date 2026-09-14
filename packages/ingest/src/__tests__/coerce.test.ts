@@ -56,6 +56,14 @@ describe('parseQuantity', () => {
     expect(parseQuantity('3 stk.')).toEqual({ size: null, unit: 'pcs', pieceCount: 3 });
   });
 
+  it('counts packs rather than sizing them', () => {
+    // "1 pakke" is one pack, not a pack measuring 1. Read as a size it
+    // printed "1 pack" under every SuperBrugsen offer; as a count of
+    // one it formats to nothing, which is what a single pack says.
+    expect(parseQuantity('1 pakke')).toEqual({ size: null, unit: 'pack', pieceCount: 1 });
+    expect(parseQuantity('2 pk')).toEqual({ size: null, unit: 'pack', pieceCount: 2 });
+  });
+
   it('falls back to a single piece for unreadable input', () => {
     expect(parseQuantity('efter vægt')).toEqual({ size: null, unit: 'pcs', pieceCount: 1 });
   });

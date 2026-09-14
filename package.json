@@ -16,24 +16,27 @@
     "typecheck": "tsc -b packages/schema packages/ingest packages/brands packages/compose packages/curator packages/pipeline packages/pdf packages/server && tsc --noEmit -p apps/studio",
     "sample-data": "node scripts/make-sample-data.mjs",
     "refs": "node ./node_modules/.bin/vite-node scripts/fetch-references.ts",
+    "derive:templates": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/derive-templates.ts",
+    "match": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/match-page.ts",
     "build:catalogue": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/build-catalogue.ts",
     "render": "node ./node_modules/.bin/vite-node scripts/render-catalogue.ts",
     "check": "node ./node_modules/.bin/vite-node scripts/check-render.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "playwright": "^1.63.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
-    "vitest": "^3.0.5",
-    "@types/react-dom": "^18.3.5"
+    "vitest": "^3.0.5"
   },
   "allowScripts": {
     "esbuild@0.25.12": true
   },
   "dependencies": {
-    "react-dom": "^18.3.1",
-    "react": "^18.3.1"
+    "pdfjs-dist": "^6.3.289",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

@@ -1,0 +1,768 @@
+{
+  "brandId": "superbrugsen",
+  "derivedFrom": [
+    "p01.jpg",
+    "p02.jpg",
+    "p03.jpg",
+    "p04.jpg",
+    "p05.jpg",
+    "p06.jpg",
+    "p07.jpg",
+    "p08.jpg",
+    "p09.jpg",
+    "p10.jpg",
+    "p11.jpg",
+    "p12.jpg",
+    "p13.jpg",
+    "p14.jpg",
+    "p15.jpg",
+    "p16.jpg",
+    "p17.jpg",
+    "p18.jpg",
+    "p19.jpg",
+    "p20.jpg",
+    "p21.jpg",
+    "p22.jpg",
+    "p23.jpg",
+    "p24.jpg",
+    "p25.jpg",
+    "p26.jpg"
+  ],
+  "derivedAt": "2026-09-14T07:27:56.757Z",
+  "templates": [
+    {
+      "id": "superbrugsen/ref-p01",
+      "name": "Forside med storkøb og tre bundtilbud",
+      "areas": [
+        "a a a a a a",
+        "a a a a a a",
+        "b b c c d d"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "hero",
+          "bleed": 1.15
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p02",
+      "name": "Kronemarked, to-kolonne",
+      "areas": [
+        "a a",
+        "a a",
+        "b c"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "hero",
+          "bleed": 1.1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p03",
+      "name": "Enkelt storoffer over samlemærkebanner",
+      "areas": [
+        "a"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "hero",
+          "bleed": 1.1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p04",
+      "name": "Helsides annonceflade",
+      "areas": [
+        "a"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "feature",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p05",
+      "name": "To stablede fuldbredde-tilbud",
+      "areas": [
+        "a",
+        "b"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "standard",
+          "bleed": 1.05
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1.05
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p07",
+      "name": "Thise-side med medlemspanel i højre kolonne",
+      "areas": [
+        "a a b",
+        "c c b",
+        "d e b"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "b",
+          "role": "feature",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p08",
+      "name": "Festival frost: lead plus 2x3",
+      "areas": [
+        "a a a",
+        "a a a",
+        "b c d",
+        "e f g"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "hero",
+          "bleed": 1.15
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "f",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "g",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p09",
+      "name": "Frost, tre rækker med skiftende bredder",
+      "areas": [
+        "a b b",
+        "c c d",
+        "e f f"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "b",
+          "role": "feature",
+          "bleed": 1.1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "f",
+          "role": "standard",
+          "bleed": 1.05
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p10",
+      "name": "Månedens køb, flad 2x3",
+      "areas": [
+        "a b",
+        "c d",
+        "e f"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "f",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p12",
+      "name": "Ostesider, to kolonner med tekstboks",
+      "areas": [
+        "a b",
+        "c d",
+        "e f"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "f",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p13",
+      "name": "Ost: tre-op række over bred festivalbånd",
+      "areas": [
+        "a b c",
+        "d e e"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "feature",
+          "bleed": 1.1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p14",
+      "name": "Frugt & grønt med tophero",
+      "areas": [
+        "a a a",
+        "b c d",
+        "e e f"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "hero",
+          "bleed": 1.15
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1.05
+        },
+        {
+          "id": "f",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p15",
+      "name": "Sol over Gudhjem, L-formet med højt hjørne",
+      "areas": [
+        "a a",
+        "b c",
+        "d c"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "feature",
+          "bleed": 1.1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "hero",
+          "bleed": 1.1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p16",
+      "name": "Godt kød, bred top og to rækker",
+      "areas": [
+        "a a",
+        "b c",
+        "d e"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "hero",
+          "bleed": 1.15
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p17",
+      "name": "Fugl eller fisk, ren 2x2",
+      "areas": [
+        "a b",
+        "c d"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p18",
+      "name": "Dagspriser: to brede venstre mod fire højre",
+      "areas": [
+        "a b",
+        "a c",
+        "d e",
+        "d f"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "f",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p19",
+      "name": "Brødpaneler over annoncefelt",
+      "areas": [
+        "a a b",
+        "c c d",
+        "e e e"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "b",
+          "role": "compact",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "compact",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "feature",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p20",
+      "name": "Frokostfavoritter med tophero",
+      "areas": [
+        "a a a",
+        "b c c",
+        "d e f"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "hero",
+          "bleed": 1.15
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "f",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p22",
+      "name": "Madskole-redaktionel med tilbudsstribe",
+      "areas": [
+        "a a b",
+        "a a c",
+        "a a d",
+        "a a e"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "feature",
+          "bleed": 1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p24",
+      "name": "Vin: to fuldbredde-bånd og tre-op",
+      "areas": [
+        "a a a",
+        "b b b",
+        "c d e"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "hero",
+          "bleed": 1.1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    },
+    {
+      "id": "superbrugsen/ref-p25",
+      "name": "Vin: hero-par øverst, farvet tre-op nederst",
+      "areas": [
+        "a a b",
+        "c d e"
+      ],
+      "slots": [
+        {
+          "id": "a",
+          "role": "hero",
+          "bleed": 1.1
+        },
+        {
+          "id": "b",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "c",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "d",
+          "role": "standard",
+          "bleed": 1
+        },
+        {
+          "id": "e",
+          "role": "standard",
+          "bleed": 1
+        }
+      ]
+    }
+  ],
+  "notes": {
+    "p01.jpg": "Cover page: one full-width lead offer whose pack shots and serving photo run past the cell to all page edges, over a strip of three equal offers.",
+    "p02.jpg": "Two-column kroner page where all three offers carry the same 10,- price splash and the section logotype sits between the rows rather than above them.",
+    "p03.jpg": "A single offer occupies the whole editorial half of the page, with the rest given to a non-offer samlemærker banner.",
+    "p04.jpg": "Pure full-bleed brand page with no priced offer at all; p06, p11, p21, p23 and p26 use this identical one-panel grid.",
+    "p05.jpg": "Completely flat page: one column, two equally weighted full-width offers with no lead.",
+    "p07.jpg": "A full-height coloured member-price column runs down the right third beside four ordinary dairy offers.",
+    "p08.jpg": "Frozen-goods lead spans the top two thirds with its bread basket bleeding off the left edge, over a strict three-up double row.",
+    "p09.jpg": "Six offers on three rows where the wide slot alternates side each row (right, left, right) instead of a fixed lead position.",
+    "p10.jpg": "Six identically sized month-offers in a flat two-by-three block with no lead; the bottom two carry member-price badges but are the same size.",
+    "p12.jpg": "Two stacked columns of three equal cheese offers, where the top-left offer has been pushed down by a white supplier text box rather than by another offer.",
+    "p13.jpg": "A three-up row sits above a two-thirds-wide feature offer, and the bottom third of the page is serving-suggestion editorial with no offer in it.",
+    "p14.jpg": "Green produce page where the lead mango photo prints over the member-bonus headline panel in the top-left corner.",
+    "p15.jpg": "Award-winner page with a double-height meat hero in the right column and each left offer carrying its own explanatory body copy.",
+    "p16.jpg": "Meat page whose lead pan shot bleeds off the left edge and the section heading is set in the gap between rows one and two.",
+    "p17.jpg": "Four equal offers in a plain two-by-two with the section heading occupying the horizontal gutter; no hero at all.",
+    "p18.jpg": "Deli page on a four-row right column of weekday offers against two double-height offers in the left column.",
+    "p19.jpg": "Bakery offers are photo tiles butted edge to edge with round black price discs, and the lower third of the page is a partner advert band.",
+    "p20.jpg": "The lead tuna bowl bleeds over the green intro panel and over the row below it, and row two mixes one narrow with one double-width offer.",
+    "p22.jpg": "Two thirds of the page is a recipe/Madskole editorial block, with all four offers stacked in a single narrow right-hand strip.",
+    "p24.jpg": "Wine page built as two stacked full-width bands over a three-up bottle row, with a non-offer Returret badge tucked in the second band.",
+    "p25.jpg": "Top half is a photographed kitchen scene carrying a two-thirds-wide lead, while the bottom half switches to a tinted three-up panel of ordinary bottle offers."
+  }
+}

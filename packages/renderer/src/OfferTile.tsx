@@ -228,7 +228,25 @@ export function OfferTile({
    * survive a re-render or the edit looks like it did not take.
    */
   const description = overrides?.description ?? offer.description;
-  const showDescription = (role === 'hero' || role === 'feature') && description !== '';
+  /*
+   * Every tile, not just the big ones.
+   *
+   * This was gated to `hero` and `feature`, on the reasoning that a
+   * supporting line is the first thing a crowded tile should drop. For
+   * a marketing sentence that would be right. It is not what this line
+   * holds: on a Danish grocery page it carries the comparison price
+   * ("Kg-pris maks. 63,33"), which is required on every offer that
+   * states one, alongside the qualifiers that make the price true at
+   * all — "Flere varianter.", "Begrænset parti.". The printed week-37
+   * book sets it under every single tile including the smallest, and
+   * dropping it on four fifths of the page was not a density judgement
+   * but a missing line.
+   *
+   * How MANY lines of it survive is still a density judgement, and
+   * that is the stylesheet's to make per role — see the clamp on
+   * `.tile__description`.
+   */
+  const showDescription = description !== '';
   /*
    * The brand line, unless the name already says it.
    *
@@ -277,6 +295,21 @@ export function OfferTile({
     `tile--${role}`,
     isPacked && 'tile--packed',
     !hasPrice && 'tile--mechanic',
+    /*
+     * A price mark that carries no field of its own has to be given
+     * clear ground to stand on.
+     *
+     * A disc or a tag brings its own background, so it can sit
+     * anywhere on the product and stay legible — which is exactly what
+     * the printed page does with it. A plain numeral has nothing
+     * behind it, and the book never puts one over a packshot: on the
+     * week-37 pages the black "12,-" always stands in open ground
+     * beside the product, with the product placed off to one side to
+     * leave it room. Rendered without that rule, a black numeral
+     * landed on a dark pizza box and on a Ben & Jerry's tub and simply
+     * disappeared.
+     */
+    hasPrice && priceShape === 'plain' && 'tile--clear-price',
     /*
      * Once a box has been moved out of the place the template gave it,
      * the tile stops clipping its own text block — otherwise the first
@@ -328,14 +361,6 @@ export function OfferTile({
           </div>
         )}
 
-        {tagRoom > 0 && marks.length > 0 && shown('marks') && (
-          <ul className="tile__marks" {...box('marks')}>
-            {marks.slice(0, tagRoom).map((label) => (
-              <LabelMark key={`${label.kind}-${label.text}`} label={label} />
-            ))}
-          </ul>
-        )}
-
         {/*
           * The price mark sits INSIDE the artwork box, pinned to its
           * bottom-right corner and hanging over the edge.
@@ -374,6 +399,29 @@ export function OfferTile({
       </div>
 
       <div className="tile__info">
+        {/*
+          * Certification marks lead the text block.
+          *
+          * They were absolutely positioned in the artwork box's top-left
+          * corner, which put a Dannebrog or an Ø-mark floating in open
+          * ground with nothing beside it — it read as a stray graphic
+          * rather than as a claim about the product below it. The
+          * printed book sets them immediately above the headline,
+          * flush with the left edge of the words they qualify, and a
+          * mark that touches its own text is the whole reason it is
+          * there.
+          *
+          * In the text block they are also in flow, so a tight tile
+          * clips them last along with everything else instead of
+          * printing them over the product.
+          */}
+        {tagRoom > 0 && marks.length > 0 && shown('marks') && (
+          <ul className="tile__marks" {...box('marks')}>
+            {marks.slice(0, tagRoom).map((label) => (
+              <LabelMark key={`${label.kind}-${label.text}`} label={label} />
+            ))}
+          </ul>
+        )}
         {showBrand && shown('brand') && (
           <p className="tile__brand" {...box('brand')}>{wording('brand') ?? offer.brand}</p>
         )}

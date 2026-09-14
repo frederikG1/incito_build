@@ -38,3 +38,29 @@ export function formatValidity(from: string, to: string): string {
   };
   return `${fmt(from)} – ${fmt(to)}`;
 }
+
+/**
+ * A section heading split into the two faces it is set in.
+ *
+ * SuperBrugsen prints "Kronemarked" as "Krone" in the heavy grotesk
+ * followed by "marked" in a red marker script, and it is the single
+ * most recognisable thing about its section headings. The chain splits
+ * a compound word; a heading taken from a category name has no compound
+ * to split, but it almost always has a conjunction — "Vin og spiritus",
+ * "Brød og mejeri", "Frugt, grønt og blomster" — and breaking there
+ * produces the same two-face line out of the feed's own words.
+ *
+ * The conjunction travels with the TAIL, because that is where the
+ * reference puts the weight: the grotesk states the subject and the
+ * script qualifies it. A heading with no conjunction is returned whole
+ * in the grotesk rather than split at an arbitrary word, which is what
+ * "Bolig" and "Elektronik" want.
+ */
+export function splitHeading(title: string): { head: string; tail: string } {
+  const trimmed = title.trim();
+  // Danish "og"/"&", and the "eller" that a few category names carry.
+  // Anchored to whole words so "Bolig" is not cut after "Bol".
+  const match = /^(.*?\S)\s+((?:og|eller|&)\s+\S.*)$/i.exec(trimmed);
+  if (!match) return { head: trimmed, tail: '' };
+  return { head: match[1]!, tail: match[2]! };
+}

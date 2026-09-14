@@ -65,10 +65,23 @@ export function parseQuantity(raw: unknown): Quantity {
   const unit = UNIT_ALIASES[match[2].replace(/\.$/, '')];
   if (size === null || !unit) return fallback;
 
-  // "3 stk." is three items, not a measurement of size 3 — a count belongs
-  // in pieceCount, which is what the unit-price maths divides by.
-  if (unit === 'pcs') {
-    return { size: null, unit: 'pcs', pieceCount: Math.max(1, Math.round(size)) };
+  /*
+   * "3 stk." is three items, not a measurement of size 3 — a count
+   * belongs in pieceCount, which is what the unit-price maths divides
+   * by.
+   *
+   * `pack` counts the same way, and leaving it out of this branch is
+   * what printed "1 pack" under every SuperBrugsen offer in the book:
+   * the feed's `Quantity` is "1 pakke" / "1 stk." / "1 flaske", which
+   * became size 1 of unit `pack` — a measurement that says nothing,
+   * rendered in English, on a Danish page. As a piece count of one it
+   * formats to nothing at all, which is correct: a single pack has no
+   * size to state. The chain's own word for the pack ("1 pose.") is
+   * not lost — it rides along in the fine print, which is where the
+   * printed page puts it.
+   */
+  if (unit === 'pcs' || unit === 'pack') {
+    return { size: null, unit, pieceCount: Math.max(1, Math.round(size)) };
   }
 
   // Centilitres are stored as millilitres so comparison maths has one scale.
