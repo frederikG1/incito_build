@@ -52,8 +52,88 @@ export const PageDecoration = z.object({
   rotate: z.number().min(-30).max(30).default(0),
   /** Held back behind the offers when it would otherwise compete. */
   opacity: z.number().min(0.05).max(1).default(1),
+  /**
+   * Nudged off its anchor, in PAGE percent.
+   *
+   * `anchor` puts a picture in one of four corners, which is where a
+   * leaflet's atmosphere belongs and is enough for artwork generated to
+   * sit behind the offers. It is not enough for a chain's own
+   * photograph: a designer placing their own bowl of grapes wants it
+   * where the page has room, not where an enum says.
+   *
+   * Page percent for the same reason `PartOverride` uses it — see the
+   * note there. A percentage translate would resolve against the IMAGE,
+   * so the same drag would move a small picture further than a large
+   * one; against the page, a drag moves what the pointer covered.
+   *
+   * ±75, which is three quarters of the sheet in either direction.
+   *
+   * Wide because the point is to place a picture anywhere, and narrow
+   * enough that it cannot be pushed somewhere it can never be picked up
+   * again: the page clips, so a decoration dragged entirely off it
+   * would be gone with no handle left to drag back. Anchored in a
+   * corner and moved the full 75, a quarter of it is still on the
+   * paper. The ANCHOR remains the coarse control — pick the corner,
+   * then nudge — and this is the nudge.
+   */
+  offsetX: z.number().min(-75).max(75).default(0),
+  offsetY: z.number().min(-75).max(75).default(0),
 });
 export type PageDecoration = z.infer<typeof PageDecoration>;
+
+/**
+ * A picture laid under the whole sheet.
+ *
+ * `ground` paints the page one colour; this paints it a photograph —
+ * the autumn field behind a harvest spread, the wrapping paper behind
+ * the Christmas pages. It is NOT a fourth decoration: a decoration is
+ * pinned to a corner, is sized as a share of the page and is meant to
+ * run off one edge, while this covers the sheet edge to edge and never
+ * moves. Bending one into the other would give `anchor` and `scale` a
+ * meaning they do not have here.
+ *
+ * Document data for the same reason a decoration is: the chain's
+ * identity may not be copied into a catalogue, but what this week's
+ * page is printed on top of belongs to the week.
+ *
+ * A reference, never bytes — see `PageDecoration`. The file is uploaded
+ * once and lives under the same `/uploads` tree, which is what the PDF
+ * run resolves against.
+ */
+export const PageBackground = z.object({
+  imageUrl: ImageRef,
+  /** What the file was called, so the editor can say which picture it is. */
+  subject: z.string().default(''),
+  /**
+   * How it meets the sheet.
+   *
+   * `cover` crops to fill, which is what a photograph wants; `contain`
+   * fits the whole picture, which is what a drawn panel or a printed
+   * spread scanned in one piece wants; `tile` repeats it, which is what
+   * a pattern wants. Three answers because a background is the one
+   * element whose source could be any of those three things.
+   */
+  fit: z.enum(['cover', 'contain', 'tile']).default('cover'),
+  /**
+   * Held back so the offers stay readable.
+   *
+   * Defaults to 1 rather than to something faded: a photograph the
+   * editor chose deliberately should arrive as they chose it, and the
+   * slider is there for the one that turns out to fight the prices.
+   */
+  opacity: z.number().min(0.05).max(1).default(1),
+  /**
+   * Which part of the picture survives the crop, in per cent.
+   *
+   * Only read for `cover`, where the sheet's aspect and the
+   * photograph's rarely agree and something is always cut away. 50/50
+   * is the centre, which is right until the thing worth keeping is the
+   * sky or the plate at the bottom.
+   */
+  focusX: z.number().min(0).max(100).default(50),
+  focusY: z.number().min(0).max(100).default(50),
+});
+export type PageBackground = z.infer<typeof PageBackground>;
 
 /**
  * The boxes a tile is made of.
@@ -271,6 +351,14 @@ export const CatalogPage = z.object({
    * catalogue saved before this existed still parses.
    */
   decorations: z.array(PageDecoration).max(3).default([]),
+  /**
+   * The chain's own picture under the whole sheet, when there is one.
+   *
+   * Nullable and defaulted, so every catalogue saved before this
+   * existed still parses. One per page: a second background is not a
+   * background, it is the first one hidden.
+   */
+  background: PageBackground.nullable().default(null),
 });
 export type CatalogPage = z.infer<typeof CatalogPage>;
 
@@ -316,3 +404,51 @@ export const CatalogDocument = z.object({
   updatedAt: z.string(),
 });
 export type CatalogDocument = z.infer<typeof CatalogDocument>;
+
+/**
+ * Several one-page documents as one catalogue.
+ *
+ * Rebuilding from references is one call per reference — one page comes
+ * back at a time, because that is the only way the studio can report
+ * progress and keep the pages it already has when the fourth one fails.
+ * This is what turns those replies into the single document the editor,
+ * the store and the printer understand.
+ *
+ * It lives here rather than in `@incitio/match` because both callers
+ * need it and only one of them is allowed near Playwright: the studio
+ * merges in the browser as each page lands, the CLI merges in Node when
+ * the loop is done. One definition, so "four references" cannot mean
+ * two different catalogues depending on where you asked.
+ *
+ * Page ids are reassigned. Every rebuilt page calls itself `page-1`, and
+ * duplicate ids would make the editor move, rename and re-template the
+ * wrong sheet. Offers and layouts are keyed by id and the first of each
+ * wins, which also makes this safe to re-run on a growing list.
+ */
+export function mergeCatalogDocuments(
+  parts: CatalogDocument[],
+  options: { id?: string; name?: string } = {},
+): CatalogDocument {
+  const first = parts[0];
+  if (!first) throw new Error('mergeCatalogDocuments: intet at samle');
+
+  const offers = new Map<string, Offer>();
+  const templates = new Map<string, PageTemplate>();
+  const pages: CatalogPage[] = [];
+
+  for (const part of parts) {
+    for (const offer of part.offers) if (!offers.has(offer.id)) offers.set(offer.id, offer);
+    for (const t of part.templates) if (!templates.has(t.id)) templates.set(t.id, t);
+    for (const page of part.pages) pages.push({ ...page, id: `page-${pages.length + 1}` });
+  }
+
+  return {
+    ...first,
+    id: options.id ?? first.id,
+    name: options.name ?? first.name,
+    pages,
+    offers: [...offers.values()],
+    templates: [...templates.values()],
+    updatedAt: new Date().toISOString(),
+  };
+}

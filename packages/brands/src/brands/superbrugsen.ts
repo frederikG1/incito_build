@@ -336,7 +336,35 @@ export const SUPERBRUGSEN: BrandDefinition = {
       price: 'Price',
       prePrice: 'NormalPrice',
       savings: 'Save',
+      /*
+       * "Spar 29,95 - 49,95" — the saving on an offer whose products had
+       * different normal prices.
+       *
+       * Four of the 160 week-36 entries carry one, all of them wine, all
+       * of them two or three bottles at one price that were not one
+       * price before. `savings` takes the first number, which is what a
+       * loose `parsePrice` already did; without this the page printed
+       * "Spar 29,95" over a bottle whose saving was 49,95 and over
+       * another whose saving really was 29,95 — one figure, true of one
+       * product, printed over both.
+       */
+      savingsMax: (row) => {
+        const range = /(\d[\d.,]*)\s*[-–]\s*(\d[\d.,]*)/.exec(String(row['Save'] ?? ''));
+        if (!range) return null;
+        const high = Number(range[2]!.replace(/\./g, '').replace(',', '.'));
+        return Number.isFinite(high) ? high : null;
+      },
       quantity: 'Quantity',
+      /*
+       * `Quantity` holds the PACK here — "1 stk.", "1 pakke", "1 flaske"
+       * on 21 of the 160 week-36 entries — not a weight. The weight is
+       * in `InfoTextVarebeskrivendemaengde` ("300-370 g") and reaches
+       * the tile through the description. So the same field feeds both,
+       * and that is not a duplication: `parseQuantity` reads "1 pakke"
+       * as one piece of nothing and `formatQuantity` prints nothing for
+       * it, which is why the fine print does not repeat the mark.
+       */
+      pack: 'Quantity',
       validFrom: 'ValidDateFrom',
       validTo: 'ValidDateTo',
       /*

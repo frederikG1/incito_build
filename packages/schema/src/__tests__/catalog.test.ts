@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PART_DEFAULTS, PlacementOverrides, TILE_PARTS, TILE_PART_NAMES,
-  partLimits, partOverride, partPatch, partTouched, tileArranged,
+  CatalogDocument, PART_DEFAULTS, PlacementOverrides, TILE_PARTS, TILE_PART_NAMES,
+  mergeCatalogDocuments, partLimits, partOverride, partPatch, partTouched, tileArranged,
 } from '../catalog.js';
 
 const fresh = () => PlacementOverrides.parse({});
@@ -84,5 +84,103 @@ describe('tile parts', () => {
     // is wrong by a factor of twenty-five.
     expect(partLimits('media').reach).toBe(1);
     expect(partLimits('name').reach).toBe(25);
+  });
+});
+
+/* ------------------------------------------------ several pages as one */
+
+function offer(id: string) {
+  return {
+    id,
+    name: `Vare ${id}`,
+    description: '',
+    brand: '',
+    category: 'mejeri',
+    price: 10,
+    prePrice: null,
+    savings: null,
+    currency: 'DKK',
+    comparison: null,
+    quantity: { size: null, unit: 'pcs' as const, pieceCount: 1 },
+    validFrom: '2026-09-14',
+    validTo: '2026-09-20',
+    imageUrl: '/images/x.svg',
+    imagePack: [],
+    labels: [],
+    priority: null,
+  };
+}
+
+/** One rebuilt page, exactly as `matchPage` returns it: page-1 every time. */
+function rebuilt(templateId: string, offerIds: string[]) {
+  return CatalogDocument.parse({
+    id: 'x-reproduce',
+    schemaVersion: 2,
+    name: 'X efter p08.jpg',
+    brandId: 'x',
+    templates: [{
+      id: templateId,
+      name: templateId,
+      areas: offerIds.map((_, i) => `s${i}`),
+      slots: offerIds.map((_, i) => ({ id: `s${i}`, role: i === 0 ? 'hero' : 'standard' })),
+    }],
+    pages: [{
+      id: 'page-1',
+      templateId,
+      title: 'Side',
+      placements: offerIds.map((id, i) => ({ offerId: id, slotId: `s${i}` })),
+    }],
+    offers: offerIds.map(offer),
+    createdAt: '2026-09-14T00:00:00.000Z',
+    updatedAt: '2026-09-14T00:00:00.000Z',
+  });
+}
+
+describe('mergeCatalogDocuments', () => {
+  it('renumbers pages, because every rebuilt page calls itself page-1', () => {
+    const merged = mergeCatalogDocuments([
+      rebuilt('x/a', ['a1', 'a2']),
+      rebuilt('x/b', ['b1']),
+      rebuilt('x/c', ['c1']),
+    ]);
+    expect(merged.pages.map((page) => page.id)).toEqual(['page-1', 'page-2', 'page-3']);
+    // The order the references were handed in is the order they print.
+    expect(merged.pages.map((page) => page.templateId)).toEqual(['x/a', 'x/b', 'x/c']);
+  });
+
+  it('carries every layout, so no page renders as unknown', () => {
+    const merged = mergeCatalogDocuments([rebuilt('x/a', ['a1']), rebuilt('x/b', ['b1'])]);
+    expect(merged.templates.map((t) => t.id)).toEqual(['x/a', 'x/b']);
+  });
+
+  it('keeps every page’s offers', () => {
+    const merged = mergeCatalogDocuments([rebuilt('x/a', ['a1', 'a2']), rebuilt('x/b', ['b1'])]);
+    expect(merged.offers.map((o) => o.id)).toEqual(['a1', 'a2', 'b1']);
+  });
+
+  it('holds one copy of an offer two pages happen to share', () => {
+    // `exclude` is what should stop this happening at all — but a
+    // duplicate in the list must not become a duplicate in the document.
+    const merged = mergeCatalogDocuments([rebuilt('x/a', ['a1']), rebuilt('x/b', ['a1'])]);
+    expect(merged.offers.map((o) => o.id)).toEqual(['a1']);
+    expect(merged.pages).toHaveLength(2);
+  });
+
+  it('takes its identity from the first page, or from what it is told', () => {
+    const parts = [rebuilt('x/a', ['a1']), rebuilt('x/b', ['b1'])];
+    expect(mergeCatalogDocuments(parts).id).toBe('x-reproduce');
+    expect(mergeCatalogDocuments(parts, { id: 'y', name: 'Uge 38' }))
+      .toMatchObject({ id: 'y', name: 'Uge 38' });
+  });
+
+  it('is unchanged by merging a single document', () => {
+    const one = rebuilt('x/a', ['a1', 'a2']);
+    const merged = mergeCatalogDocuments([one]);
+    expect(merged.pages).toEqual(one.pages);
+    expect(merged.offers).toEqual(one.offers);
+  });
+
+  it('refuses to invent a catalogue out of nothing', () => {
+    expect(() => mergeCatalogDocuments([])).toThrow();
   });
 });

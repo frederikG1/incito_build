@@ -12,3 +12,7 @@ data/decor/
 .data/
 .DS_Store
 .env
+
+# Uploadede billeder — kædens egne fotos, lagt på en side fra studioet.
+# Indholdsadresserede og genuploadbare; hører til den maskine de blev lagt på.
+data/uploads/

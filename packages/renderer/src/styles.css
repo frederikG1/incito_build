@@ -244,13 +244,73 @@
  * motif is the same fraction of the sheet in a 200px thumbnail and at
  * A4 — the rule the whole stylesheet is built on.
  */
+/*
+ * The picture the whole page is printed on — see `PageBackground`.
+ *
+ * A layer rather than a `background-image` on `.page` itself: the page
+ * already carries the chain's ground colour there, and this has to be
+ * able to sit ON that colour — a `contain` fit leaves the ground
+ * showing around the picture, and an opacity below 1 mixes with it.
+ *
+ * `print-color-adjust` is stated here as well as in the PDF harness's
+ * blanket rule, because a background image is precisely the thing a
+ * browser drops when printing "without background graphics" — and a
+ * page whose background is missing only on paper is the kind of defect
+ * that gets found by the printer.
+ */
+.page__bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--bg-opacity, 1);
+  background-image: var(--bg-image);
+  background-repeat: no-repeat;
+  background-position: var(--bg-focus, 50% 50%);
+  background-size: cover;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.page__bg[data-fit='contain'] {
+  background-size: contain;
+  background-position: 50% 50%;
+}
+
+/*
+ * A pattern, repeated. Sized in `cqw` for the same reason everything
+ * else here is: the motif has to be the same fraction of the sheet in a
+ * 200px thumbnail and at A4, and a tile measured in pixels would print
+ * as a fine grain and preview as wallpaper.
+ */
+.page__bg[data-fit='tile'] {
+  background-repeat: repeat;
+  background-position: 0 0;
+  background-size: 25cqw auto;
+}
+
 .page__decor {
   position: absolute;
   width: calc(var(--decor-scale, 0.26) * 100cqw);
   height: auto;
   opacity: var(--decor-opacity, 1);
+  /*
+   * Moved first, then turned.
+   *
+   * `translate` is the individual property and applies BEFORE
+   * `transform`, so the nudge is in page coordinates and the rotation
+   * spins the picture about itself. Written the other way round — both
+   * in one `transform` — a rotated picture would slide along its own
+   * tilted axis, and dragging it right would move it diagonally.
+   */
+  translate: var(--decor-x, 0) var(--decor-y, 0);
   transform: rotate(var(--decor-rotate, 0deg));
   pointer-events: none;
+  /*
+   * Draggable only in the editor. `.page__decor--movable` is added by
+   * `PageView` when it is handed a move callback, which print never
+   * does — so on paper this stays what the rule above makes it:
+   * unclickable paint behind the grid.
+   */
   /*
    * Hangs off the edge it is anchored to, which is what separates a
    * decoration from a fifth product: a leaflet's atmosphere runs out of
@@ -271,6 +331,34 @@
    */
   --decor-bleed: calc(var(--decor-scale, 0.26) * -14cqw);
 }
+
+/*
+ * The one picture that is in hand, in the editor.
+ *
+ * Lifted over the grid and given the pointer. Everything above this
+ * rule still applies to every OTHER decoration, which is the point: a
+ * page's atmosphere must not be grabbable by accident while someone is
+ * dragging a price, and it has to be grabbable on purpose. The outline
+ * is what says which of the two you are in.
+ *
+ * 60, and the number is load-bearing. The tiles' own layers stop at 30,
+ * but the STUDIO draws a handle over every box at 40 — and `.slot` is
+ * `position: relative` with `z-index: auto`, which does NOT start a
+ * stacking context, so that 40 is not scoped to its cell the way its
+ * own comment assumes. It competes here, in the page. At an equal 40
+ * the later element in the document wins, and the grid comes after the
+ * decorations: an armed picture took the outline and the cursor and
+ * then handed every press to the tile on top of it.
+ */
+.page__decor--active {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  z-index: 60;
+  outline: 0.35cqh dashed var(--brand);
+  outline-offset: 0.6cqh;
+}
+.page__decor--active:active { cursor: grabbing; }
 
 .page__decor--top-left { top: var(--decor-bleed); left: var(--decor-bleed); }
 .page__decor--top-right { top: var(--decor-bleed); right: var(--decor-bleed); }
@@ -412,6 +500,28 @@
  * rather than like two designs.
  */
 .tile {
+  /*
+   * The tile's two type scales, as properties rather than as a rule per
+   * role.
+   *
+   * `--name-size` is the headline, and everything a role changes about
+   * its type hangs off it. `--price-size` is the MARK's own scale — a
+   * disc and a black tag are objects whose size is a design decision of
+   * their own, not a multiple of a sentence.
+   *
+   * The split exists because the two answer to different things, and a
+   * bare price answers to the first. `.price--plain` is numerals set on
+   * the page beside the product name, so it has to stay in proportion
+   * to that name; it did not, because each role carried a hand-set
+   * figure for both and the ratio between them drifted from 3.0 on a
+   * standard tile to 1.65 on a SuperBrugsen band. The number below is
+   * stated once and every role inherits it.
+   */
+  --name-size: 1.8cqh;
+  --price-size: 5.4cqh;
+  /* How many times the headline a bare price is set at. See `.price--plain`. */
+  --price-ratio: 3.4;
+
   height: 100%;
   display: grid;
   /*
@@ -682,9 +792,13 @@
  * swallowing the edit rather than as a boundary being respected.
  *
  * Relaxed only for a tile that carries an offset, so an untouched page
- * clips exactly as before, and only as far as the slot: `.slot` is
- * still `overflow: hidden`, so nothing a person moves can land on the
- * neighbouring offer.
+ * clips exactly as before. It used to say here that the slot caught
+ * whatever this let out — it does not: `.slot` has been
+ * `overflow: visible` since the artwork was allowed past its cell (see
+ * the note above `.slot`), and the only box that still clips is
+ * `.page`. What keeps a moved headline off the neighbouring offer is
+ * layering, not a boundary: words and price marks paint above every
+ * tile's artwork, page-wide.
  */
 .tile--arranged .tile__info { overflow: visible; }
 
@@ -700,7 +814,7 @@
 .tile__name {
   margin: 0;
   font-family: var(--heading-font);
-  font-size: 1.8cqh;
+  font-size: var(--name-size);
   font-weight: 800;
   line-height: 1.22;
   /* Two lines then ellipsis: a name that pushes the price off the tile
@@ -771,7 +885,7 @@
 /* A hero carries more words — brand, a longer name, a description — so
    it gets a larger share of the tile for them, not just bigger type. */
 .tile--hero { grid-template-rows: minmax(0, 2fr) minmax(0, auto) auto; }
-.tile--hero .tile__name { font-size: 3cqh; }
+.tile--hero { --name-size: 3cqh; --price-size: 8.4cqh; }
 .tile--hero .tile__brand,
 .tile--hero .tile__quantity,
 .tile--hero .tile__meta { font-size: 1.9cqh; }
@@ -784,7 +898,8 @@
  */
 .tile--hero .tile__description { font-size: 1.55cqh; }
 
-.tile--compact .tile__name { font-size: 1.7cqh; -webkit-line-clamp: 2; }
+.tile--compact { --name-size: 1.7cqh; --price-size: 3.8cqh; }
+.tile--compact .tile__name { -webkit-line-clamp: 2; }
 .tile--compact .tile__quantity,
 .tile--compact .tile__meta { font-size: 1.25cqh; }
 
@@ -817,7 +932,7 @@
 .tile--feature .tile__media { grid-area: 1 / 1 / 3 / 2; }
 .tile--feature .tile__info  { grid-area: 1 / 2 / 2 / 3; align-self: center; }
 .tile--feature .tile__tags  { grid-area: 2 / 2 / 3 / 3; }
-.tile--feature .tile__name { font-size: 2.8cqh; }
+.tile--feature { --name-size: 2.8cqh; --price-size: 6.6cqh; }
 
 /*
  * An upright feature stands back up: artwork over words, like every
@@ -846,8 +961,8 @@
  * upright feature can be a sixth of the page wide, and 2.8cqh on that
  * column set a headline that could not fit two words.
  */
+.slot[data-shape='panel'] .tile--feature { --name-size: min(2.8cqh, 3.4cqw); }
 .slot[data-shape='panel'] .tile--feature .tile__name {
-  font-size: min(2.8cqh, 3.4cqw);
   /* An upright panel is short of width and long on height, which is
      the opposite of what a two-line clamp assumes: "Faxe Kondi, Pepsi
      Max eller San Pellegrino" was cut to "Pepsi Max ell…" with a third
@@ -872,7 +987,7 @@
 .tile--feature .tile__media > img { object-fit: cover; }
 
 /* An offer with no number leads on its headline instead. */
-.tile--mechanic .tile__name { font-size: 3.6cqh; }
+.tile--mechanic { --name-size: 3.6cqh; }
 
 .tile.is-selected { outline: 0.5cqh solid color-mix(in srgb, var(--brand) 70%, white); }
 
@@ -911,7 +1026,7 @@
   /* Above the words, which are above every packshot — see .tile__info. */
   z-index: 30;
 
-  font-size: 5.4cqh;
+  font-size: var(--price-size);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -943,9 +1058,7 @@
    */
 }
 
-.tile--hero .price { font-size: 8.4cqh; }
-.tile--feature .price { font-size: 6.6cqh; }
-.tile--compact .price { font-size: 3.8cqh; }
+
 
 /* One unbreakable unit: inside a disc the mark is narrow, and without
    this the øre wrapped below the kroner and read as two numbers. */
@@ -1063,13 +1176,61 @@
   white-space: nowrap;
 }
 
+/*
+ * What the price buys, above the numerals.
+ *
+ * Set at the same size as the struck previous price below it, because
+ * the two are the same kind of thing — a qualifier on the number, not a
+ * second number. Never wraps: "1 flaske/dåse" broken over two lines
+ * turns a unit into a sentence.
+ */
+.price__pack {
+  font-size: 0.28em;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  /* `.price` sets -0.04em so big numerals sit on top of each other. At
+     this size it closes the word space instead and prints "1flaske". */
+  letter-spacing: 0;
+}
+
+/*
+ * "fra", tucked against the numerals.
+ *
+ * Small and low, set on the figure's own baseline rather than above it:
+ * it qualifies THIS number and has to be read with it. A shopper who
+ * reads the price and not the qualifier is the whole failure this
+ * exists to prevent, so it sits inside the same unbreakable unit — see
+ * `.price__figure`.
+ */
+.price__from {
+  font-size: 0.34em;
+  font-weight: 800;
+  align-self: flex-end;
+  margin-right: 0.12em;
+  margin-bottom: 0.22em;
+  letter-spacing: 0;
+}
+
 .price__savings {
   font-size: 0.28em;
   font-weight: 900;
-  line-height: 1;
+  line-height: 1.05;
   text-transform: uppercase;
   letter-spacing: 0.01em;
-  white-space: nowrap;
+  /*
+   * Allowed to wrap, unlike the figure above it.
+   *
+   * A saving is a phrase and a price is a lockup — see `.price__figure`,
+   * where a wrap turns one number into two. This line has no such
+   * problem and it has a length the mark cannot predict: "Spar
+   * 35,95-100,00" on a range is half again as wide as "Spar 20,00", and
+   * held to one line it printed outside the disc and onto the product.
+   * Two short lines inside the mark beat one line beside it.
+   */
+  max-width: 100%;
+  text-align: center;
+  text-wrap: balance;
 }
 
 /*
@@ -1085,23 +1246,49 @@
 }
 
 /*
- * The disc Coop's chains print.
+ * The mark Coop's chains print.
+ *
+ * A squircle — a square and a circle argued into one shape — not a
+ * circle. `corner-shape` changes what a corner's curve IS: `round`, the
+ * default, draws a quarter ellipse, and a superellipse draws the Lamé
+ * curve instead. At a 50% radius the corners are the entire shape, so
+ * this one declaration is the whole difference between a disc and a
+ * squircle.
+ *
+ * 1.4 rather than the `squircle` keyword, which is `superellipse(2)`.
+ * The parameter is how SQUARE the curve is — 1 is the plain ellipse,
+ * higher is boxier — and matched against the chain's own mark, 2 runs
+ * too much flat side: its top edge is straight across half the width
+ * where the printed mark turns at about a third. Picked by rendering
+ * 1.1 through 2.5 beside the reference rather than by reasoning about
+ * the exponent.
+ *
+ * A browser that does not know `corner-shape` ignores it and keeps the
+ * `border-radius`, which is the old circle. That is the right way round:
+ * the fallback is the shape this was yesterday, not a broken box.
+ * Chromium 153 — the one `@incitio/pdf` prints with — supports it, so
+ * the printed sheet is the squircle.
  *
  * A minimum square rather than an aspect ratio: a two-digit price gets
- * a circle, and a long one widens into the rounded ellipse the printed
- * catalogue also uses instead of shrinking the type to fit. The white
- * keyline is what lifts it off a busy photograph.
+ * the full squircle, and a long one widens instead of shrinking the
+ * type to fit, the way the printed catalogue does it.
+ *
+ * All brand colour but the numerals. The white keyline that used to ring
+ * it is gone — it was there to lift the mark off a busy photograph, and
+ * the drop shadow below now does that alone. A shadow is not a colour
+ * on the mark; the mark is one flat red.
  */
 .price--disc {
-  background: var(--brand);
+  background: rgba(195, 20, 20)/*var(--brand)*/;
   color: #fff;
   border-radius: 50%;
+  corner-shape: superellipse(1.4);
   min-width: 2.1em;
   min-height: 2.1em;
-  padding: 0.24em 0.4em;
+  padding: 0.24em 0.3em;
   justify-content: center;
   text-align: center;
-  box-shadow: 0 0 0 0.06em #fff, 0 0.04em 0.2em rgb(0 0 0 / 0.22);
+  box-shadow: 0 0.06em 0.26em rgb(0 0 0 / 0.28);
 }
 
 /*
@@ -1110,6 +1297,22 @@
  * paper-coloured halo rather than a box.
  */
 .price--plain {
+  /*
+   * In proportion to the product name, not to a figure of its own.
+   *
+   * A disc or a black tag is an object the chain prints at a size it
+   * chose; bare numerals are TYPE, set on the page beside the headline,
+   * and a leaflet sizes them against it. Before this the two were
+   * unrelated tables and the ratio wandered by role — 3.0 on a standard
+   * tile, 2.8 on a hero, 1.65 on a SuperBrugsen band — so the same mark
+   * read as huge on one tile and timid on the next.
+   *
+   * Written after `.price` at the same specificity so it simply wins.
+   * The role rules that used to sit at `.tile--hero .price` and would
+   * have outranked anything here now set `--price-size` on the tile
+   * instead, which is what makes one line enough.
+   */
+  font-size: calc(var(--name-size) * var(--price-ratio));
   color: var(--price-ink);
   text-shadow:
     0 0 0.14em var(--ground), 0 0 0.14em var(--ground),
@@ -1181,6 +1384,27 @@
 .tag--organic { background: #2e7d32; }
 .tag--custom { background: color-mix(in srgb, var(--ink) 82%, transparent); }
 
+/*
+ * A certification mark is artwork, not a chip.
+ *
+ * It shares `.tag` for the strip's sake and must share none of its
+ * box. `.tag` paints the chain's own colour behind every chip, which is
+ * right for a phrase the chain is saying and wrong for a mark it is
+ * merely required to reproduce: the Ø-mark is a registered mark with
+ * its own colours and its own white field, and a red rounded box behind
+ * it is a frame no chain prints — on the marks whose artwork carries
+ * its own white ground it reads as a second, wrong border.
+ *
+ * Everything the chip needs is switched off rather than overridden, so
+ * a mark is exactly its own artwork on the page's own field.
+ */
+.tag--mark {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
 /* ============================================================ BRAND LAYER
  *
  * Below here, one block per chain. Structure is settled above; these
@@ -1206,7 +1430,8 @@
   padding: 1.6cqh 2cqw;
 }
 .brand--netto .tile--feature .price--tag { background: #000; }
-.brand--netto .tile--feature .tag { background: #000; color: var(--accent); }
+/* Chips only — a mark keeps its own artwork and no box. See `.tag--mark`. */
+.brand--netto .tile--feature .tag:not(.tag--mark) { background: #000; color: var(--accent); }
 
 /*
  * The petal motif, tiled over whatever ground the page is on.
@@ -1272,7 +1497,7 @@
   border-radius: 2cqh;
   padding: 2cqh 2.5cqw;
 }
-.brand--superbrugsen .tile--feature .tile__name { font-size: 4cqh; }
+.brand--superbrugsen .tile--feature { --name-size: 4cqh; }
 /* A red disc on a red band is an invisible price. Inverted, it is the
    mark Coop actually prints on its editorial bands. */
 .brand--superbrugsen .tile--feature .price--disc {
@@ -1280,7 +1505,8 @@
   color: var(--brand);
 }
 .brand--superbrugsen .tile--feature .price--plain { color: #fff; }
-.brand--superbrugsen .tile--feature .tag { background: #fff; color: var(--brand); }
+/* Chips only — a mark keeps its own artwork and no box. See `.tag--mark`. */
+.brand--superbrugsen .tile--feature .tag:not(.tag--mark) { background: #fff; color: var(--brand); }
 
 /* ----------------------------------------------------------- nemlig ---
  * A webshop brand on light stock: products sit in soft white cards, the

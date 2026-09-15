@@ -77,13 +77,54 @@ export const Offer = z.object({
   category: z.string().default('uncategorised'),
 
   price: z.number().nonnegative(),
+  /**
+   * Whether this price is the LOWEST of several, not the only one.
+   *
+   * A "frit valg" offer is normally one price covering every product in
+   * it, and that is the only reason a leaflet may print one number over
+   * a row of six bottles. Where a feed says the products differ, the
+   * number has to be printed as "fra 49,-" — a single figure over goods
+   * that are not all that price is the kind of thing a shopper discovers
+   * at the till, and it is the chain's name on the page.
+   *
+   * Defaults to false and stays false unless a feed states otherwise.
+   * Neither shipped feed does today: both give one `price` per offer and
+   * express variation in the SAVING instead — see `savingsMax`.
+   */
+  priceFrom: z.boolean().default(false),
   /** Price before the discount, when the feed supplies one. */
   prePrice: z.number().nonnegative().nullable().default(null),
+  /**
+   * What is saved, and the LOW end of it when the products differ.
+   *
+   * Paired with `savingsMax`. The chain's own export carries "Spar
+   * 29,95 - 49,95" on an offer of two wines that had different normal
+   * prices, and printing only the first number tells a shopper holding
+   * the other bottle something untrue about their own purchase. Both
+   * ends or neither.
+   */
   savings: z.number().nonnegative().nullable().default(null),
+  /** The high end, when the saving is a range. Null when it is one figure. */
+  savingsMax: z.number().nonnegative().nullable().default(null),
   currency: z.string().length(3).default('DKK'),
   comparison: ComparisonPrice.nullable().default(null),
 
   quantity: Quantity,
+  /**
+   * What one unit of this offer IS, in the chain's own words.
+   *
+   * "1 pose", "1 bakke", "1 bundt", "1 flaske/dåse". Not the weight —
+   * that is `quantity` and it belongs in the fine print. This is the
+   * line a printed leaflet sets immediately above the price, because it
+   * is what the number applies to, and a price with no unit over a
+   * photograph of six bottles is ambiguous in the one direction that
+   * matters.
+   *
+   * Empty when the feed does not say. Never derived from the weight: the
+   * word is editorial and only the chain knows whether its carrots come
+   * in a pose or a net.
+   */
+  pack: z.string().default(''),
   validFrom: z.string().date(),
   validTo: z.string().date(),
 

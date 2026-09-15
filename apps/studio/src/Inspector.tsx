@@ -36,7 +36,7 @@ const eyeDropper = (): EyeDropperApi | null =>
  * decides, which is what every ordinary page does.
  */
 function PageGround() {
-  const { document, brand, selectedOfferId, setPageGround } = useStudio();
+  const { document, brand, selectedOfferId, setPageGround, setPageBackground } = useStudio();
   const [dropping, setDropping] = useState(false);
 
   if (!document || !brand || document.pages.length === 0) return null;
@@ -118,6 +118,102 @@ function PageGround() {
           : <>{brand.name}s egen farve for side {index + 1}.</>}
         {pipette && ' Pipetten kan tage farven direkte fra referencebilledet.'}
       </p>
+
+      {/*
+        * The picture under the sheet, and only its settings.
+        *
+        * The file itself is picked on the sheet's own bar, beside the
+        * page it lands on — this panel is where it is then TUNED, which
+        * is the same split as everywhere else in the editor: the
+        * canvas takes the drop, the inspector takes the numbers.
+        */}
+      <h3 className="inspector__group">
+        Baggrundsbillede
+        {page.background && (
+          <button className="inspector__link" onClick={() => setPageBackground(page.id, null)}>
+            Fjern
+          </button>
+        )}
+      </h3>
+
+      {!page.background ? (
+        <p className="ground__note">
+          Ingen. Vælg <b>Baggrund</b> over siden for at lægge et billede under hele arket.
+        </p>
+      ) : (
+        <>
+          <label className="inspector__field">
+            <span>Udfyldning</span>
+            <select
+              value={page.background.fit}
+              onChange={(e) => setPageBackground(
+                page.id,
+                { fit: e.target.value as 'cover' | 'contain' | 'tile' },
+              )}
+            >
+              <option value="cover">Fylder arket (beskæres)</option>
+              <option value="contain">Hele billedet</option>
+              <option value="tile">Gentaget mønster</option>
+            </select>
+            <small>{page.background.subject || 'uden navn'}</small>
+          </label>
+
+          <label className="inspector__field">
+            <span>Gennemsigtighed {Math.round(page.background.opacity * 100)}%</span>
+            <input
+              type="range"
+              min={5}
+              max={100}
+              step={1}
+              value={Math.round(page.background.opacity * 100)}
+              onChange={(e) => setPageBackground(
+                page.id,
+                { opacity: Number(e.target.value) / 100 },
+                `background-opacity:${page.id}`,
+              )}
+            />
+            <small>Skru ned, hvis billedet slår priserne ihjel.</small>
+          </label>
+
+          {/* Only for `cover`: that is the one fit where the sheet's
+              aspect and the photograph's disagree and something is
+              always cut away. `contain` shows all of it and `tile`
+              starts in the corner — a crop control there would move
+              nothing. */}
+          {page.background.fit === 'cover' && (
+            <>
+              <label className="inspector__field">
+                <span>Udsnit vandret {page.background.focusX}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={page.background.focusX}
+                  onChange={(e) => setPageBackground(
+                    page.id,
+                    { focusX: Number(e.target.value) },
+                    `background-focus:${page.id}`,
+                  )}
+                />
+              </label>
+              <label className="inspector__field">
+                <span>Udsnit lodret {page.background.focusY}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={page.background.focusY}
+                  onChange={(e) => setPageBackground(
+                    page.id,
+                    { focusY: Number(e.target.value) },
+                    `background-focus:${page.id}`,
+                  )}
+                />
+              </label>
+            </>
+          )}
+        </>
+      )}
     </>
   );
 }
@@ -150,7 +246,7 @@ const REWRITABLE: readonly TilePart[] = [
 export function Inspector() {
   const {
     document, selectedOfferId, selectedPart, updateOverrides, updatePart,
-    selectPart, resetPart, setPartHidden, resetTile, select,
+    selectPart, resetPart, setPartHidden, resetTile, select, focusOffer,
   } = useStudio();
 
   if (!document || !selectedOfferId) {
@@ -172,9 +268,15 @@ export function Inspector() {
   }
 
   const offer = document.offers.find((o) => o.id === selectedOfferId);
-  const placement = document.pages
-    .flatMap((page) => page.placements)
-    .find((p) => p.offerId === selectedOfferId);
+  const onPage = document.pages
+    .find((page) => page.placements.some((p) => p.offerId === selectedOfferId));
+  const placement = onPage?.placements.find((p) => p.offerId === selectedOfferId);
+  /*
+   * Whether it already leads. The lead is the FIRST placement, which is
+   * how `focusOffer` seats it — see the swap there; a button that
+   * promotes something already at the top is a click that does nothing.
+   */
+  const leads = onPage?.placements[0]?.offerId === selectedOfferId;
 
   if (!offer || !placement) {
     return (
@@ -244,6 +346,29 @@ export function Inspector() {
           )}
         </small>
       </label>
+
+      {/*
+        * Promote this offer to its page's leading slot.
+        *
+        * It used to sit on every sheet's bar, where it acted on the
+        * SELECTION and was therefore disabled on all but one sheet at a
+        * time — a control that is grey on nine pages out of ten teaches
+        * people to stop reading the row it is in. Here it is beside
+        * everything else that acts on the selected offer, and it is
+        * only drawn when there is a page it could move it on.
+        */}
+      {onPage && (
+        <button
+          className="inspector__promote"
+          onClick={() => focusOffer(onPage.id, offer.id)}
+          disabled={leads}
+          title={leads
+            ? 'Varen fører allerede siden'
+            : 'Byt varen op i sidens hovedplads'}
+        >
+          {leads ? 'Fører siden' : 'Sæt i fokus'}
+        </button>
+      )}
 
       <h3 className="inspector__group">
         Elementer

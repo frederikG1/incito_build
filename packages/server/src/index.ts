@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { CatalogDocument } from '@incitio/schema';
 import { findBrand, listBrands, type BrandDefinition } from '@incitio/brands';
 import { buildCatalogue } from '@incitio/pipeline';
-import { matchPage, MatchError } from '@incitio/match';
+import { EMPTY_LABEL_DICTIONARY, type LabelDictionary } from '@incitio/ingest';
+import { matchPage, MatchError, mediaType } from '@incitio/match';
+import { uploadStore } from './uploads.js';
 import { renderCataloguePdf } from '@incitio/pdf';
 import { decorate, DEFAULT_IMAGE_MODEL } from '@incitio/decor';
 import { Store } from './db.js';
@@ -29,10 +31,29 @@ interface Scope {
 export interface AppOptions {
   /** Directory root-relative feed images resolve against, for PDF export. */
   assetDir?: string;
+  /**
+   * The certification marks, for turning a feed's label names into
+   * artwork.
+   *
+   * Passed in rather than read here, for the same reason `assetDir` is:
+   * this is a library and does not own a filesystem. `main.ts` loads the
+   * shipped export and hands it over.
+   *
+   * Omitting it is not a neutral default, which is why it is worth
+   * saying out loud. Every reader falls back to an empty dictionary, and
+   * an empty dictionary resolves "Økologi" to the plain WORD "Økologi" —
+   * so the Ø-mark the chain contractually expects on the page silently
+   * becomes a text chip. That is exactly what the studio did until this
+   * existed: the CLI passed a dictionary and the API did not, so the
+   * same feed printed marks from the terminal and words from the editor.
+   */
+  labels?: LabelDictionary;
 }
 
 export function createApp(store: Store, options: AppOptions = {}) {
   const app = new Hono<Scope>();
+  const labels = options.labels ?? EMPTY_LABEL_DICTIONARY;
+  const uploads = options.assetDir ? uploadStore(options.assetDir) : null;
 
   app.use('/api/*', cors({ origin: '*', allowHeaders: ['content-type', BRAND_HEADER] }));
 
@@ -275,6 +296,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     try {
       const result = await buildCatalogue(definition.brand.id, parsed.data.feed, {
         catalogId: `${definition.brand.id}-studio`,
+        labels,
         ...(parsed.data.maxPages ? { maxPages: parsed.data.maxPages } : {}),
         ...(parsed.data.offerCount ? { offerCount: parsed.data.offerCount } : {}),
         ...(parsed.data.sourceId ? { sourceId: parsed.data.sourceId } : {}),
@@ -301,6 +323,87 @@ export function createApp(store: Store, options: AppOptions = {}) {
   });
 
   /**
+   * The chain's own artwork, put on a page.
+   *
+   * Not everything on a leaflet is a packshot or a generated motif. A
+   * chain has its own photographs — its grapes, its almonds, its bowl of
+   * chips — shot for its own book, and a page that can only use what a
+   * model invents is a page the chain's designer cannot work on.
+   *
+   * Base64 in JSON rather than multipart, for the same reasons as
+   * `/reproduce`: it is one file, it is already in memory, and it keeps
+   * this route the shape of every other route here. The 18 MB cap is a
+   * generous press photograph plus base64's third.
+   *
+   * The reply is a URL, never the bytes back. A document references its
+   * artwork and never embeds it — see `PageDecoration.imageUrl` — so a
+   * catalogue stays small enough to save, diff and print.
+   */
+  const UploadRequest = z.object({
+    file: z.string().min(1).max(24_000_000),
+    /** Shown back to the editor; never used as a path. */
+    name: z.string().max(200).optional(),
+  });
+
+  app.post('/api/brand/uploads', async (c) => {
+    if (!uploads) {
+      return c.json(
+        { error: 'ingen billedmappe', detail: 'Serveren blev startet uden assetDir.' },
+        503,
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+    const parsed = UploadRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+
+    const bytes = Buffer.from(parsed.data.file, 'base64');
+    if (bytes.length === 0) return c.json({ error: 'billedet kunne ikke afkodes' }, 400);
+
+    /*
+     * The type is read from the first bytes, not from the filename.
+     *
+     * The same rule as the reference upload, and for the same reason: a
+     * `.png` holding a JPEG is exactly what a designer's folder
+     * contains, and the extension decides how the file is later SERVED.
+     * `mediaType` throws on anything that is not an image this renderer
+     * can draw, which is the validation as well as the answer.
+     */
+    let extension: string;
+    try {
+      extension = mediaType(bytes).split('/')[1]!;
+    } catch {
+      return c.json({ error: 'filen er ikke et billede (PNG, JPEG, WebP eller GIF)' }, 415);
+    }
+
+    /*
+     * Stored exactly as it arrived.
+     *
+     * This route used to flood-fill the background out of every upload,
+     * on the theory that a chain's packshots come off a white studio
+     * sweep. In practice they do not arrive that way and do not need
+     * to: a chain that prints a leaflet already keeps cut-out artwork,
+     * and the fill was as likely to eat the sky out of a photograph as
+     * to help. Removing it also removes the question the editor could
+     * not answer — whether the picture on screen is the file they
+     * chose. It is.
+     *
+     * The generated artwork's own cut-out stays where it is, in
+     * `@incitio/decor`: that one keys out a white field the prompt
+     * DEMANDS, which is a contract this route never had.
+     */
+    const { ref } = uploads.put(bytes, extension);
+    return c.json({ url: ref, bytes: bytes.length });
+  });
+
+  /**
    * Rebuild a published page with this week's products.
    *
    * The three stages of `@incitio/match` run here rather than in the
@@ -323,6 +426,16 @@ export function createApp(store: Store, options: AppOptions = {}) {
     feed: z.string().max(20_000_000).default(''),
     sourceId: z.string().max(40).optional(),
     note: z.string().max(2000).optional(),
+    /**
+     * Offers already printed by earlier requests in the same run.
+     *
+     * Several references are rebuilt one request per page — see
+     * `matchPages` in `@incitio/match` for why the loop is not in here
+     * — so the caller is the only one who knows what page three used.
+     * Passing it forward is what keeps one catalogue from printing the
+     * same product on four pages.
+     */
+    exclude: z.array(z.string().max(200)).max(2000).optional(),
     poolSize: z.number().int().min(4).max(200).optional(),
     /** Shown back to the editor; never used as a path. */
     referenceName: z.string().max(200).optional(),
@@ -365,9 +478,11 @@ export function createApp(store: Store, options: AppOptions = {}) {
         file,
         feedText: parsed.data.feed,
         catalogId: `${definition.brand.id}-reproduce`,
+        labels,
         ...(parsed.data.pageNumber ? { pageNumber: parsed.data.pageNumber } : {}),
         ...(parsed.data.sourceId ? { sourceId: parsed.data.sourceId } : {}),
         ...(parsed.data.note ? { note: parsed.data.note } : {}),
+        ...(parsed.data.exclude?.length ? { exclude: parsed.data.exclude } : {}),
         ...(parsed.data.poolSize ? { poolSize: parsed.data.poolSize } : {}),
         ...(parsed.data.referenceName ? { referenceName: parsed.data.referenceName } : {}),
       });

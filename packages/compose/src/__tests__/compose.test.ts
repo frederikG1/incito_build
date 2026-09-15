@@ -24,6 +24,11 @@ function offer(id: string, overrides: Partial<Offer> = {}): Offer {
     validTo: '2026-09-20',
     imageUrl: '/images/x.svg',
     imagePack: [],
+    // Added to `Offer` after this helper was written; the schema gives
+    // them defaults, the TYPE does not.
+    pack: '',
+    priceFrom: false,
+    savingsMax: null,
     labels: [],
     priority: null,
     ...overrides,

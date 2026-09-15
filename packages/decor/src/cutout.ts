@@ -40,6 +40,15 @@ export interface CutoutResult {
   height: number;
   /** Share of the image that survived, 0–1. Near 1 means nothing was cut. */
   kept: number;
+  /**
+   * The luminance the fill actually cut at.
+   *
+   * Derived from the image's own border unless that border is too dark
+   * to be a field — see the note in the fill. Reported because "nothing
+   * was removed" and "nothing COULD be removed" look the same from
+   * outside and are different problems.
+   */
+  threshold: number;
 }
 
 /**
@@ -77,6 +86,42 @@ export async function cutout(
       const lum = (i: number) => 0.299 * d[i]! + 0.587 * d[i + 1]! + 0.114 * d[i + 2]!;
 
       /*
+       * The threshold, read off the border rather than assumed.
+       *
+       * A fixed cut is right for artwork this pipeline GENERATED — the
+       * prompt demands a pure white field and the model delivers 250+.
+       * It is wrong for a chain's own photograph, and measurably so: a
+       * packshot off a white sweep arrives as a JPEG, and JPEG ringing
+       * puts the 8×8 block edges a level or two below the neighbouring
+       * white. Measured on a real upload, the surviving background sat
+       * at luminance 235-236 against a threshold of 236 — so a fifth of
+       * the sweep stayed behind as a fine dash pattern, which is
+       * exactly what it looked like on the page.
+       *
+       * So: sample the border ring, and take a low percentile of it as
+       * how dark this particular background actually gets. The 5th
+       * rather than the minimum, because a subject that touches the
+       * edge would otherwise drag the whole cut down with it.
+       *
+       * Only when the border really IS a light field. A product
+       * photographed on a table has a dark border, and adapting to that
+       * would flood the fill straight through the picture; there the
+       * fixed cut stands, finds nothing, and `kept` reports it honestly.
+       * The floor is the same guard from the other side.
+       */
+      const ring: number[] = [];
+      for (let x = 0; x < w; x += 1) { ring.push(lum((x) * 4), lum(((h - 1) * w + x) * 4)); }
+      for (let y = 0; y < h; y += 1) { ring.push(lum((y * w) * 4), lum((y * w + w - 1) * 4)); }
+      ring.sort((a, b) => a - b);
+      const at = (f: number) => ring[Math.min(ring.length - 1, Math.floor(ring.length * f))] ?? 255;
+      const median = at(0.5);
+      // 3 below the border's own low water mark: enough to take the
+      // noise, not enough to reach a subject the sample already excluded.
+      const cut = median >= 225
+        ? Math.max(200, Math.min(threshold, at(0.05) - 3))
+        : threshold;
+
+      /*
        * Breadth-first from every border pixel. An explicit stack rather
        * than recursion: a 1024² field is a million pixels and the call
        * stack does not survive that.
@@ -87,7 +132,7 @@ export async function cutout(
         if (x < 0 || y < 0 || x >= w || y >= h) return;
         const p = y * w + x;
         if (bg[p]) return;
-        if (lum(p * 4) < threshold) return;
+        if (lum(p * 4) < cut) return;
         bg[p] = 1;
         stack.push(p);
       };
@@ -109,7 +154,7 @@ export async function cutout(
        * the background therefore fades out over how close to white it
        * is, which is the same ramp the generator used going in.
        */
-      const soft = threshold - 46;
+      const soft = cut - 46;
       let kept = 0;
       for (let p = 0; p < w * h; p++) {
         const i = p * 4;
@@ -122,7 +167,7 @@ export async function cutout(
         if (!edge) continue;
         const l = lum(i);
         if (l <= soft) continue;
-        d[i + 3] = Math.round(255 * (1 - (l - soft) / (threshold - soft)));
+        d[i + 3] = Math.round(255 * (1 - (l - soft) / (cut - soft)));
       }
 
       // Bounding box of what survived, so the artwork can be positioned
@@ -152,6 +197,9 @@ export async function cutout(
         width: out.width,
         height: out.height,
         kept: kept / (w * h),
+        // What the fill actually used, so a caller can say why a
+        // picture came back uncut instead of guessing.
+        threshold: cut,
       };
     }, {
       src: dataUrl,
@@ -164,6 +212,7 @@ export async function cutout(
       width: result.width,
       height: result.height,
       kept: result.kept,
+      threshold: result.threshold,
     };
   } finally {
     await page.close();

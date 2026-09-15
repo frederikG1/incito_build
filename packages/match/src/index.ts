@@ -23,12 +23,16 @@
  * (`POST /api/brand/reproduce`) both call this one function, so the
  * studio and the terminal cannot drift into two different notions of
  * what rebuilding a page means.
+ *
+ * Several references make several pages — see `matchPages` at the
+ * bottom. A whole catalogue is now a stack of printed pages handed in,
+ * not a brief handed to a planner.
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
 import { chromium, type Browser } from 'playwright';
 import {
-  Brand, CatalogDocument, PageTemplate, validateTemplate,
+  Brand, CatalogDocument, PageTemplate, mergeCatalogDocuments, validateTemplate,
   type Offer,
 } from '@incitio/schema';
 import {
@@ -53,6 +57,15 @@ export interface MatchOptions {
   sourceId?: string;
   /** A steer from the editor, followed unless it breaks the page. */
   note?: string;
+  /**
+   * Offers already printed on another page of the same run.
+   *
+   * Taken out of the pool BEFORE it is cut to `poolSize`, so page four
+   * chooses from four pages' worth of unused feed rather than from the
+   * leftovers of page one's sixty. This is what stops the same coffee
+   * leading three spreads when several references are rebuilt together.
+   */
+  exclude?: string[];
   /** How many offers the model gets to choose between. */
   poolSize?: number;
   model?: string;
@@ -171,11 +184,13 @@ export async function matchPage(
       : ingestJson(options.feedText, source.mapping, options.labels);
 
     // Only offers with artwork can stand in for a product on a printed page.
-    const pool = feed.offers
-      .filter((o) => o.imageUrl)
-      .slice(0, Math.max(4, options.poolSize ?? 60));
+    const spent = new Set(options.exclude ?? []);
+    const available = feed.offers.filter((o) => o.imageUrl && !spent.has(o.id));
+    const pool = available.slice(0, Math.max(4, options.poolSize ?? 60));
     if (pool.length === 0) {
-      throw new MatchError('feedet indeholder ingen tilbud med billede');
+      throw new MatchError(spent.size > 0
+        ? 'feedet har ikke flere ubrugte tilbud med billede — færre sider, eller et større feed'
+        : 'feedet indeholder ingen tilbud med billede');
     }
 
     /* ----------------------------------------------------- 3. the model */
@@ -305,7 +320,7 @@ export async function matchPage(
         id: 'page-1',
         templateId: template.id,
         title: plan.heading,
-        subtitle: '',
+        subtitle: plan.subtitle?.trim() ?? '',
         rationale: `bygget efter ${label}`,
         // Measured, not chosen: see `sampleGround`.
         ground,
@@ -360,4 +375,120 @@ export async function matchPage(
 export function brandWithTemplates(brand: Brand, templates: PageTemplate[]): Brand {
   if (templates.length === 0) return brand;
   return Brand.parse({ ...brand, templates: [...templates, ...brand.templates] });
+}
+
+/* ------------------------------------------------- several references */
+
+/** One reference in a run: a file, and which page of it if it is a PDF. */
+export interface MatchReference {
+  file: Buffer;
+  /** Which page of a PDF. Ignored for an image. */
+  pageNumber?: number;
+  /** Shown in the page's own name, and in an error about it. */
+  name?: string;
+}
+
+export interface MatchPagesOptions
+  extends Omit<MatchOptions, 'file' | 'pageNumber' | 'exclude' | 'referenceName'> {
+  /** The pages to rebuild, in the order they should print. */
+  references: MatchReference[];
+  /** Called before each reference, so a caller can say where it is. */
+  onPage?: (progress: { index: number; total: number; name: string }) => void;
+  /**
+   * Keep the pages that worked when one reference fails.
+   *
+   * On by default: a run of eight pages that throws away seven because
+   * page six was a photograph of a car park is not a thing anyone wants
+   * to pay for twice.
+   */
+  continueOnError?: boolean;
+  /** The catalogue's name. Defaults to the chain plus the first reference. */
+  name?: string;
+}
+
+export interface MatchPagesResult {
+  /** All the rebuilt pages as one ordinary catalogue. */
+  document: CatalogDocument;
+  /** The chain, carrying every layout this catalogue needs. Render with it. */
+  brand: Brand;
+  /** Each reference's own result, in order, for reporting per page. */
+  pages: MatchResult[];
+  /** References that could not be rebuilt, and why. */
+  failures: { name: string; message: string }[];
+}
+
+/**
+ * Several published pages, rebuilt into one catalogue.
+ *
+ * Sequential, not parallel, and that is the whole design: each page is
+ * told which offers the pages before it already used, so the catalogue
+ * does not print the same coffee four times. Running them at once would
+ * be four times faster and would need a de-duplication pass afterwards
+ * that could only take an offer OFF a page — leaving a hole in a layout
+ * the model built around it.
+ *
+ * One browser for the run, because launching Chromium per reference is
+ * a second a page for nothing.
+ *
+ * The studio does not call this: it makes one HTTP request per
+ * reference so it can show progress and keep partial results, and a
+ * request that hung for eight pages' worth of model time would be cut
+ * off by the server long before it answered. Both paths share what
+ * matters — `exclude` above, and `mergeCatalogDocuments` below.
+ */
+export async function matchPages(
+  brandId: string,
+  options: MatchPagesOptions,
+): Promise<MatchPagesResult> {
+  const { references, onPage, continueOnError = true, browser: given, ...rest } = options;
+  if (references.length === 0) throw new MatchError('ingen referencer at genskabe');
+
+  const browser = given ?? (await chromium.launch());
+  const pages: MatchResult[] = [];
+  const failures: { name: string; message: string }[] = [];
+  const spent: string[] = [];
+
+  try {
+    for (const [index, reference] of references.entries()) {
+      const name = reference.name ?? `reference ${index + 1}`;
+      onPage?.({ index, total: references.length, name });
+      try {
+        const result = await matchPage(brandId, {
+          ...rest,
+          browser,
+          file: reference.file,
+          exclude: spent,
+          referenceName: name,
+          ...(reference.pageNumber ? { pageNumber: reference.pageNumber } : {}),
+        });
+        pages.push(result);
+        spent.push(...result.document.offers.map((offer) => offer.id));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!continueOnError) throw error;
+        failures.push({ name, message });
+      }
+    }
+  } finally {
+    if (!given) await browser.close();
+  }
+
+  const first = pages[0];
+  if (!first) {
+    throw new MatchError(failures[0]?.message ?? 'ingen af siderne kunne genskabes');
+  }
+
+  const document = mergeCatalogDocuments(pages.map((page) => page.document), {
+    ...(options.catalogId ? { id: options.catalogId } : {}),
+    ...(options.name ? { name: options.name } : {}),
+  });
+
+  return {
+    document,
+    // Every layout in the run, on top of the chain's own set. Without
+    // this the editor can render page one and calls the rest unknown.
+    brand: brandWithTemplates(getBrand(brandId).brand, document.templates),
+    pages,
+    failures,
+  };
 }

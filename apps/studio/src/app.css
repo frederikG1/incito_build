@@ -70,6 +70,16 @@ body {
 .bar button:hover:not(:disabled) { background: #2b3038; }
 .bar button:disabled { opacity: 0.4; cursor: not-allowed; }
 .bar button.primary { background: var(--hot); border-color: var(--hot); color: #fff; }
+/*
+ * The way into the product, when it is not currently open.
+ *
+ * Outlined in the hot colour rather than filled: it is the action the
+ * toolbar is built around, but it opens a panel — and a filled button
+ * that only reveals a form promises more than it does. It fills (via
+ * `.primary`) while that panel is open.
+ */
+.bar button.accent { border-color: var(--hot); color: #fff; }
+.bar button.accent:hover:not(:disabled) { background: var(--hot); }
 
 
 /* ------------------------------------------------ stemningsbilleder */
@@ -90,16 +100,37 @@ body {
   border-bottom: 1px solid var(--chrome-line);
 }
 
+/* Folded, the strip is one row and should read as a line, not a panel. */
+.decor--shut { padding: 6px 14px; }
+
+.decor__head { display: flex; align-items: center; gap: 10px; }
+.decor--shut .decor__head { min-height: 20px; }
+
+/* The whole name is the hit target, not a 12px triangle. */
+.decor__disclose {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--chrome-ink);
+  cursor: pointer;
+}
+.decor__disclose:hover .decor__title { opacity: 1; }
+.decor__caret { font-size: 10px; opacity: 0.55; width: 9px; }
+
 .decor__row { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
-.decor__row--meta { align-items: center; gap: 10px; margin-top: 8px; }
+.decor__row { margin-top: 8px; }
+.decor__row--meta { align-items: center; gap: 10px; }
 
 .decor__title {
-  margin: 0 2px 5px 0;
+  margin: 0;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  align-self: flex-end;
-  padding-bottom: 19px;
+  opacity: 0.88;
 }
 
 .decor__field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 240px; max-width: 340px; }
@@ -219,6 +250,9 @@ body {
 .banner--error { background: #fdecea; color: #8a1c12; border-bottom: 1px solid #f3c9c4; }
 .banner--ok { background: #e8f4ec; color: #1c5c34; border-bottom: 1px solid #c5e2d0; }
 .banner--hint { background: #fdf5e0; color: #6b5312; border-bottom: 1px solid #ecdcae; }
+.banner--busy { background: #eef2fb; color: #26365e; border-bottom: 1px solid #cfd9ee; }
+/* The toolbar's spinner is white for a filled button; here it is on paper. */
+.banner--busy .spinner { border-color: rgb(38 54 94 / 0.25); border-top-color: #26365e; }
 
 /* -------------------------------------------------------------- canvas */
 
@@ -238,10 +272,21 @@ body {
 
 .sheet { width: 100%; max-width: 720px; }
 
+/*
+ * Two deliberate rows, not one that breaks.
+ *
+ * A sheet is 720px at most, and title, theme line, offer count, layout,
+ * shuffle, image and the two page arrows do not fit across it. Left to
+ * wrap they landed differently on every page depending on how long the
+ * heading was, which is the "things are all over the place" this was
+ * rebuilt to fix. Split by what they ARE instead: the top row is what
+ * the page says, the bottom row is what it is.
+ */
 .sheet__bar {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
   margin-bottom: 6px;
 }
 
@@ -260,13 +305,147 @@ body {
 .sheet__meta { font-size: 12px; color: #6b7280; }
 
 /*
+ * The right-hand half of the bar, grouped.
+ *
+ * Varer, Layout and the shuffle answer one question — what shape is this
+ * page — and sat loose among the title and the page arrows they read as
+ * six unrelated controls. Boxed together they read as one, and the gap
+ * before them is what tells you the left half is a different thing.
+ */
+/* What the page says. */
+.sheet__said { display: flex; align-items: center; gap: 8px; }
+
+/* What the page is. The gap pushes the page arrows to the far edge, so
+   they sit in the same place on every sheet whatever else is in the row. */
+.sheet__does { display: flex; align-items: center; gap: 8px; }
+
+.sheet__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sheet__order { display: flex; gap: 4px; margin-left: auto; }
+
+/* Its own file input, styled like the toolbar's. */
+.sheet__image input { display: none; }
+.sheet__image span {
+  display: inline-block;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px dashed #c0c5cd;
+  color: #33363d;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sheet__image span:hover { border-color: var(--hot); color: var(--hot); }
+
+/*
+ * The pictures on this page.
+ *
+ * A row of small cards, each carrying the three things that decide where
+ * a decoration lands: which corner it hangs in, how big it is, and how
+ * far it is turned. Shown only when the page has one — see the note in
+ * App.tsx.
+ */
+.sheet__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.pic {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border: 1px solid #e3e6ea;
+  border-radius: 7px;
+  background: #fafbfc;
+}
+.pic__hold {
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+.pic__hold:hover { border-color: var(--hot); }
+.pic img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #fff;
+}
+/* The card says which picture is in hand, so the dashed outline on the
+   page and the row below it are plainly the same thing. */
+.pic.is-held { border-color: var(--hot); background: #fff; }
+.pic.is-held .pic__hold { border-color: var(--hot); }
+.pic select {
+  font: inherit;
+  font-size: 11px;
+  color: #33363d;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+  background: #fff;
+  padding: 3px 4px;
+}
+.pic input[type='range'] { width: 74px; accent-color: var(--hot); }
+.pic__drop {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 5px;
+  border: 1px solid #dcdfe4;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+}
+.pic__drop:hover { border-color: #b4401f; color: #b4401f; }
+
+.inspector__promote {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  color: #33363d;
+  cursor: pointer;
+}
+.inspector__promote:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.inspector__promote:disabled { opacity: 0.45; cursor: default; }
+
+/* The theme line, quieter than the heading it sits beside — it is the
+   second voice in the masthead and should look like it here too. */
+.sheet__subtitle {
+  font: inherit;
+  font-size: 12px;
+  flex: 0 1 26ch;
+  min-width: 8ch;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #6b7280;
+}
+.sheet__subtitle:hover { border-color: #d3d7dd; background: #fff; }
+.sheet__subtitle:focus { border-color: var(--hot); background: #fff; outline: none; color: #33363d; }
+
+/*
  * The layout controls. `sheet__title` takes the slack, so the pickers
  * keep their width and stay in the same place from page to page —
  * a control that shifts sideways with the length of a page heading is
  * a control you have to find again every time.
  */
 .sheet__title { flex: 1 1 auto; min-width: 60px; }
-.sheet__gap { flex: 0 0 6px; }
 
 .sheet__pick {
   display: flex;
@@ -354,6 +533,12 @@ body {
   border-radius: 5px;
 }
 .inspector__field input[type='range'] { width: 100%; }
+/* The one dropdown in this panel. Matched to the text field above it
+   rather than to the toolbar's dark selects: this is the white panel. */
+.inspector__field select {
+  font: inherit; font-size: 13px; width: 100%;
+  padding: 6px 8px; border: 1px solid #d3d7dd; border-radius: 5px; background: #fff;
+}
 
 .inspector__field small {
   display: block;
@@ -720,8 +905,82 @@ body {
 }
 .repro__chosen--none { color: #8a6b12; }
 
-.repro__page { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: #6b7280; }
-.repro__page input { font: inherit; width: 64px; padding: 4px 6px; border: 1px solid #d3d7dd; border-radius: 5px; }
+/*
+ * The files handed in, as a list.
+ *
+ * A list rather than a filename: the order is the order they print in,
+ * any one of them can be dropped without redoing the upload, and a PDF
+ * row carries its own page range. All three are facts about one
+ * reference, so they sit on one row.
+ */
+.reflist { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.reflist li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid #e3e6ea;
+  border-radius: 6px;
+  background: #fafbfc;
+}
+.reflist__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 15ch;
+  color: #33363d;
+}
+.reflist__gap { flex: 1 1 auto; }
+.reflist__pages { display: flex; align-items: center; gap: 5px; color: #6b7280; }
+.reflist__pages input {
+  font: inherit;
+  font-size: 12px;
+  width: 62px;
+  padding: 3px 5px;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+}
+/* What the range actually asks for, counted back — "1-6" is six calls. */
+.reflist__pages i { font-style: normal; font-size: 11px; color: #8b919b; }
+.reflist__pages i.is-bad { color: #b4401f; }
+.reflist li button {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid #dcdfe4;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+}
+.reflist li button:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.reflist li button:disabled { opacity: 0.35; cursor: not-allowed; }
+.reflist__drop:hover { border-color: #b4401f !important; color: #b4401f !important; }
+
+.repro__clear {
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #8b919b;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.repro__append {
+  display: flex;
+  align-items: start;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #33363d;
+  cursor: pointer;
+}
+.repro__append input { margin: 2px 0 0; }
+.repro__append i { font-style: normal; color: #8b919b; }
 
 .repro__note {
   font: inherit;
@@ -759,11 +1018,16 @@ body {
  * The reference beside how it was read.
  *
  * On the canvas, at the sheet's own width, so the rebuilt page renders
- * directly underneath it and the two can be judged in one look.
+ * directly underneath it and the two can be judged in one look. One per
+ * rebuilt page: in a run of eight, page five's reference is not page
+ * one's, and a single strip at the top would compare the wrong things.
  */
 .compare {
   width: 100%;
   max-width: 720px;
+  /* Inside its own sheet now, one per rebuilt page, so it needs the
+     gap the canvas used to give it as a sibling. */
+  margin-bottom: 14px;
   display: grid;
   grid-template-columns: minmax(180px, 1fr) 1.35fr;
   gap: 18px;

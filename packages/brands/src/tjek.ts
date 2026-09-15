@@ -1,5 +1,5 @@
 import type { OfferLabelInput, Quantity } from '@incitio/schema';
-import type { FieldMapping } from '@incitio/ingest';
+import { EMPTY_LABEL_DICTIONARY, resolveLabels, type FieldMapping, type LabelDictionary } from '@incitio/ingest';
 
 /**
  * The Tjek offers API shape — a flat array of offer objects, which is
@@ -66,18 +66,126 @@ const PHRASES: { pattern: RegExp; kind: OfferLabelInput['kind']; text: string }[
   { pattern: /begrænset parti/i, kind: 'custom', text: 'Begrænset parti' },
   { pattern: /ugens køb/i, kind: 'new', text: 'Ugens køb' },
   { pattern: /dybfrost/i, kind: 'custom', text: 'Dybfrost' },
-  { pattern: /økologisk|\bøko\b/i, kind: 'organic', text: 'Økologisk' },
   { pattern: /ikke egnet til børn/i, kind: 'custom', text: 'Ikke egnet til børn' },
 ];
 
-export function tjekLabels(description: string): OfferLabelInput[] {
+/**
+ * Certification claims, read from the product itself.
+ *
+ * A separate table from `PHRASES` above, and the split is the point.
+ * Those are editorial words the chain writes into the DESCRIPTION and
+ * prints verbatim. These are claims about what the product IS, and a
+ * chain writes them wherever it likes — measured on the shipped feeds,
+ * every occurrence of "økologisk" is in the HEADING ("Änglamark
+ * økologisk ingefær"), which is why the organic mark never appeared:
+ * the rule was right and it was reading the wrong field.
+ *
+ * `text` is not a display string. It is the key the shipped label
+ * dictionary matches on, and those patterns are fully ANCHORED — see
+ * `data/labels/tjek-labels.json`, where organic is
+ * `(^økologi$)|(^økologi logo$)|(^økologisk$)`. Change one of these
+ * strings and the mark silently becomes a word again, so each one below
+ * names the dictionary row it is aimed at.
+ *
+ * Deliberately short, and deliberately only the claims that are
+ * explicit. A certification mark printed on a product that does not
+ * carry it is worse than a missing one: "Dansk hvidkål" is a product
+ * name and not a declaration that the Danish flag mark applies, so
+ * there is no rule for the flag here. The chain's own `Logos` field on
+ * the Coop export says which products carry the flag — see the
+ * `coop-export` mapping — and where a feed states it, it is stated
+ * rather than guessed.
+ */
+/**
+ * A whole word, in a language that has æ, ø and å in it.
+ *
+ * NOT `\b`. JavaScript's word boundary is defined against `\w`, which
+ * is `[A-Za-z0-9_]` — so `ø` is a NON-word character, and `\bøkologisk\b`
+ * never matches anything at all. It fails silently and looks correct,
+ * which cost this rule its entire existence once already: the organic
+ * mark was written, shipped, and matched zero products.
+ *
+ * `\p{L}` under the `u` flag is every letter in every script, so the
+ * lookarounds below mean what `\b` is normally read to mean. It still
+ * rejects "økonomi" for `øko` and "arkæologi" for `økologi`.
+ */
+const word = (body: string) => new RegExp(`(?<!\\p{L})(?:${body})(?!\\p{L})`, 'iu');
+
+const CERTIFICATIONS: { pattern: RegExp; kind: OfferLabelInput['kind']; text: string }[] = [
+  // dictionary row `organic` → /labels/marks/organic.svg
+  // Danish inflects: økologisk / økologiske / økologisk-. Änglamark is
+  // Coop's own organic line and carries the mark on every product.
+  { pattern: word('økologisk|økologiske|øko|änglamark'), kind: 'organic', text: 'Økologisk' },
+  // dictionary row `noglehul` → /labels/marks/noglehul.svg
+  { pattern: word('nøglehul|nøglehuls|nøglehullet'), kind: 'custom', text: 'Nøglehul' },
+  // dictionary row `msc` → /labels/marks/msc.svg
+  { pattern: word('msc'), kind: 'custom', text: 'MSC' },
+  // dictionary row `svanemarke` → /labels/marks/svanemarke.svg
+  { pattern: word('svanemærket|svanemærke'), kind: 'custom', text: 'Svanemærket' },
+];
+
+/**
+ * The labels one offer carries.
+ *
+ * Two fields, because the two tables read different things: the chain's
+ * editorial phrases are written into the description, and a
+ * certification claim can be in either. Passing the heading for the
+ * mechanics too would chip a product merely named "Dybfrost-noget".
+ */
+export function tjekLabels(
+  description: string,
+  heading = '',
+  dictionary: LabelDictionary = EMPTY_LABEL_DICTIONARY,
+): OfferLabelInput[] {
   const found = PHRASES.filter((p) => p.pattern.test(description));
   // "Frit valg" and "Flere varianter" say the same thing to a shopper;
   // published tiles print one of them, not both.
   const deduped = found.filter(
     (p) => !(p.text === 'Flere varianter' && found.some((o) => o.text === 'Frit valg')),
   );
-  return deduped.map(({ kind, text }) => ({ kind, text }));
+
+  /*
+   * A certification becomes the MARK, not the word for it.
+   *
+   * This lookup is the difference between the Ø-mark and a chip reading
+   * "Økologisk", and forgetting it is how this feed printed words while
+   * the Coop export next door printed marks — that mapping resolved its
+   * `Logos` and this one resolved nothing. A caller that supplies no
+   * dictionary still gets the label, just without artwork, and keeps the
+   * kind declared above rather than being demoted to `custom`.
+   */
+  const product = `${heading} ${description}`;
+  const certified = CERTIFICATIONS
+    .filter((c) => c.pattern.test(product))
+    .map(({ kind, text }) => {
+      const [mark] = resolveLabels(dictionary, [text]);
+      return mark?.image ? mark : { kind, text };
+    });
+
+  // Marks first: the tile gives the row above the name to whatever comes
+  // first and a certification outranks a mechanic there.
+  return [...certified, ...deduped.map(({ kind, text }) => ({ kind, text }))];
+}
+
+/**
+ * The pack the price applies to — "1 pose", "1 bakke", "1 flaske/dåse".
+ *
+ * The chain writes it as the last sentence of the description and prints
+ * it directly above the price, because it is what the number buys. The
+ * same phrases are stripped from the fine print by `tjekFinePrint`
+ * below; this is the other half of that — the words were already being
+ * recognised and then thrown away.
+ *
+ * Only the leading "1", never a weight. "1 kg" is a quantity and belongs
+ * in the fine print; "1 pose" is a unit, and the two look alike only
+ * until a shopper wonders whether 12 kroner buys the bag or the kilo.
+ */
+const PACK = /\b1\s+(stk|pose|pakke|pk|flaske|flaske\/dåse|dåse|bakke|bæger|bundt|net|spand|ks)\.?/i;
+
+export function tjekPack(description: string): string {
+  const hit = PACK.exec(description);
+  if (!hit) return '';
+  return `1 ${hit[1]!.toLowerCase()}${/stk|pk/i.test(hit[1]!) ? '.' : ''}`;
 }
 
 /**
@@ -168,7 +276,10 @@ export function tjekOffers(retailerId: string, sourceName: string): FieldMapping
         if (!Number.isFinite(page) || page <= 0) return null;
         return Math.max(0.15, Math.min(1, 1 - (page - 1) / 40));
       },
-      labels: (row) => tjekLabels(text(row, 'description')),
+      pack: (row) => tjekPack(text(row, 'description')),
+      labels: (row, dictionary) => tjekLabels(
+        text(row, 'description'), text(row, 'heading'), dictionary,
+      ),
     },
   };
 }

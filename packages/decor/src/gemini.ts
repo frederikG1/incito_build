@@ -32,14 +32,25 @@ export const DEFAULT_TEXT_MODEL = 'gemini-3.5-flash';
  * `describe` below, which says so in as many words rather than letting
  * it read as a transient rate limit.
  *
- * Measured 2026-09-14 against a free-tier key, by asking ListModels for
- * every image-capable model and then actually calling them:
- * `gemini-2.5-flash-image` and `gemini-3.1-flash-image` both answer
- * `limit: 0` for `generate_content_free_tier_requests`. There is no
- * cheaper one to fall back to and no free one to prefer — the choice is
- * billing or no artwork. So this is an env var rather than a constant:
- * the day a tier or a model changes, it is a line in `.env` and a
- * restart, not a release.
+ * Measured again 2026-09-15 against a free-tier key, the same way: ask
+ * ListModels for every image-capable model, then actually call each one.
+ * Seven are visible now where the first measurement found two, and all
+ * seven answer `limit: 0` for `generate_content_free_tier_requests` —
+ * `gemini-2.5-flash-image`, `gemini-3.1-flash-image`,
+ * `-flash-lite-image`, `-flash-image-preview`, `gemini-3-pro-image`,
+ * `-preview`, and `nano-banana-pro-preview`. The same key answers the
+ * TEXT model in 1.4s, so the free tier is real and simply does not
+ * include drawing. There is no cheaper one to fall back to and no free
+ * one to prefer — the choice is billing or no artwork. So this is an
+ * env var rather than a constant: the day a tier or a model changes, it
+ * is a line in `.env` and a restart, not a release.
+ *
+ * Worth knowing before anyone "fixes" the detection in `describe`: the
+ * limit VALUE appears only in `error.message`, never in the structured
+ * `error.details[].violations[]`, whose `quotaId` reads
+ * `…-FreeTier` both when the allowance is zero and when a real one has
+ * been spent. Matching the message is not laziness; it is the only
+ * place the number is.
  */
 export const DEFAULT_IMAGE_MODEL = process.env['GEMINI_IMAGE_MODEL']
   || 'gemini-2.5-flash-image';

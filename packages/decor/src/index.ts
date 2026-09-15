@@ -201,6 +201,10 @@ export async function decorate(
       scale: 0.22 + (spin % 13) / 100,
       rotate: (spin % 17) - 8,
       opacity: 1,
+      // Generated artwork starts where its anchor puts it. The offset is
+      // for a person moving one by hand — see `PageDecoration.offsetX`.
+      offsetX: 0,
+      offsetY: 0,
     });
   }
 

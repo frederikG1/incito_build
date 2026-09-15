@@ -23,6 +23,14 @@ Rå feed ind, trykklar PDF ud. Fire trin, i den rækkefølge:
 Trin 5 er valgfrit og kører *efter* de andre, på et færdigt dokument —
 se [Stemningsbilleder](#stemningsbilleder).
 
+De fire trin er stadig vejen gennem `npm run build:catalogue`. **I
+studioet er de det ikke mere.** Sider laves nu ved at aflevere de sider,
+avisen skal ligne — se [Genskab trykte sider](#genskab-trykte-sider).
+Trin 2 planlagde en avis ud af ingenting, og resultatet var generisk
+rigtigt uden at ligne kæden: modellen blev bedt om at *opfinde* et
+design i stedet for at få vist et. Kuratering kan stadig køres fra
+terminalen, men studioets knap er væk.
+
 Ingen billedgenkendelse. Layout er deterministisk: modellen bestemmer
 *hvad* der står sammen, skabelonen bestemmer *hvor* det står, og
 browseren regner geometrien ud. Det er derfor output er reproducerbart,
@@ -76,7 +84,10 @@ npm run dev:api       # http://localhost:8787
 npm run dev:studio    # http://localhost:5173
 ```
 
-Vælg kæde, upload ugens feed, generér, ret, hent PDF.
+Vælg kæde, upload ugens feed, **aflevér de sider avisen skal ligne**, ret,
+hent PDF. Se [Genskab trykte sider](#genskab-trykte-sider) — det er vejen
+ind. **Hurtigt udkast** ved siden af er den modelløse genvej: kategorier
+i kædens egne layouts, til at se et feed på papir med det samme.
 
 Retningen bagefter foregår på siden, ikke i en formular. Klik en vare og
 ret den som i et billedprogram:
@@ -121,21 +132,35 @@ så en rettelse overlever en ny generering — og en hel træk-bevægelse er
 
 **Husk at lukke begge servere ned igen** når du er færdig.
 
-## Genskab en trykt side
+## Genskab trykte sider
 
-Tryk **Genskab side** i topbjælken. Panelet har tre trin, og de er de tre
+Tryk **Genskab sider** i topbjælken. Panelet har tre trin, og de er de tre
 input pipelinen har:
 
 | | |
 |---|---|
-| 1. Referencen | et foto, et screenshot eller en PDF af den side du vil efterligne |
-| 2. Varerne | ugens feed — samme upload som når du bygger en hel avis |
-| 3. Retning | én valgfri sætning, fx “kød skal føre siden” |
+| 1. Referencerne | fotos, screenshots eller PDF'er af de sider du vil efterligne |
+| 2. Varerne | ugens feed — samme upload som til et hurtigt udkast |
+| 3. Retning | én valgfri sætning, fx “kød skal føre siderne” |
 
-Bagefter står referencen på lærredet ved siden af den nye side, sammen
-med hvordan den blev læst: gitteret, den målte bundfarve, hvilken læser
-der kørte, hvad kaldet kostede — og casting, plads for plads, med
-modellens egen begrundelse for hver vare.
+Der må være flere referencer, og en PDF-række har sit eget sidefelt:
+`4`, `1-6` eller `2,5,9`. Én upload af sidste uges avis bliver altså til
+seks sider. Rækkefølgen i listen er rækkefølgen i avisen.
+
+Siderne bygges **én ad gangen**, og hver side får at vide hvilke varer de
+foregående allerede brugte — derfor fører den samme kaffe ikke fire
+opslag. De dukker op på lærredet efterhånden som de bliver bygget, en
+side der ikke kan læses koster kun den ene side, og den fil bliver
+liggende i listen så den kan prøves igen.
+
+Er der allerede en avis åben, kan **Læg siderne til** sætte de nye bagi
+i stedet for at starte forfra. Varerne på de åbne sider bliver heller
+ikke brugt igen.
+
+Over hver ny side står dens egen reference på lærredet, sammen med
+hvordan den blev læst: gitteret, den målte bundfarve, hvilken læser der
+kørte, hvad kaldet kostede — og casting, plads for plads, med modellens
+egen begrundelse for hver vare.
 
 Hvad der sker under trinnene:
 
@@ -165,12 +190,13 @@ Samme pipeline fra terminalen:
 
 ```bash
 npm run match -- --ref .data/reference/superbrugsen/p08.jpg
-npm run match -- --ref ~/avis.pdf --page 4 --brand superbrugsen
-npm run match -- --ref opslag.png --feed ~/uge38.json --note "mørkere bund"
+npm run match -- --ref ~/avis.pdf --page 1-6 --brand superbrugsen
+npm run match -- --ref p08.jpg --ref p09.jpg --feed ~/uge38.json
 ```
 
-Den skriver PNG, HTML og JSON til `.data/out/` sammen med referencen.
-Ét kald koster typisk $0.04–0.09.
+`--ref` må gentages og `--page` tager et interval eller en liste, så en
+hel avis er én kommando. Den skriver PNG, HTML og JSON til `.data/out/`
+sammen med referencerne. Én side koster typisk $0.03–0.05.
 
 ## En kæde har flere feeds
 
@@ -286,9 +312,9 @@ Gør det samme for en ny kæde.
 | `@incitio/ingest` | CSV/JSON → `Offer[]`, med danske pris- og datoformater |
 | `@incitio/brands` | Kæderegistret: skabeloner, tokens, feed-mapping, isolation |
 | `@incitio/compose` | Udvælgelse, deterministisk plan, plan → dokument |
-| `@incitio/curator` | Claude-kurateringen, med kategorisortering som fallback |
+| `@incitio/curator` | Claude-kurateringen — *ikke længere en vej ind fra studioet* |
 | `@incitio/decor` | Gemini: motivvalg, billedgenerering, baggrundsudklip, cache |
-| `@incitio/match` | Genskab en trykt side: rasterisering, målt bund, vision-casting |
+| `@incitio/match` | Genskab trykte sider: rasterisering, målt bund, vision-casting |
 | `@incitio/renderer` | React-komponenter + stylesheet |
 | `@incitio/pdf` | HTML-dokument, PDF og PNG-korrektur via Playwright |
 | `@incitio/pipeline` | De fire trin bundet sammen — CLI og API bruger samme |
@@ -365,7 +391,7 @@ mandel og melet på et rundstykke skal blive. Motivet lander i
 ## Kommandoer
 
 ```bash
-npm test                  # 194 tests
+npm test                  # 212 tests
 npm run typecheck
 npm run build:catalogue   # feed → JSON + HTML + PDF
                           #   --feed <fil>  --offers N  --pages N  --source <id>
@@ -373,8 +399,9 @@ npm run render            # gen-render et bygget katalog
 npm run decorate          # læg genererede stemningsbilleder på siderne
                           #   --dry  --offline  --brief "…"  --image-model <id>
                           #   --probe "<motiv>"  ét billede, uden katalog
-npm run match             # genskab én trykt side med ugens varer
-                          #   --ref <billede|pdf>  --page N  --feed <fil>  --note "…"
+npm run match             # genskab trykte sider med ugens varer
+                          #   --ref <billede|pdf> (gentages)  --page 1-6
+                          #   --feed <fil>  --note "…"
 npm run refs              # hent designreferencer
 npm run check             # rendér i Chromium og find afskæring
 ```

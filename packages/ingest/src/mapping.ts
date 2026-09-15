@@ -30,8 +30,14 @@ export interface FieldMapping {
     brand?: FieldSource<string>;
     category?: FieldSource<string>;
     price: FieldSource<number>;
+    /** True when `price` is the lowest of several. See `Offer.priceFrom`. */
+    priceFrom?: FieldSource<boolean>;
     prePrice?: FieldSource<number>;
     savings?: FieldSource<number>;
+    /** The high end when the saving is a range. See `Offer.savingsMax`. */
+    savingsMax?: FieldSource<number>;
+    /** What one unit IS — "1 pose". See `Offer.pack`. */
+    pack?: FieldSource<string>;
     quantity?: FieldSource<string>;
     /**
      * A quantity the feed already states in structured form.
@@ -182,6 +188,9 @@ export function normalizeRows(
       imagePack: f.imagePack
         ? [...new Set(f.imagePack(row).map((url) => url.trim()).filter(Boolean))].slice(0, 8)
         : [],
+      priceFrom: pick(row, f.priceFrom) === true,
+      savingsMax: parsePrice(pick(row, f.savingsMax)),
+      pack: asString(pick(row, f.pack)) ?? '',
       labels: f.labels ? f.labels(row, labelDictionary) : [],
       priority: parsePrice(pick(row, f.priority)),
     });

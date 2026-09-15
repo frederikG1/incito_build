@@ -40,6 +40,14 @@ export const MATCH_SCHEMA = {
         'Section heading for the NEW page, in the chain\'s own language, describing the offers'
         + ' you chose. Empty string for a page whose reference carries no masthead.',
     },
+    subtitle: {
+      type: 'string',
+      description:
+        'A short theme line under the heading, in the chain\'s own language, or an empty'
+        + ' string. Lower case, 2-5 words, a mood rather than a fact — "i det lune efterår"'
+        + ' under "Dejlige drinks". Never a price, a claim, a date or a repeat of the'
+        + ' heading. Empty unless the reference itself carries one.',
+    },
     areas: {
       type: 'array',
       items: { type: 'string' },
@@ -87,13 +95,14 @@ export const MATCH_SCHEMA = {
       },
     },
   },
-  required: ['heading', 'areas', 'slots'],
+  required: ['heading', 'subtitle', 'areas', 'slots'],
   additionalProperties: false,
 } as const;
 
 /** The reply, once the API has validated it against `MATCH_SCHEMA`. */
 export interface MatchPlan {
   heading: string;
+  subtitle: string;
   areas: string[];
   slots: {
     id: string;
@@ -170,6 +179,15 @@ THE HEADING is for the NEW page and must describe the offers you chose,
 in {{language}}, 1-3 words. Do not copy the reference's own
 campaign wording — that is the chain's copy for a different week's
 products.
+
+THE THEME LINE under it is the half of a masthead that sells rather than
+labels — "i det lune efterår" beneath "Dejlige drinks". The chain sets it
+in a handwritten face, so write it as someone would say it: lower case,
+two to five words, a season or an occasion, never a second description of
+the goods. It states nothing that could be wrong — no price, no claim, no
+date. Leave it empty when the reference's own masthead has only a
+heading, which is most pages: a mood line on every page is a tic, and the
+printed book saves it for the pages that are about something.
 
 If the image is not a retail leaflet page, or you can make out no offers
 on it, return an empty \`slots\` array and an empty \`areas\` array rather

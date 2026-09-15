@@ -188,10 +188,34 @@ export async function sampleGround(
   image: Buffer,
   type: ImageMediaType,
 ): Promise<string> {
+  return (await sampleGroundPalette(browser, image, type))[0]!;
+}
+
+/**
+ * The few colours the page's field is actually made of, commonest first.
+ *
+ * `sampleGround` above wants one colour and is right to: a rebuilt page
+ * gets one `background`. But a chain's ground is often not one colour —
+ * SuperBrugsen prints a cream field with a flower motif tiled over it,
+ * and Netto's yellow carries a darker yellow pattern. Anything that
+ * asks "is this pixel ground or is it ink?" needs all of them, or it
+ * counts the pattern as product and reports a nearly empty page as
+ * nearly full.
+ *
+ * Three, because that is what a printed field costs: the paper, the
+ * motif, and the halftone between them. Taking more starts admitting
+ * the packshots.
+ */
+export async function sampleGroundPalette(
+  browser: Browser,
+  image: Buffer,
+  type: ImageMediaType,
+  depth = 3,
+): Promise<string[]> {
   const tab = await browser.newPage();
   try {
     await tab.goto('about:blank');
-    return await tab.evaluate(async (dataUrl) => {
+    return await tab.evaluate(async ({ dataUrl, want }) => {
       const img = new Image();
       img.src = dataUrl;
       await img.decode();
@@ -219,11 +243,15 @@ export async function sampleGround(
         for (let x = 0; x < inset.x; x += Math.max(1, Math.round(inset.x / 10))) bump(x, y);
         for (let x = w - inset.x; x < w; x += Math.max(1, Math.round(inset.x / 10))) bump(x, y);
       }
-      const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0];
-      const [r, g, b] = best.split(',').map(Number);
       const hex = (c: number) => Math.min(255, Math.max(0, c)).toString(16).padStart(2, '0');
-      return `#${hex(r!)}${hex(g!)}${hex(b!)}`;
-    }, `data:${type};base64,${image.toString('base64')}`);
+      return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, want)
+        .map(([key]) => {
+          const [r, g, b] = key.split(',').map(Number);
+          return `#${hex(r!)}${hex(g!)}${hex(b!)}`;
+        });
+    }, { dataUrl: `data:${type};base64,${image.toString('base64')}`, want: depth });
   } finally {
     await tab.close();
   }

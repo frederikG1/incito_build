@@ -11,11 +11,28 @@ import { useStudio } from './state.js';
  * DIFFERENT models, and two unlabelled boxes side by side say the
  * opposite. A strip has room for the labels that carry that distinction.
  *
- * Always on screen rather than behind a disclosure, for the same reason
- * the "Genskab side" panel is not: artwork is a thing you iterate on —
- * draw, look, reword, draw again — and a control you reopen every round
- * is a control you stop using.
+ * It folds. This used to be open always, on the argument that artwork is
+ * iterated on — draw, look, reword, draw again — and a control you
+ * reopen every round is one you stop using. That was right when the
+ * strip sat above the only other thing on screen. It is not right now
+ * that pages are made by handing in references: two labelled fields and
+ * a prompt preview are a lot of chrome above the page you are actually
+ * looking at, for a step most sessions never run.
+ *
+ * Shut is the default, and the choice is remembered — someone who folds
+ * it away has said what they think of it, and saying it again after
+ * every reload is the same complaint twice.
  */
+
+const OPEN_KEY = 'incitio.decor.open';
+
+function remembered(): boolean {
+  try {
+    return window.localStorage.getItem(OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Stands in for the motif, which is the one part of the prompt this
@@ -28,6 +45,14 @@ const MOTIF_SLOT = '‹motivet for siden›';
 export function DecorBar() {
   const s = useStudio();
   const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState(remembered);
+
+  function show(next: boolean) {
+    setShown(next);
+    try {
+      window.localStorage.setItem(OPEN_KEY, next ? '1' : '0');
+    } catch { /* private browsing; it still folds for this session */ }
+  }
 
   if (!s.brand) return null;
 
@@ -53,10 +78,33 @@ export function DecorBar() {
   const at = mine ? preview.indexOf(mine) : -1;
 
   return (
-    <section className="decor" aria-label="Stemningsbilleder">
-      <div className="decor__row">
-        <h2 className="decor__title">Stemningsbillede</h2>
+    <section className={shown ? 'decor' : 'decor decor--shut'} aria-label="Stemningsbilleder">
+      {/*
+        * The one row that is always there.
+        *
+        * Folded, it still has to say the two things someone would open
+        * it to check — whether their own wording is in the prompt, and
+        * whether the key is there at all — or folding it would mean
+        * losing track of it.
+        */}
+      <div className="decor__head">
+        <button
+          className="decor__disclose"
+          onClick={() => show(!shown)}
+          aria-expanded={shown}
+        >
+          <span className="decor__caret" aria-hidden="true">{shown ? '▾' : '▸'}</span>
+          <h2 className="decor__title">Stemningsbillede</h2>
+        </button>
+        {!shown && mine && <span className="decor__badge">din tekst er med</span>}
+        {!shown && s.decorReady && s.decorModel && (
+          <code className="decor__model" title="Billedmodellen der kaldes">{s.decorModel}</code>
+        )}
+        {!shown && !s.decorReady && <span className="decor__off">ingen GEMINI_API_KEY</span>}
+      </div>
 
+      {shown && (
+      <div className="decor__row">
         <label className="decor__field">
           <span className="decor__label">Motiv <em>— hvad skal tegnes?</em></span>
           <input
@@ -98,7 +146,9 @@ export function DecorBar() {
           Tegn billeder
         </button>
       </div>
+      )}
 
+      {shown && (
       <div className="decor__row decor__row--meta">
         <button className="decor__toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
           {open ? 'Skjul' : 'Vis'} den fulde prompt
@@ -107,8 +157,9 @@ export function DecorBar() {
         {s.decorModel && <code className="decor__model" title="Billedmodellen der kaldes">{s.decorModel}</code>}
         {!s.decorReady && <span className="decor__off">ingen GEMINI_API_KEY på serveren</span>}
       </div>
+      )}
 
-      {open && (
+      {shown && open && (
         <p className="decor__prompt">
           {at >= 0
             ? <>

@@ -1,9 +1,12 @@
 import { create } from 'zustand';
 import type {
-  Brand, CatalogDocument, CatalogPage, Offer, PageTemplate, Placement,
-  PartOverride, PlacementOverrides, TilePart,
+  Brand, CatalogDocument, CatalogPage, DecorAnchor, Offer, PageBackground, PageDecoration,
+  PageTemplate,
+  Placement, PartOverride, PlacementOverrides, TilePart,
 } from '@incitio/schema';
-import { partLimits, partOverride, partPatch, slotAssignmentOrder } from '@incitio/schema';
+import {
+  mergeCatalogDocuments, partLimits, partOverride, partPatch, slotAssignmentOrder,
+} from '@incitio/schema';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
 import * as api from './api.js';
 
@@ -25,6 +28,129 @@ function rememberedBrand(): string | null {
   }
 }
 
+/**
+ * One file the editor handed in, ready to send.
+ *
+ * Held as base64 rather than as a `File`: that is what the endpoint
+ * takes, and a `File` cannot survive a state update any more usefully
+ * than its bytes can. Reading it at the moment of choosing also means a
+ * file that cannot be read is reported while the person still knows
+ * which one they picked.
+ */
+export interface ReferenceFile {
+  /** Stable across re-renders, so a row can be removed while others load. */
+  id: string;
+  name: string;
+  base64: string;
+  isPdf: boolean;
+  /**
+   * Which pages of a PDF this row stands for: "4", "1-6", "2,5,9".
+   *
+   * One row can therefore become six pages. That is the common case —
+   * the editor has last week's whole avis as one PDF — and it beats
+   * uploading the same file six times. Ignored for an image, which is
+   * always exactly one page.
+   */
+  pages: string;
+}
+
+/**
+ * How one page was rebuilt: what the model saw, and what it did.
+ *
+ * Kept beside the document rather than in it — none of this is printed,
+ * and a document is what gets saved. `pageId` is what ties it to the
+ * sheet on the canvas, and it is re-keyed whenever pages are merged, so
+ * the reference shown above a page is always that page's own.
+ */
+export interface PageRun {
+  pageId: string;
+  /** What the model was shown, as a data URL. */
+  reference: string;
+  referenceName: string;
+  template: { id: string; name: string; areas: string[] };
+  ground: string;
+  casting: { slotId: string; offerId: string; role: string; why: string }[];
+  source: { id: string; name: string; reason: string };
+  offersInFeed: number;
+  poolSize: number;
+  rejected: number;
+  usage: { inputTokens: number; outputTokens: number };
+  elapsedMs: number;
+}
+
+/**
+ * How many pages a run will cost, before it is paid for.
+ *
+ * A page is a model call — see `matchPages` in `@incitio/match` — so
+ * "1-40" typed into a PDF row is forty of them. The cap is here rather
+ * than in the endpoint because this is where a person can still be told
+ * about it, in the panel, before they press the button.
+ */
+export const MAX_REFERENCE_PAGES = 24;
+
+/**
+ * A page spec as the pages it names: "2,5-7" is 2, 5, 6, 7.
+ *
+ * Typed order is kept rather than sorted — someone who writes "7,1"
+ * wants page seven first — and duplicates are dropped, because asking
+ * for the same page twice costs a model call and prints the same grid
+ * with different products, which nobody means.
+ */
+export function pageNumbers(spec: string): number[] {
+  const out: number[] = [];
+  for (const chunk of spec.split(',')) {
+    const trimmed = chunk.trim();
+    const range = /^(\d{1,3})\s*[-\u2013]\s*(\d{1,3})$/.exec(trimmed);
+    if (range) {
+      const from = Number(range[1]);
+      const to = Number(range[2]);
+      for (let page = Math.min(from, to); page <= Math.max(from, to); page += 1) out.push(page);
+      continue;
+    }
+    if (/^\d{1,3}$/.test(trimmed)) out.push(Number(trimmed));
+  }
+  return [...new Set(out.filter((page) => page >= 1 && page <= 400))];
+}
+
+/**
+ * A count and the noun that agrees with it — "1 side", "4 sider".
+ *
+ * Small, and worth having: this panel counts pages in half a dozen
+ * places, and a parenthesised plural in a product an editor uses every
+ * week reads as software that was not finished.
+ */
+export const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** One job per page: what is actually sent, one request each. */
+export interface ReferenceJob {
+  /** The row it came from, so a page that failed can stay on screen. */
+  refId: string;
+  name: string;
+  base64: string;
+  pageNumber?: number;
+}
+
+/** Every reference flattened into the pages it asks for, in order. */
+export function referenceJobs(references: ReferenceFile[]): ReferenceJob[] {
+  const jobs: ReferenceJob[] = [];
+  for (const reference of references) {
+    if (!reference.isPdf) {
+      jobs.push({ refId: reference.id, name: reference.name, base64: reference.base64 });
+      continue;
+    }
+    const pages = pageNumbers(reference.pages);
+    for (const page of pages.length > 0 ? pages : [1]) {
+      jobs.push({
+        refId: reference.id,
+        name: `${reference.name} s. ${page}`,
+        base64: reference.base64,
+        pageNumber: page,
+      });
+    }
+  }
+  return jobs.slice(0, MAX_REFERENCE_PAGES);
+}
+
 export interface StudioState {
   brands: api.BrandSummary[];
   brandId: string | null;
@@ -33,6 +159,14 @@ export interface StudioState {
   sources: api.BrandSource[];
   feed: { text: string; source: string } | null;
   document: CatalogDocument | null;
+  /**
+   * This chain's saved catalogues, newest first.
+   *
+   * Kept in state so the toolbar can offer yesterday's work without a
+   * round trip on every render. Refreshed whenever something is saved,
+   * which is the only thing that changes it.
+   */
+  catalogues: api.CatalogSummary[];
 
   curationReady: boolean;
   /** Whether the server holds a GEMINI_API_KEY. Mood artwork needs one. */
@@ -54,22 +188,38 @@ export interface StudioState {
   note: string | null;
 
   /*
-   * Rebuilding a published page, which is a different job from building
-   * a catalogue and is kept visibly separate in the UI.
+   * Rebuilding published pages, which is how a catalogue is made here:
+   * you hand in the pages you want, one file each, and get them back
+   * carrying this week's products.
    *
-   * `reference` is what the user picked, held as base64 because that is
-   * what the endpoint takes and the file itself cannot survive a state
-   * update. `reproduction` is what came back — the page is in
-   * `document` like any other, and this is everything ABOUT it: what was
-   * shown to the model, what it put where, and what it cost.
+   * `references` is what the user picked, held as base64 because that
+   * is what the endpoint takes and a `File` cannot survive a state
+   * update. `reproductions` is what came back — the pages are in
+   * `document` like any others, and these are everything ABOUT them:
+   * what was shown to the model, what it put where, and what it cost.
    */
   reproduceOpen: boolean;
-  reference: { name: string; base64: string; isPdf: boolean } | null;
-  referencePage: number;
+  references: ReferenceFile[];
   reproduceNote: string;
-  reproduction: api.ReproduceReply | null;
+  /** Add the new pages to the catalogue already open instead of replacing it. */
+  reproduceAppend: boolean;
+  reproductions: PageRun[];
 
   selectedOfferId: string | null;
+  /**
+   * Which of the chain's own pictures is in hand, if any.
+   *
+   * A decoration is painted BEHIND the grid — that is what makes it
+   * atmosphere rather than a fifth product — so on a page full of tiles
+   * the pointer lands on a tile every time and the picture cannot be
+   * grabbed at all. Arming it first is what gives it back: a selected
+   * decoration lifts above the grid and takes the pointer; every other
+   * one stays exactly as inert as it is in print.
+   *
+   * The same bargain the tiles make. You select a tile before you drag
+   * its parts, and for the same reason.
+   */
+  selectedDecorId: string | null;
   /**
    * Which single box of the selected tile is in hand.
    *
@@ -80,7 +230,6 @@ export interface StudioState {
    */
   selectedPart: TilePart | null;
   maxPages: number;
-  brief: string;
 
   /** Undo history of whole documents. Small, and the editor is small. */
   past: CatalogDocument[];
@@ -89,29 +238,54 @@ export interface StudioState {
   start: () => Promise<void>;
   signInAs: (brandId: string) => Promise<void>;
   uploadFeed: (name: string, text: string) => void;
-  build: (options?: { skipCuration?: boolean; fresh?: boolean }) => Promise<void>;
+  /** Re-read the saved list. Cheap, and never a model call. */
+  refreshCatalogues: () => Promise<void>;
+  /**
+   * Put a saved catalogue back on the canvas.
+   *
+   * Free, and that is the point: a rebuilt page cost a model call once
+   * and is an ordinary document from then on. Checking what last week's
+   * run looked like, or what a stylesheet change did to it, must not
+   * cost that call a second time.
+   */
+  openCatalogue: (id: string) => Promise<void>;
+  /**
+   * A plain draft straight from the feed, with no model in the loop.
+   *
+   * Kept as the fast way to see a feed on paper — and as the thing that
+   * still works with no API key. It does NOT curate: the way to get a
+   * page worth printing is to hand in a page, which is `reproduce`.
+   */
+  build: (options?: { fresh?: boolean }) => Promise<void>;
   save: () => Promise<void>;
   downloadPdf: () => Promise<void>;
 
   setReproduceOpen: (open: boolean) => void;
-  /** The page to rebuild: an image, or a PDF to take one page of. */
-  setReference: (file: File) => Promise<void>;
-  setReferencePage: (page: number) => void;
+  /** Add pages to rebuild: images, or PDFs to take pages out of. */
+  addReferences: (files: File[]) => Promise<void>;
+  /** Which pages of a PDF this reference stands for — "4", "1-6", "2,5,9". */
+  setReferencePages: (id: string, spec: string) => void;
+  removeReference: (id: string) => void;
+  /** Move a reference up or down; the order is the order they print in. */
+  moveReference: (id: string, delta: number) => void;
+  clearReferences: () => void;
   setReproduceNote: (note: string) => void;
-  /** Send the reference and the feed, and put the rebuilt page on the canvas. */
+  setReproduceAppend: (append: boolean) => void;
+  /** Rebuild every reference with the feed, and put the pages on the canvas. */
   reproduce: () => Promise<void>;
   setDecorNote: (value: string) => void;
   setDecorStyle: (value: string) => void;
   decorate: () => Promise<void>;
 
   select: (offerId: string | null) => void;
+  /** Arm a picture for dragging, or put it back down. */
+  selectDecor: (decorId: string | null) => void;
   selectPart: (part: TilePart | null) => void;
   swapPlacements: (
     from: { pageId: string; slotId: string },
     to: { pageId: string; slotId: string },
   ) => void;
   setMaxPages: (pages: number) => void;
-  setBrief: (brief: string) => void;
   /**
    * Change one tile's hand-made corrections.
    *
@@ -151,7 +325,59 @@ export interface StudioState {
   /** Put every box of a tile back where the composer had it. */
   resetTile: (offerId: string) => void;
   movePage: (pageId: string, delta: number) => void;
+  /**
+   * Put one of the chain's own pictures on a page.
+   *
+   * The files are the chain's — its grapes, its almonds — so this is an
+   * upload and not a generation. What lands on the page is an ordinary
+   * `PageDecoration`, the same record `npm run decorate` writes, so the
+   * renderer, the editor and the printer need to know nothing new.
+   *
+   * The picture arrives as it left the designer's folder: nothing is
+   * keyed out of it. A chain's own artwork is already cut out where it
+   * needs to be, and a filter that guesses at that does more damage on
+   * the photographs than it saves on the packshots.
+   */
+  addPageImage: (pageId: string, file: File) => Promise<void>;
+  updatePageImage: (
+    pageId: string,
+    decorId: string,
+    patch: Partial<PageDecoration>,
+    /** Coalesces a drag into one undo step, like `updatePart`. */
+    gesture?: string,
+  ) => void;
+  removePageImage: (pageId: string, decorId: string) => void;
+
+  /**
+   * Lay one of the chain's own pictures under the whole sheet.
+   *
+   * The same upload route as `addPageImage` — the file is stored as it
+   * was handed in, corners and all. What lands on the page is a
+   * `PageBackground`: one per page, replacing whatever was there.
+   */
+  addPageBackground: (pageId: string, file: File) => Promise<void>;
+  /**
+   * Change how the background meets the sheet, or take it off.
+   *
+   * `null` removes it. A patch changes fit, opacity or crop — and takes
+   * a gesture for the same reason `updatePageImage` does: dragging a
+   * slider fires on every pixel and must be one undo step.
+   */
+  setPageBackground: (
+    pageId: string,
+    patch: Partial<PageBackground> | null,
+    gesture?: string,
+  ) => void;
+
   setPageTitle: (pageId: string, title: string) => void;
+  /**
+   * The theme line under the heading — "i det lune efterår".
+   *
+   * Editable for the same reason the heading is, only more so: it is the
+   * one line on the page the model writes to a brief rather than from
+   * the data, so it is the one most likely to be nearly right.
+   */
+  setPageSubtitle: (pageId: string, subtitle: string) => void;
   /**
    * This page's own ground colour, or `null` to hand it back to the
    * chain's rotation.
@@ -192,6 +418,25 @@ export interface StudioState {
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
+ * The chain, carrying layouts that are not part of its vocabulary.
+ *
+ * A page rebuilt from a reference sits on a grid nobody drew for the
+ * chain. It travels inside the document — which is what makes it
+ * survive a save and a print — but the editor's own template lookups
+ * (`resolveTemplate`, reseating, the layout picker) go through the
+ * brand, so the brand it renders with has to know about them too.
+ *
+ * First wins, so a run's own layouts resolve before the chain's.
+ */
+function withTemplates(brand: Brand, templates: PageTemplate[]): Brand {
+  const all = new Map<string, PageTemplate>();
+  for (const template of [...templates, ...brand.templates]) {
+    if (!all.has(template.id)) all.set(template.id, template);
+  }
+  return { ...brand, templates: [...all.values()] };
+}
+
+/**
  * Bytes as base64, in chunks.
  *
  * `btoa(String.fromCharCode(...bytes))` is the one-liner and it throws
@@ -204,6 +449,41 @@ function toBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
   return window.btoa(binary);
+}
+
+/**
+ * Wait until an uploaded picture can actually be fetched back.
+ *
+ * The file is on the server's disk the moment the reply lands —
+ * `writeFileSync` returns before the route does — but it reaches the
+ * EDITOR through the dev server's static root, and that tree needs a
+ * beat to notice a path it has never served. Measured: the request made
+ * immediately after the upload 404s and the same URL is fine a moment
+ * later.
+ *
+ * Retried rather than failed, because the file is genuinely there; and
+ * probed at all rather than trusted, because an `<img>` that fails once
+ * never retries a `src` it has already failed. Without this the page
+ * keeps a picture that is permanently a broken box on screen — while
+ * the PDF, which reads the same file off disk, prints it perfectly. A
+ * defect that exists only in the editor is the worst kind to chase.
+ *
+ * The cache-buster is what makes the retry mean anything: a browser
+ * that has just cached a 404 for this exact URL would otherwise answer
+ * every later attempt from that cache.
+ */
+async function reachable(url: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const ok = await new Promise<boolean>((resolve) => {
+      const probe = new Image();
+      probe.onload = () => resolve(true);
+      probe.onerror = () => resolve(false);
+      probe.src = attempt === 0 ? url : `${url}?t=${Date.now()}`;
+    });
+    if (ok) return true;
+    await new Promise((wait) => { setTimeout(wait, 150 * (attempt + 1)); });
+  }
+  return false;
 }
 
 /** A placement nobody has corrected yet. */
@@ -314,6 +594,7 @@ export const useStudio = create<StudioState>((set, get) => {
     sources: [],
     feed: null,
     document: null,
+    catalogues: [],
     curationReady: false,
     decorReady: false,
     decorModel: '',
@@ -323,14 +604,14 @@ export const useStudio = create<StudioState>((set, get) => {
     error: null,
     note: null,
     reproduceOpen: false,
-    reference: null,
-    referencePage: 1,
+    references: [],
     reproduceNote: '',
-    reproduction: null,
+    reproduceAppend: false,
+    reproductions: [],
     selectedOfferId: null,
+    selectedDecorId: null,
     selectedPart: null,
     maxPages: 6,
-    brief: '',
     past: [],
     future: [],
 
@@ -367,10 +648,11 @@ export const useStudio = create<StudioState>((set, get) => {
         selectedPart: null,
         past: [],
         future: [],
-        // A reference page and its rebuild belong to one chain as much
-        // as a feed does — see the note above.
-        reference: null,
-        reproduction: null,
+        catalogues: [],
+        // Reference pages and their rebuilds belong to one chain as
+        // much as a feed does — see the note above.
+        references: [],
+        reproductions: [],
         reproduceOpen: false,
       });
       try {
@@ -391,6 +673,7 @@ export const useStudio = create<StudioState>((set, get) => {
           api.fetchDecorStatus(brandId),
           sample?.path ? api.fetchFeed(sample.path) : Promise.resolve(null),
         ]);
+        void get().refreshCatalogues();
         set({
           brandId,
           brand: profile.brand,
@@ -413,22 +696,16 @@ export const useStudio = create<StudioState>((set, get) => {
     },
 
     async build(options = {}) {
-      const { brandId, feed, maxPages, brief } = get();
+      const { brandId, feed, maxPages } = get();
       if (!brandId || !feed) return;
 
-      const skipCuration = options.skipCuration ?? false;
-      set({
-        busy: skipCuration ? 'Bygger…' : 'Claude planlægger siderne…',
-        error: null,
-        note: null,
-      });
+      set({ busy: 'Bygger…', error: null, note: null });
 
       try {
         const reply = await api.buildCatalogue(brandId, {
           feed: feed.text,
           maxPages,
-          skipCuration,
-          ...(brief.trim() ? { brief: brief.trim() } : {}),
+          skipCuration: true,
           // A fresh seed on every click: pressing the button again is a
           // request for another take, and with a fixed seed the second
           // click returns the first click's pages.
@@ -438,7 +715,7 @@ export const useStudio = create<StudioState>((set, get) => {
         const notes = [
           reply.source.name,
           `${reply.document.pages.length} sider af ${reply.offerCount} tilbud`,
-          reply.curated ? 'kurateret af Claude' : 'kategorisortering',
+          'kategorisortering — ingen model',
           ...(reply.dropped > 0 ? [`${reply.dropped} tilbud kunne ikke være med`] : []),
           ...(reply.substitutions.length > 0
             ? [`${reply.substitutions.length} sider fik en anden skabelon`]
@@ -452,9 +729,9 @@ export const useStudio = create<StudioState>((set, get) => {
           selectedOfferId: null,
           selectedPart: null,
           busy: null,
-          // The canvas now shows a catalogue, not a rebuilt page, so the
-          // comparison strip has nothing left to compare.
-          reproduction: null,
+          // The canvas now shows a plain draft, not rebuilt pages, so
+          // the comparison strips have nothing left to compare.
+          reproductions: [],
           note: notes.join(' · '),
           ...(reply.curationError ? { error: reply.curationError } : {}),
         });
@@ -470,6 +747,49 @@ export const useStudio = create<StudioState>((set, get) => {
       try {
         await api.saveCatalogue(brandId, document, 'manuel');
         set({ busy: null, note: 'Gemt' });
+        await get().refreshCatalogues();
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    async refreshCatalogues() {
+      const { brandId } = get();
+      if (!brandId) return;
+      try {
+        set({ catalogues: await api.fetchCatalogues(brandId) });
+      } catch {
+        // A list that cannot be read is not worth interrupting anyone
+        // over; the editor works without it and the next save retries.
+      }
+    },
+
+    async openCatalogue(id) {
+      const { brandId } = get();
+      if (!brandId || !id) return;
+      set({ busy: 'Åbner…', error: null, note: null });
+      try {
+        const document = await api.fetchCatalogue(brandId, id);
+        if (!document) {
+          set({ busy: null, error: 'Den avis findes ikke længere' });
+          return;
+        }
+        set({
+          document,
+          busy: null,
+          past: [],
+          future: [],
+          selectedOfferId: null,
+          selectedPart: null,
+          /*
+           * The comparison strips do not come back, and cannot: what the
+           * model was shown is a picture, and a document carries the
+           * catalogue rather than the session that produced it. The
+           * pages — the part that cost money — do come back.
+           */
+          reproductions: [],
+          note: `Åbnede ${document.name} · ${count(document.pages.length, 'side', 'sider')}`,
+        });
       } catch (error) {
         set({ busy: null, error: message(error) });
       }
@@ -503,83 +823,270 @@ export const useStudio = create<StudioState>((set, get) => {
     setReproduceOpen: (open) => set({ reproduceOpen: open, error: null }),
 
     /*
-     * The file, read once and kept as base64.
+     * The files, read once and kept as base64.
      *
-     * A `File` cannot be held in state across a re-render any more
-     * usefully than its bytes can, and base64 is what the endpoint
-     * takes — so the conversion happens at the moment of choosing,
-     * where a failure is still attributable to the file the user just
-     * picked.
+     * Appended rather than replaced: picking four files and then
+     * remembering a fifth is the normal way this list is built, and a
+     * picker that threw the first four away would be a trap. A file
+     * that cannot be read is reported by name and the rest still land.
      */
-    async setReference(file: File) {
-      set({ busy: 'Læser referencen…', error: null });
-      try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        set({
-          reference: {
+    async addReferences(files: File[]) {
+      if (files.length === 0) return;
+      set({ busy: files.length > 1 ? `Læser ${files.length} filer…` : 'Læser referencen…', error: null });
+      const added: ReferenceFile[] = [];
+      const failed: string[] = [];
+      for (const file of files) {
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          added.push({
+            id: `ref-${Date.now().toString(36)}-${added.length}-${Math.random().toString(36).slice(2, 7)}`,
             name: file.name,
             base64: toBase64(bytes),
             // Read from the bytes, not the name: what matters is
             // whether a page has to be picked out of it.
             isPdf: String.fromCharCode(...bytes.subarray(0, 5)) === '%PDF-',
-          },
-          referencePage: 1,
-          busy: null,
-          note: `Reference klar: ${file.name}`,
-        });
-      } catch (error) {
-        set({ busy: null, error: `Kunne ikke læse ${file.name} (${message(error)})` });
+            pages: '1',
+          });
+        } catch (error) {
+          failed.push(`${file.name} (${message(error)})`);
+        }
       }
+      const references = [...get().references, ...added];
+      set({
+        references,
+        busy: null,
+        ...(failed.length > 0 ? { error: `Kunne ikke læse ${failed.join(', ')}` } : {}),
+        note: added.length > 0
+          ? `${count(referenceJobs(references).length, 'side', 'sider')} klar til at blive genskabt`
+          : null,
+      });
     },
 
-    setReferencePage: (page) => set({ referencePage: Math.max(1, Math.round(page) || 1) }),
+    setReferencePages: (id, spec) => set({
+      references: get().references.map((reference) => (reference.id === id
+        // Kept as typed, not as parsed: a half-typed "1-" has to stay
+        // on screen long enough to become "1-6".
+        ? { ...reference, pages: spec.slice(0, 40) }
+        : reference)),
+    }),
+
+    removeReference: (id) => set({
+      references: get().references.filter((reference) => reference.id !== id),
+    }),
+
+    moveReference(id, delta) {
+      const references = [...get().references];
+      const at = references.findIndex((reference) => reference.id === id);
+      const to = at + delta;
+      if (at < 0 || to < 0 || to >= references.length) return;
+      const [moved] = references.splice(at, 1);
+      references.splice(to, 0, moved!);
+      set({ references });
+    },
+
+    clearReferences: () => set({ references: [], error: null }),
+
     setReproduceNote: (note) => set({ reproduceNote: note }),
+    setReproduceAppend: (append) => set({ reproduceAppend: append }),
 
     /*
-     * The rebuilt page arrives as an ordinary document, so everything
-     * the editor already does — dragging a tile, nudging a price,
-     * saving, printing — works on it unchanged.
+     * The rebuilt pages arrive as ordinary documents, so everything the
+     * editor already does — dragging a tile, nudging a price, saving,
+     * printing — works on them unchanged.
      *
-     * The brand is replaced by the one the reply carries. A page read
-     * off a reference sits on a grid that is not in the chain's set,
-     * and without it the canvas would render "ukendt skabelon" over a
-     * page that is perfectly valid.
+     * One request per page, in order, and the reason is worth keeping:
+     *
+     *  - each page is told which offers the pages before it used, so a
+     *    catalogue does not print the same coffee on four spreads;
+     *  - the canvas grows a page at a time, so a run of eight is
+     *    something you can watch rather than a spinner for six minutes;
+     *  - a reference the model cannot read costs that one page, not the
+     *    seven that already worked.
+     *
+     * The loop lives here rather than on the server because a single
+     * request carrying eight model calls would be cut off by the
+     * server's own request timeout long before it answered. The pieces
+     * that must not differ between this and the terminal's `matchPages`
+     * — what is excluded, and how pages are merged — are shared.
+     *
+     * The brand is replaced by the one the replies carry, extended with
+     * every layout in the run. A page read off a reference sits on a
+     * grid that is not in the chain's set, and without it the canvas
+     * renders "ukendt skabelon" over a page that is perfectly valid.
      */
     async reproduce() {
-      const { brandId, feed, reference, referencePage, reproduceNote } = get();
-      if (!brandId || !reference) return;
+      const { brandId, feed, references, reproduceNote, reproduceAppend } = get();
+      const jobs = referenceJobs(references);
+      if (!brandId || jobs.length === 0) return;
 
-      set({ busy: 'Claude læser siden…', error: null, note: null });
-      try {
-        const reply = await api.reproducePage(brandId, {
-          file: reference.base64,
-          feed: feed?.text ?? '',
-          referenceName: reference.name,
-          ...(reference.isPdf ? { pageNumber: referencePage } : {}),
-          ...(reproduceNote.trim() ? { note: reproduceNote.trim() } : {}),
-        });
+      /*
+       * Adding to what is open, or starting again.
+       *
+       * Appending is how a whole avis gets built here: four pages, look
+       * at them, two more. The document already on the canvas becomes
+       * the first part of the merge — hand edits included — and its
+       * offers join the exclusion list so the new pages bring new goods.
+       */
+      const base = reproduceAppend ? get().document : null;
+      const parts: CatalogDocument[] = base ? [base] : [];
+      const spent = base ? base.offers.map((offer) => offer.id) : [];
 
+      /*
+       * Merging renumbers pages by position, so a run that appends
+       * moves the ids the old runs were keyed by. Re-keyed here, or the
+       * reference shown above page five would be page two's.
+       */
+      let runs: PageRun[] = base
+        ? (() => {
+            const moved = new Map(base.pages.map((page, index) => [page.id, `page-${index + 1}`]));
+            return get().reproductions.map((run) => ({
+              ...run,
+              pageId: moved.get(run.pageId) ?? run.pageId,
+            }));
+          })()
+        : [];
+
+      /*
+       * A name of its own, so this run does not overwrite the last one.
+       *
+       * Every run is saved when it finishes — see the end of this
+       * function — and a fixed id would mean each rebuilt page quietly
+       * replaced the previous one in the store. The whole point of
+       * keeping them is that a page cost a model call once.
+       *
+       * Appending keeps the open catalogue's id: adding two pages to an
+       * avis is the same avis, not a new one.
+       */
+      const stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 12);
+      const catalogId = base ? base.id : `${brandId}-${stamp}`;
+      const catalogName = base
+        ? base.name
+        : `${get().brand?.name ?? brandId} · ${new Date().toLocaleString('da-DK', {
+          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+        })}`;
+
+      const failures: { refId: string; name: string; message: string }[] = [];
+      const cost = { inputTokens: 0, outputTokens: 0 };
+      const started = Date.now();
+      set({ busy: 'Claude læser siden…', error: null, note: null, reproduceOpen: false });
+
+      for (const [index, job] of jobs.entries()) {
         set({
-          document: reply.document,
-          brand: reply.brand,
-          reproduction: reply,
-          reproduceOpen: false,
-          past: [],
-          future: [],
-          selectedOfferId: null,
-          selectedPart: null,
-          busy: null,
-          note: [
-            `Genskabt efter ${reference.name}`,
-            `${reply.casting.length} varer`,
-            `bund ${reply.ground} målt i marginen`,
-            `${(reply.elapsedMs / 1000).toFixed(1)}s`,
-            ...(reply.rejected > 0 ? [`${reply.rejected} plads(er) udeladt`] : []),
-          ].join(' · '),
+          busy: jobs.length > 1
+            ? `Claude læser side ${index + 1} af ${jobs.length}…`
+            : 'Claude læser siden…',
         });
-      } catch (error) {
-        set({ busy: null, error: message(error) });
+        try {
+          const reply = await api.reproducePage(brandId, {
+            file: job.base64,
+            feed: feed?.text ?? '',
+            referenceName: job.name,
+            ...(job.pageNumber ? { pageNumber: job.pageNumber } : {}),
+            ...(reproduceNote.trim() ? { note: reproduceNote.trim() } : {}),
+            ...(spent.length > 0 ? { exclude: spent } : {}),
+          });
+
+          parts.push(reply.document);
+          spent.push(...reply.document.offers.map((offer) => offer.id));
+          cost.inputTokens += reply.usage.inputTokens;
+          cost.outputTokens += reply.usage.outputTokens;
+
+          const document = mergeCatalogDocuments(parts, {
+            id: catalogId,
+            name: catalogName,
+          });
+          const landed = document.pages[document.pages.length - 1];
+          runs = [...runs, {
+            pageId: landed?.id ?? `page-${document.pages.length}`,
+            reference: reply.reference,
+            referenceName: job.name,
+            template: reply.template,
+            ground: reply.ground,
+            casting: reply.casting,
+            source: reply.source,
+            offersInFeed: reply.offersInFeed,
+            poolSize: reply.poolSize,
+            rejected: reply.rejected,
+            usage: reply.usage,
+            elapsedMs: reply.elapsedMs,
+          }];
+
+          /*
+           * Set after every page, not at the end: the pages appear as
+           * they are built. History is cleared rather than appended to
+           * — the run is one action, and undoing it a page at a time
+           * would leave a catalogue nobody asked for.
+           */
+          set({
+            document,
+            brand: withTemplates(reply.brand, document.templates),
+            reproductions: runs,
+            past: [],
+            future: [],
+            selectedOfferId: null,
+            selectedPart: null,
+          });
+        } catch (error) {
+          failures.push({ refId: job.refId, name: job.name, message: message(error) });
+        }
       }
+
+      const built = runs.length - (base ? base.pages.length : 0);
+      const seconds = ((Date.now() - started) / 1000).toFixed(0);
+      const spend = (cost.inputTokens * 5 + cost.outputTokens * 25) / 1e6;
+
+      /*
+       * What worked leaves the list; what did not stays in it.
+       *
+       * Otherwise the next run silently rebuilds the pages you already
+       * have — and with "læg til" ticked, pays for them twice. A
+       * reference that failed is left where it is, because the usual
+       * answer to a page the model could not read is to try that one
+       * again, not to find the file again.
+       */
+      /*
+       * Saved here rather than left to the Gem button.
+       *
+       * These pages cost a model call each. Leaving them unsaved means a
+       * reload, a chain switch or a second run throws away something
+       * that was paid for — and the only way back is to pay again. A
+       * failure to save is reported but does not fail the run: the
+       * pages are on the canvas either way.
+       */
+      if (built > 0) {
+        const made = get().document;
+        if (made) {
+          try {
+            await api.saveCatalogue(brandId, made, 'genskabt');
+            await get().refreshCatalogues();
+          } catch (error) {
+            failures.push({ refId: '', name: 'gem', message: message(error) });
+          }
+        }
+      }
+
+      const stuck = new Set(failures.map((failure) => failure.refId));
+      set({
+        busy: null,
+        references: get().references.filter((reference) => stuck.has(reference.id)),
+        // The run built something, so adding to it is the next likely
+        // move; it was opt-in for a run that replaces what is open.
+        reproduceAppend: built > 0,
+        // Every page failed: there is nothing to look at, so the reason
+        // is the whole message rather than a footnote under a result.
+        ...(built === 0
+          ? { error: failures[0]?.message ?? 'ingen sider kunne genskabes' }
+          : {
+            error: failures.length > 0
+              ? `${count(failures.length, 'side', 'sider')} kunne ikke genskabes: ${failures.map((f) => `${f.name} — ${f.message}`).join(' · ')}`
+              : null,
+            note: [
+              `${count(built, 'side', 'sider')} genskabt`,
+              `${seconds}s`,
+              `≈ $${spend.toFixed(2)}`,
+            ].join(' · '),
+          }),
+      });
     },
 
     setDecorNote: (value) => set({ decorNote: value }),
@@ -614,7 +1121,7 @@ export const useStudio = create<StudioState>((set, get) => {
           future: [],
           busy: null,
           note: [
-            `${reply.drawn} side(r) fik et stemningsbillede`,
+            `${count(reply.drawn, 'side', 'sider')} fik et stemningsbillede`,
             ...(reply.cached > 0 ? [`${reply.cached} fra cache`] : []),
             ...(reply.skipped > 0 ? [`${reply.skipped} bevidst uden`] : []),
           ].join(' · '),
@@ -637,9 +1144,17 @@ export const useStudio = create<StudioState>((set, get) => {
      */
     select: (offerId) => set(
       offerId === get().selectedOfferId
-        ? { selectedOfferId: offerId }
-        : { selectedOfferId: offerId, selectedPart: null },
+        // A picture and a tile are never both in hand: the arrow keys
+        // would have two things to move and the inspector two things to
+        // describe.
+        ? { selectedOfferId: offerId, selectedDecorId: null }
+        : { selectedOfferId: offerId, selectedPart: null, selectedDecorId: null },
     ),
+
+    selectDecor: (decorId) => set({
+      selectedDecorId: decorId,
+      ...(decorId ? { selectedOfferId: null, selectedPart: null } : {}),
+    }),
 
     selectPart: (part) => set({ selectedPart: part }),
 
@@ -699,7 +1214,6 @@ export const useStudio = create<StudioState>((set, get) => {
       });
     },
     setMaxPages: (pages) => set({ maxPages: Math.max(1, Math.min(60, pages)) }),
-    setBrief: (brief) => set({ brief }),
 
     endGesture() { gesture = null; },
 
@@ -782,10 +1296,127 @@ export const useStudio = create<StudioState>((set, get) => {
       });
     },
 
+    async addPageImage(pageId, file) {
+      const { brandId } = get();
+      if (!brandId) return;
+      set({ busy: `Lægger ${file.name} på siden…`, error: null });
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { url } = await api.uploadImage(brandId, toBase64(bytes), file.name);
+
+        if (!await reachable(url)) throw new Error(`${url} kunne ikke hentes igen`);
+
+        set({ busy: null, note: `${file.name} lagt på siden` });
+        mutate((document) => ({
+          ...document,
+          pages: document.pages.map((page) => (page.id === pageId
+            ? {
+              ...page,
+              /*
+               * Capped at three by the schema, and the cap is the design
+               * — a page that is mostly filler has stopped being a
+               * leaflet. Adding a fourth replaces the oldest rather than
+               * failing the save three actions later.
+               */
+              decorations: [...page.decorations, {
+                id: `img-${Date.now().toString(36)}`,
+                imageUrl: url,
+                subject: file.name.replace(/\.[a-z0-9]+$/i, ''),
+                offerId: null,
+                anchor: 'bottom-right' as DecorAnchor,
+                scale: 0.26,
+                rotate: 0,
+                opacity: 1,
+                offsetX: 0,
+                offsetY: 0,
+              }].slice(-3),
+            }
+            : page)),
+        }));
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    updatePageImage(pageId, decorId, patch, name) {
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId
+          ? {
+            ...page,
+            decorations: page.decorations.map((d) => (d.id === decorId ? { ...d, ...patch } : d)),
+          }
+          : page)),
+      }), name ?? `image:${decorId}`);
+    },
+
+    removePageImage(pageId, decorId) {
+      gesture = null;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId
+          ? { ...page, decorations: page.decorations.filter((d) => d.id !== decorId) }
+          : page)),
+      }));
+    },
+
+    async addPageBackground(pageId, file) {
+      const { brandId } = get();
+      if (!brandId) return;
+      set({ busy: `Lægger ${file.name} bag siden…`, error: null });
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { url } = await api.uploadImage(brandId, toBase64(bytes), file.name);
+        if (!await reachable(url)) throw new Error(`${url} kunne ikke hentes igen`);
+
+        set({ busy: null, note: `${file.name} lagt bag siden` });
+        mutate((document) => ({
+          ...document,
+          pages: document.pages.map((page) => (page.id === pageId
+            ? {
+              ...page,
+              background: {
+                imageUrl: url,
+                subject: file.name.replace(/\.[a-z0-9]+$/i, ''),
+                fit: 'cover' as const,
+                opacity: 1,
+                focusX: 50,
+                focusY: 50,
+              },
+            }
+            : page)),
+        }));
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    setPageBackground(pageId, patch, name) {
+      if (patch === null) gesture = null;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => {
+          if (page.id !== pageId) return page;
+          if (patch === null) return { ...page, background: null };
+          // A patch with no picture to patch is a no-op, not a
+          // half-built background the schema would reject on save.
+          if (!page.background) return page;
+          return { ...page, background: { ...page.background, ...patch } };
+        }),
+      }), patch === null ? undefined : name ?? `background:${pageId}`);
+    },
+
     setPageTitle(pageId, title) {
       mutate((document) => ({
         ...document,
         pages: document.pages.map((page) => (page.id === pageId ? { ...page, title } : page)),
+      }));
+    },
+
+    setPageSubtitle(pageId, subtitle) {
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId ? { ...page, subtitle } : page)),
       }));
     },
 

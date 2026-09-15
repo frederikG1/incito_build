@@ -69,9 +69,28 @@ const MAX_PACK: Record<SlotRole, number> = {
   compact: 1,
 };
 
-/** How many promotional tags and marks each role has room for. */
+/** How many promotional tags each role has room for. */
 const MAX_TAGS: Record<SlotRole, number> = {
   hero: 3, feature: 2, standard: 1, compact: 0,
+};
+
+/**
+ * How many certification marks each role has room for.
+ *
+ * Its own table, and the difference from `MAX_TAGS` is the whole reason
+ * it exists. A promotional chip is the chain talking — "Spar 25%" — and
+ * the first thing a crowded tile should drop. A certification mark is a
+ * claim about the product that the chain has contracted to print, and
+ * the smallest tile is exactly where it used to be dropped: `compact`
+ * shared the tags' allowance of zero, so a small organic offer printed
+ * no Ø-mark at all. The chain's own week-37 book sets the mark on every
+ * tile including the smallest ones.
+ *
+ * One apiece below hero, because the strip is a single row that is cut
+ * rather than wrapped — see `.tile__marks`.
+ */
+const MAX_MARKS: Record<SlotRole, number> = {
+  hero: 3, feature: 2, standard: 2, compact: 1,
 };
 
 /**
@@ -233,6 +252,7 @@ export function OfferTile({
   const promos = offer.labels.filter((l) => l.image === null);
   const tagRoom = MAX_TAGS[role];
   const promoCount = Math.min(promos.length, tagRoom);
+  const markRoom = MAX_MARKS[role];
 
   /*
    * The supporting line, the editor's if one was written.
@@ -389,6 +409,18 @@ export function OfferTile({
           */}
         {hasPrice && shown('price') && (
           <div className={`price price--${priceShape}`} {...box('price')}>
+            {/*
+              * What the number buys, directly above it.
+              *
+              * "1 pose" over 12,-. The chain sets it here rather than in
+              * the fine print because a price above a photograph of six
+              * bottles is ambiguous in exactly one direction, and this
+              * is the line that settles it. Dropped on a compact tile,
+              * where the mark is too small to carry two lines.
+              */}
+            {offer.pack !== '' && role !== 'compact' && (
+              <span className="price__pack">{offer.pack}</span>
+            )}
             {/* Small, struck through, hard against the offer price. The
                 comparison only lands if the two read as one mark. */}
             {hasBefore && role !== 'compact' && (
@@ -400,6 +432,15 @@ export function OfferTile({
                 is square and narrow, and without this the øre wrapped onto
                 a second line and the price read as two numbers. */}
             <span className="price__figure">
+              {/*
+                * "fra", when this is the lowest of several prices.
+                *
+                * Never decoration and never optional: a single figure
+                * printed over goods that are not all that price is
+                * something a shopper finds out at the till. If the feed
+                * says the products differ, the page says so too.
+                */}
+              {offer.priceFrom && <span className="price__from">fra</span>}
               <span className="price__major">{price.major}</span>
               {/* A whole-krone price ends in the kroner mark, which is a
                   lockup and not two characters — see `.price__kr`. */}
@@ -409,7 +450,16 @@ export function OfferTile({
             </span>
             {offer.savings !== null && offer.savings > 0 && role !== 'compact' && (
               <span className="price__savings">
+                {/*
+                  * Both ends when the products saved different amounts.
+                  *
+                  * "Spar 29,95-49,95" is what the chain's own export
+                  * says and what it prints. One of the two numbers,
+                  * printed over both bottles, is true of one of them.
+                  */}
                 Spar {formatPrice(offer.savings, offer.currency)}
+                {offer.savingsMax !== null && offer.savingsMax > offer.savings
+                  && `-${formatPrice(offer.savingsMax, offer.currency)}`}
               </span>
             )}
           </div>
@@ -433,9 +483,9 @@ export function OfferTile({
           * clips them last along with everything else instead of
           * printing them over the product.
           */}
-        {tagRoom > 0 && marks.length > 0 && shown('marks') && (
+        {markRoom > 0 && marks.length > 0 && shown('marks') && (
           <ul className="tile__marks" {...box('marks')}>
-            {marks.slice(0, tagRoom).map((label) => (
+            {marks.slice(0, markRoom).map((label) => (
               <LabelMark key={`${label.kind}-${label.text}`} label={label} />
             ))}
           </ul>

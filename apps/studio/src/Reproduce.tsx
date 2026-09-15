@@ -1,13 +1,16 @@
-import { useStudio } from './state.js';
+import {
+  MAX_REFERENCE_PAGES, count, pageNumbers, referenceJobs, useStudio, type PageRun,
+} from './state.js';
 
 /**
- * Genskab en side — the three stages, made visible.
+ * Genskab sider — the three stages, made visible.
  *
  * The pipeline has exactly three inputs and the panel has exactly three
- * steps, in that order, numbered. That is not decoration: this is a
- * feature where an unexplained failure ("the page came back wrong") is
- * almost always a missing input two steps earlier, and a person who can
- * see which step is not yet green can fix it themselves.
+ * steps, in that order, numbered. That is not decoration: this is the
+ * way a catalogue is made here, and an unexplained failure ("the page
+ * came back wrong") is almost always a missing input two steps earlier.
+ * A person who can see which step is not yet green can fix it
+ * themselves.
  *
  * Each step reports its own state rather than the panel reporting one
  * combined verdict, and the run button says what is missing instead of
@@ -18,20 +21,33 @@ export function Reproduce() {
   if (!s.reproduceOpen) return null;
 
   const hasKey = s.curationReady;
-  const missing = !s.reference
-    ? 'Vælg først en side at genskabe'
+  const jobs = referenceJobs(s.references);
+  const missing = jobs.length === 0
+    ? 'Vælg først en eller flere sider at genskabe'
     : !hasKey
       ? 'Serveren mangler ANTHROPIC_API_KEY'
       : '';
 
+  /*
+   * What the run will cost, before it is paid for.
+   *
+   * One model call a page, run one after another — see `reproduce` —
+   * so both numbers grow with the list. Roughly forty seconds and seven
+   * cents a page in practice; said as "about", because a page with
+   * twenty tiles is not a page with four.
+   */
+  const minutes = Math.max(1, Math.round((jobs.length * 40) / 60));
+  const capped = s.references.length > 0
+    && referenceJobs(s.references).length >= MAX_REFERENCE_PAGES;
+
   return (
-    <section className="repro" aria-label="Genskab en side">
+    <section className="repro" aria-label="Genskab sider">
       <header className="repro__head">
-        <h2>Genskab en side</h2>
+        <h2>Genskab sider</h2>
         <p>
-          Giv systemet en side, en kæde har trykt. Claude læser sidens gitter,
-          caster denne uges varer ind i det, og du får siden tilbage i editoren
-          som en helt almindelig side — til at rette, gemme og printe.
+          Giv systemet de sider, en kæde har trykt. Claude læser hver sides
+          gitter, caster denne uges varer ind i det, og du får siderne tilbage
+          i editoren som helt almindelige sider — til at rette, gemme og printe.
         </p>
         <button className="repro__close" onClick={() => s.setReproduceOpen(false)} title="Luk">
           ×
@@ -39,41 +55,89 @@ export function Reproduce() {
       </header>
 
       <ol className="repro__steps">
-        {/* ------------------------------------------------- 1: the page */}
-        <li className={s.reference ? 'is-done' : 'is-now'}>
+        {/* ------------------------------------------------ 1: the pages */}
+        <li className={jobs.length > 0 ? 'is-done' : 'is-now'}>
           <b>1</b>
           <div>
-            <h3>Referencen</h3>
-            <p>Et foto, et screenshot eller en PDF af den side, du vil efterligne.</p>
+            <h3>Referencerne</h3>
+            <p>
+              Fotos, screenshots eller PDF'er af de sider, du vil efterligne.
+              Én side pr. fil — eller ét sideinterval pr. PDF.
+            </p>
 
             <label className="repro__file">
               <input
                 type="file"
+                multiple
                 accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,.pdf"
                 onChange={async (e) => {
-                  const file = e.target.files?.[0];
+                  const files = [...(e.target.files ?? [])];
                   e.target.value = '';
-                  if (file) await s.setReference(file);
+                  if (files.length > 0) await s.addReferences(files);
                 }}
               />
-              <span>{s.reference ? 'Vælg en anden' : 'Vælg fil'}</span>
+              <span>{s.references.length > 0 ? 'Tilføj flere' : 'Vælg filer'}</span>
             </label>
 
-            {s.reference && <em className="repro__chosen">{s.reference.name}</em>}
+            {s.references.length > 0 && (
+              <ul className="reflist">
+                {s.references.map((reference, index) => {
+                  const pages = pageNumbers(reference.pages);
+                  return (
+                    <li key={reference.id}>
+                      <span className="reflist__name" title={reference.name}>
+                        {reference.name}
+                      </span>
 
-            {/* Only for a PDF: a page number on a JPEG is a control that
-                cannot do anything, and one that answers "1" forever
-                teaches people to distrust the rest of the panel. */}
-            {s.reference?.isPdf && (
-              <label className="repro__page">
-                <span>Side i PDF'en</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={s.referencePage}
-                  onChange={(e) => s.setReferencePage(Number(e.target.value))}
-                />
-              </label>
+                      {/* Only for a PDF: a page field on a JPEG is a
+                          control that cannot do anything, and one that
+                          answers "1" forever teaches people to distrust
+                          the rest of the panel. */}
+                      {reference.isPdf && (
+                        <label className="reflist__pages">
+                          <span>Sider</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="1-6"
+                            value={reference.pages}
+                            onChange={(e) => s.setReferencePages(reference.id, e.target.value)}
+                          />
+                          <i className={pages.length === 0 ? 'is-bad' : ''}>
+                            {pages.length === 0 ? 'ingen' : count(pages.length, 'side', 'sider')}
+                          </i>
+                        </label>
+                      )}
+
+                      <span className="reflist__gap" />
+                      <button
+                        title="Tidligere i avisen"
+                        onClick={() => s.moveReference(reference.id, -1)}
+                        disabled={index === 0}
+                      >↑</button>
+                      <button
+                        title="Senere i avisen"
+                        onClick={() => s.moveReference(reference.id, 1)}
+                        disabled={index === s.references.length - 1}
+                      >↓</button>
+                      <button
+                        title="Fjern"
+                        className="reflist__drop"
+                        onClick={() => s.removeReference(reference.id)}
+                      >×</button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {jobs.length > 0 && (
+              <em className="repro__chosen">
+                {count(jobs.length, 'side', 'sider')} · ca. {minutes} min
+                {capped && <> · flere end {MAX_REFERENCE_PAGES} tages ikke med</>}
+                {' · '}
+                <button className="repro__clear" onClick={() => s.clearReferences()}>ryd</button>
+              </em>
             )}
           </div>
         </li>
@@ -86,7 +150,7 @@ export function Reproduce() {
             <p>
               Denne uges feed, i det format {s.brand?.name ?? 'kæden'} allerede
               udgiver. Det læses med kædens egen læser — samme vej ind som når du
-              bygger en hel avis.
+              bygger et udkast.
             </p>
             {s.feed
               ? <em className="repro__chosen">{s.feed.source}</em>
@@ -103,14 +167,34 @@ export function Reproduce() {
           <b>3</b>
           <div>
             <h3>Retning <i>(valgfri)</i></h3>
-            <p>Én sætning, der følges medmindre den ødelægger siden.</p>
+            <p>Én sætning, der følges på hver side, medmindre den ødelægger siden.</p>
             <input
               type="text"
               className="repro__note"
-              placeholder="fx “kød skal føre siden” eller “hold det til frost”"
+              placeholder="fx “kød skal føre siderne” eller “hold det til frost”"
               value={s.reproduceNote}
               onChange={(e) => s.setReproduceNote(e.target.value)}
             />
+
+            {/* Only offered when there is something to add to. Building
+                an avis four pages at a time is the normal rhythm, and
+                without this the fifth page would throw the first four
+                away. */}
+            {s.document && (
+              <label className="repro__append">
+                <input
+                  type="checkbox"
+                  checked={s.reproduceAppend}
+                  onChange={(e) => s.setReproduceAppend(e.target.checked)}
+                />
+                <span>
+                  {s.document.pages.length === 1
+                    ? 'Læg siderne til den, der allerede er åben'
+                    : `Læg siderne til de ${s.document.pages.length}, der allerede er åbne`}
+                  <i>— varerne på dem bliver ikke brugt igen</i>
+                </span>
+              </label>
+            )}
           </div>
         </li>
       </ol>
@@ -119,18 +203,20 @@ export function Reproduce() {
         <p className="repro__hint">
           {missing || (
             <>
-              Claude måler <b>ikke</b> farven — den aflæses i sidens marginer.
+              Claude måler <b>ikke</b> farven — den aflæses i hver sides marginer.
               Modellen svarer kun med gitter og casting; kædens eget stylesheet
-              tegner siden.
+              tegner siden. Siderne bygges én ad gangen og dukker op undervejs.
             </>
           )}
         </p>
         <button
           className="primary"
           onClick={() => void s.reproduce()}
-          disabled={Boolean(s.busy) || !s.reference || !hasKey}
+          disabled={Boolean(s.busy) || jobs.length === 0 || !hasKey}
         >
-          {s.busy ? <><span className="spinner" aria-hidden="true" /> {s.busy}</> : 'Genskab siden'}
+          {s.busy
+            ? <><span className="spinner" aria-hidden="true" /> {s.busy}</>
+            : jobs.length > 1 ? `Genskab ${jobs.length} sider` : 'Genskab siden'}
         </button>
       </footer>
     </section>
@@ -140,14 +226,14 @@ export function Reproduce() {
 /**
  * The reference beside what was built from it, and why.
  *
- * Shown on the canvas above the rebuilt page rather than in the
+ * Rendered above its own page on the canvas rather than in the
  * inspector: the only way to judge this feature is to look at the two
- * pages at once, and a panel 300px wide cannot hold a page.
+ * pages at once, and a panel 300px wide cannot hold a page. With
+ * several pages in a run each one carries its own — the reference for
+ * page five is not the reference for page one.
  */
-export function Comparison() {
+export function Comparison({ run }: { run: PageRun }) {
   const s = useStudio();
-  const run = s.reproduction;
-  if (!run) return null;
 
   const names = new Map((s.document?.offers ?? []).map((o) => [o.id, o.name]));
   const cost = (run.usage.inputTokens * 5 + run.usage.outputTokens * 25) / 1e6;
@@ -155,8 +241,8 @@ export function Comparison() {
   return (
     <div className="compare">
       <figure className="compare__ref">
-        <img src={run.reference} alt="Den side du gav os" />
-        <figcaption>Referencen, som modellen så den</figcaption>
+        <img src={run.reference} alt={`Den side du gav os: ${run.referenceName}`} />
+        <figcaption>{run.referenceName}, som modellen så den</figcaption>
       </figure>
 
       <div className="compare__read">
@@ -191,8 +277,8 @@ export function Comparison() {
         </ul>
         {run.rejected > 0 && (
           <p className="compare__dropped">
-            {run.rejected} plads(er) blev udeladt: modellen satte en vare der, som feedet
-            ikke har.
+            {count(run.rejected, 'plads', 'pladser')} blev udeladt: modellen satte en vare
+            der, som feedet ikke har.
           </p>
         )}
       </div>

@@ -31,21 +31,27 @@ export function withAssetBase(document: CatalogDocument, base: string): CatalogD
   });
 
   /*
-   * Decorations carry the same root-relative form and break the same
-   * way — `/decor/ab12cd.png` under `file://` is the filesystem root.
-   * They are on the page, not on an offer, so `rewrite` above never
-   * sees them.
+   * Decorations and the page's background carry the same root-relative
+   * form and break the same way — `/decor/ab12cd.png` under `file://`
+   * is the filesystem root. Both are on the page, not on an offer, so
+   * `rewrite` above never sees them.
+   *
+   * The background fails LOUDER than a missing product: it is a CSS
+   * `background-image`, so a path that does not resolve is not a broken
+   * icon but a sheet that prints plain — measured, and correct-looking
+   * enough that nobody would go looking for a bug.
    */
   return {
     ...document,
     offers: document.offers.map(rewrite),
-    pages: document.pages.map((page) => (
-      page.decorations.length === 0
-        ? page
-        : {
-          ...page,
-          decorations: page.decorations.map((d) => ({ ...d, imageUrl: resolve(d.imageUrl) })),
-        }
-    )),
+    pages: document.pages.map((page) => ({
+      ...page,
+      ...(page.decorations.length > 0 && {
+        decorations: page.decorations.map((d) => ({ ...d, imageUrl: resolve(d.imageUrl) })),
+      }),
+      ...(page.background && {
+        background: { ...page.background, imageUrl: resolve(page.background.imageUrl) },
+      }),
+    })),
   };
 }

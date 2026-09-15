@@ -134,6 +134,9 @@ export function composeCatalog(
       // Composition lays out offers; mood artwork is a later pass over
       // a finished page — see `@incitio/decor`.
       decorations: [],
+      // A background is something an editor lays down by hand on one
+      // page. Nothing composed from a feed has one.
+      background: null,
     });
   });
 

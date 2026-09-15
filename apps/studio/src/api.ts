@@ -167,6 +167,28 @@ export async function buildCatalogue(brandId: string, request: BuildRequest): Pr
   return { ...body, document: CatalogDocument.parse(body.document) };
 }
 
+export interface CatalogSummary {
+  id: string;
+  brandId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * This chain's saved catalogues, newest first.
+ *
+ * The one call that makes a paid run reusable. Everything the model
+ * produced is already on disk in SQLite — a rebuilt page cost real money
+ * and is an ordinary document afterwards — and without a way to list
+ * them the only route back to yesterday's work was to pay for it again.
+ */
+export async function fetchCatalogues(brandId: string): Promise<CatalogSummary[]> {
+  const response = await fetch(`${BASE}/brand/catalogs`, { headers: headers(brandId) });
+  if (!response.ok) await fail(response);
+  return ((await response.json()) as { catalogs: CatalogSummary[] }).catalogs;
+}
+
 export async function saveCatalogue(
   brandId: string,
   document: CatalogDocument,
@@ -233,6 +255,15 @@ export interface ReproduceRequest {
   feed: string;
   note?: string;
   referenceName?: string;
+  /**
+   * Offers the earlier pages of this run already printed.
+   *
+   * A run of several references is one request per page, so that the
+   * studio can show which page it is on and keep the pages that already
+   * came back. Nothing on the server remembers the run — this list is
+   * how page four knows what page one took.
+   */
+  exclude?: string[];
 }
 
 export interface ReproduceReply {
@@ -285,4 +316,37 @@ export async function reproducePage(
     document: CatalogDocument.parse(body.document),
     brand: Brand.parse(body.brand),
   };
+}
+
+/* ------------------------------------------------- kædens egne billeder */
+
+/**
+ * Put one of the chain's own photographs on the server.
+ *
+ * Returns the URL it now lives at, which is what goes into a page's
+ * `decorations`. A document references artwork and never carries it —
+ * see `PageDecoration.imageUrl` — so this is the only step that moves
+ * bytes, and it happens once per picture however many pages use it.
+ *
+ * The file is stored exactly as it was handed in. The server used to
+ * flood-fill the background out first; it does not any more, because a
+ * chain that prints a leaflet already keeps cut-out artwork and the
+ * fill was as likely to eat a photograph's sky as to help.
+ */
+export interface UploadedImage {
+  url: string;
+}
+
+export async function uploadImage(
+  brandId: string,
+  base64: string,
+  name?: string,
+): Promise<UploadedImage> {
+  const response = await fetch(`${BASE}/brand/uploads`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify({ file: base64, ...(name ? { name } : {}) }),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as UploadedImage;
 }

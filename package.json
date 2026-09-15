@@ -21,7 +21,8 @@
     "build:catalogue": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/build-catalogue.ts",
     "render": "node ./node_modules/.bin/vite-node scripts/render-catalogue.ts",
     "decorate": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/decorate-catalogue.ts",
-    "check": "node ./node_modules/.bin/vite-node scripts/check-render.ts"
+    "check": "node ./node_modules/.bin/vite-node scripts/check-render.ts",
+    "measure:ground": "node ./node_modules/.bin/vite-node scripts/measure-ground.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

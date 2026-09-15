@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import type { Brand, CatalogPage, Offer, PageTemplate, TilePart } from '@incitio/schema';
 import { artworkOrigin, brandCssVars, slotCells, slotShape } from '@incitio/schema';
 import { OfferTile } from './OfferTile.js';
@@ -21,6 +21,29 @@ export interface PageViewProps {
   onSelectOffer?: (offerId: string) => void;
   /** Editor overlay (drop targets, handles). Kept out of the print view. */
   slotDecorator?: (slotId: string) => ReactNode;
+  /**
+   * Let a picture on the page be dragged. Editor only.
+   *
+   * Absent in print and in every non-interactive render, and that is
+   * what keeps a decoration what it is meant to be there: paint on the
+   * wall behind the grid, unable to take a click or push a layout.
+   * Present, it becomes draggable and nothing else changes.
+   *
+   * Called with page-percent offsets, which is the currency
+   * `PageDecoration.offsetX` is stored in — see the note there.
+   */
+  onMoveDecor?: (decorId: string, offset: { x: number; y: number }, gesture: string) => void;
+  /**
+   * Which picture is armed, and therefore reachable by a pointer.
+   *
+   * Only this one lifts above the grid and takes a click. The rest stay
+   * where the stylesheet puts them: behind everything, `pointer-events:
+   * none`, which is the whole reason a decoration cannot be grabbed by
+   * accident — and, before this, could not be grabbed at all.
+   */
+  selectedDecorId?: string | null;
+  /** Called when a drag ends, so history can coalesce it into one step. */
+  onDecorMoveEnd?: () => void;
 }
 
 /**
@@ -47,6 +70,9 @@ export function PageView({
   selectedPart,
   onSelectOffer,
   slotDecorator,
+  onMoveDecor,
+  onDecorMoveEnd,
+  selectedDecorId,
 }: PageViewProps) {
   const style: CSSProperties = {
     ...brandCssVars(brand, pageIndex),
@@ -114,6 +140,31 @@ export function PageView({
       data-template-id={template.id}
     >
       {/*
+        * The chain's own picture under the whole sheet.
+        *
+        * First in source order, so it sits under the artwork as well as
+        * under the grid: a background is what the page is printed ON,
+        * and a decoration is something laid on top of it. A layer of
+        * its own rather than a `background-image` on `.page`, because
+        * the page's own `background` is the chain's ground colour and
+        * the two have to be able to coexist — a `contain` fit shows the
+        * ground around the picture, and a held-back opacity mixes into
+        * it.
+        */}
+      {page.background && (
+        <div
+          className="page__bg"
+          data-fit={page.background.fit}
+          aria-hidden="true"
+          style={{
+            '--bg-image': `url("${encodeURI(page.background.imageUrl)}")`,
+            '--bg-opacity': String(page.background.opacity),
+            '--bg-focus': `${page.background.focusX}% ${page.background.focusY}%`,
+          } as CSSProperties}
+        />
+      )}
+
+      {/*
         * Generated mood artwork, behind everything.
         *
         * Before the masthead in source order and pinned by the
@@ -123,15 +174,66 @@ export function PageView({
       {page.decorations.map((decor) => (
         <img
           key={decor.id}
-          className={`page__decor page__decor--${decor.anchor}`}
+          className={`page__decor page__decor--${decor.anchor}${
+            onMoveDecor && selectedDecorId === decor.id ? ' page__decor--active' : ''}`}
           src={decor.imageUrl}
           alt=""
           aria-hidden="true"
           data-decor-subject={decor.subject}
+          draggable={false}
+          {...(onMoveDecor && selectedDecorId === decor.id ? {
+            onPointerDown: (event: ReactPointerEvent<HTMLImageElement>) => {
+              /*
+               * Dragged in PAGE percent, measured off the page itself.
+               *
+               * One percent of the page is one `cqw`, so the number
+               * stored and the number the pointer covered are the same
+               * thing — and a canvas zoomed out to a thumbnail still
+               * moves the picture by what the hand did, not by what the
+               * numbers would be at A4.
+               */
+              const element = event.currentTarget;
+              const page = element.closest('.page')?.getBoundingClientRect();
+              if (!page || page.width === 0 || page.height === 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+
+              const perX = 100 / page.width;
+              const perY = 100 / page.height;
+              const from = { x: event.clientX, y: event.clientY };
+              const start = { x: decor.offsetX, y: decor.offsetY };
+              // Kept in step with `PageDecoration.offsetX`, which rejects
+              // anything wider on save — a drag the schema will not
+              // accept is a drag that vanishes at the next reload.
+              const clamp = (v: number) => Math.min(75, Math.max(-75, v));
+              const gesture = `decor:${decor.id}`;
+
+              try { element.setPointerCapture(event.pointerId); } catch { /* uncapturable */ }
+
+              const onMove = (move: PointerEvent) => {
+                onMoveDecor(decor.id, {
+                  x: clamp(start.x + (move.clientX - from.x) * perX),
+                  y: clamp(start.y + (move.clientY - from.y) * perY),
+                }, gesture);
+              };
+              const onUp = () => {
+                try { element.releasePointerCapture(event.pointerId); } catch { /* never held */ }
+                element.removeEventListener('pointermove', onMove);
+                element.removeEventListener('pointerup', onUp);
+                element.removeEventListener('pointercancel', onUp);
+                onDecorMoveEnd?.();
+              };
+              element.addEventListener('pointermove', onMove);
+              element.addEventListener('pointerup', onUp);
+              element.addEventListener('pointercancel', onUp);
+            },
+          } : {})}
           style={{
             '--decor-scale': String(decor.scale),
             '--decor-rotate': `${decor.rotate}deg`,
             '--decor-opacity': String(decor.opacity),
+            '--decor-x': `${decor.offsetX}cqw`,
+            '--decor-y': `${decor.offsetY}cqh`,
           } as CSSProperties}
         />
       ))}
