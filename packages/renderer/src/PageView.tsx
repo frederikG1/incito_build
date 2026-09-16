@@ -1,8 +1,53 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
-import type { Brand, CatalogPage, Offer, PageTemplate, TilePart } from '@incitio/schema';
-import { artworkOrigin, brandCssVars, slotCells, slotShape } from '@incitio/schema';
+import type {
+  Brand, CatalogPage, Offer, PagePart, PageTemplate, PageTextOverride, TilePart,
+} from '@incitio/schema';
+import {
+  artworkOrigin, brandCssVars, pageTextOverride, pageTextsFreed,
+  slotCells, slotRoom, slotShape,
+} from '@incitio/schema';
 import { OfferTile } from './OfferTile.js';
 import { splitHeading } from './format.js';
+
+/**
+ * How high a moved heading rides.
+ *
+ * Only ever set on a line somebody has moved, and then it is
+ * load-bearing: the masthead comes BEFORE the grid in the document, so
+ * a heading dragged down over the offers would otherwise paint behind
+ * the very tiles it was dragged onto. Above the tiles' own layers
+ * (which stop at 30) and above a lifted box (35), below an armed
+ * decoration (60) — a picture taken in hand is the one thing that
+ * should still come to the front.
+ *
+ * Inline rather than in the stylesheet for the same reason `LIFTED` is
+ * in `OfferTile`: it belongs to the element that carries a correction,
+ * not to every heading ever printed.
+ */
+const MOVED = 45;
+
+/**
+ * Where a line has been put, as a style — and nothing at all when it is
+ * where the masthead put it.
+ *
+ * An untouched line gets no `transform`, deliberately: a transform
+ * creates a containing block, and one here would re-root anything
+ * absolutely positioned inside the heading.
+ *
+ * Offsets are spent in `cqw`/`cqh` against the page's size container,
+ * so a heading stays where it was put whether the page is a 240px
+ * thumbnail or A4 at 300dpi. Grown from `left top`, because a line of
+ * type is anchored where it starts reading — scaling it from the middle
+ * walks the first letter away from whatever it was aligned to.
+ */
+function textStyle(part: PageTextOverride): CSSProperties | undefined {
+  if (part.offsetX === 0 && part.offsetY === 0 && part.scale === 1) return undefined;
+  return {
+    transform: `translate(${part.offsetX}cqw, ${part.offsetY}cqh) scale(${part.scale})`,
+    transformOrigin: 'left top',
+    zIndex: MOVED,
+  };
+}
 
 export interface PageViewProps {
   page: CatalogPage;
@@ -44,6 +89,14 @@ export interface PageViewProps {
   selectedDecorId?: string | null;
   /** Called when a drag ends, so history can coalesce it into one step. */
   onDecorMoveEnd?: () => void;
+  /**
+   * Editor overlay on the page's own lines. Kept out of the print view,
+   * exactly like `slotDecorator` — same contract, one level up.
+   *
+   * The heading and the theme line are boxes a person moves, and the
+   * only reason they were not was that nothing drew a handle on them.
+   */
+  textDecorator?: (part: PagePart) => ReactNode;
 }
 
 /**
@@ -73,6 +126,7 @@ export function PageView({
   onMoveDecor,
   onDecorMoveEnd,
   selectedDecorId,
+  textDecorator,
 }: PageViewProps) {
   const style: CSSProperties = {
     ...brandCssVars(brand, pageIndex),
@@ -131,6 +185,9 @@ export function PageView({
    * here and runs wider per character than the grotesk beside it.
    */
   const titleWidth = head.length + tail.length * 1.2;
+
+  const title = pageTextOverride(page, 'title');
+  const subtitle = pageTextOverride(page, 'subtitle');
 
   return (
     <section
@@ -239,19 +296,48 @@ export function PageView({
       ))}
 
       {(page.title || brand.logoUrl) && (
-        <header className="page__masthead">
+        /*
+         * Freed of its own clip once a line has been moved.
+         *
+         * The strip clips deliberately — see `.page__masthead` — so a
+         * heading longer than the page cannot push the offers off the
+         * sheet. But a heading somebody DRAGGED onto the grid is not
+         * that, and clipping it would make a deliberate placement look
+         * like a broken one. The height guard is untouched either way:
+         * a transform moves no layout.
+         */
+        <header className={`page__masthead${pageTextsFreed(page) ? ' page__masthead--free' : ''}`}>
           {brand.logoUrl && <img className="page__logo" src={brand.logoUrl} alt="" />}
-          <div>
-            {page.title && (
-              <h2
-                className="page__title"
-                style={{ '--title-width': String(Math.max(6, Math.round(titleWidth))) } as CSSProperties}
-              >
-                <span className="page__title-head">{head}</span>
-                {tail && <span className="page__title-tail"> {tail}</span>}
-              </h2>
+          <div className="page__lines">
+            {page.title && !title.hidden && (
+              /*
+               * The line, in a box of its own.
+               *
+               * The wrapper is what carries the correction and what the
+               * editor draws its handle on; the `h2` keeps every rule
+               * the stylesheet already had for it. Two elements rather
+               * than one because a transform on the heading itself
+               * would have to fight `--title-width`'s sizing, and
+               * because the overlay needs something to be `inset: 0`
+               * against that hugs the words.
+               */
+              <div className="page__text" data-page-part="title" style={textStyle(title)}>
+                <h2
+                  className="page__title"
+                  style={{ '--title-width': String(Math.max(6, Math.round(titleWidth))) } as CSSProperties}
+                >
+                  <span className="page__title-head">{head}</span>
+                  {tail && <span className="page__title-tail"> {tail}</span>}
+                </h2>
+                {textDecorator?.('title')}
+              </div>
             )}
-            {page.subtitle && <p className="page__subtitle">{page.subtitle}</p>}
+            {page.subtitle && !subtitle.hidden && (
+              <div className="page__text" data-page-part="subtitle" style={textStyle(subtitle)}>
+                <p className="page__subtitle">{page.subtitle}</p>
+                {textDecorator?.('subtitle')}
+              </div>
+            )}
           </div>
         </header>
       )}
@@ -277,11 +363,27 @@ export function PageView({
                 // all artwork overruns, so a cell against the sheet's
                 // edge would push its product off the paper.
                 '--art-origin': artworkOrigin(cells.get(slot.id)),
+                /*
+                 * How wide this cell is, as a share of the sheet.
+                 *
+                 * The stylesheet measures everything against the PAGE
+                 * — that is what makes a thumbnail and A4 one design —
+                 * and the price mark is the one element that also has
+                 * to answer to the cell it stands in: set by height
+                 * alone it is the same number in a half-page hero and
+                 * in a column a sixth of the page wide, where it
+                 * leaves the product name two characters to a line.
+                 * See `--price-size` and `SlotCell.width`.
+                 */
+                '--cell-w': String(cells.get(slot.id)?.width ?? 1),
               } as CSSProperties}
               key={slot.id}
               data-slot-id={slot.id}
               data-offer-id={placement.offerId}
               data-shape={slotShape(cells.get(slot.id))}
+              /* Whether the price mark stands beside the words or above
+                 them — see `slotRoom` and `.tile__info`. */
+              data-room={slotRoom(cells.get(slot.id))}
             >
               {offer ? (
                 <OfferTile

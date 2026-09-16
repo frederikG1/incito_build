@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
 import { PageView } from '@incitio/renderer';
 import { brandCapacities, resolveTemplate, templatesForCount } from '@incitio/brands';
-import { partLimits } from '@incitio/schema';
+import { pageTextLimits, partLimits } from '@incitio/schema';
 import { useStudio } from './state.js';
 import { Inspector } from './Inspector.js';
 import { TileEditor } from './TileEditor.js';
+import { PageTextEditor } from './PageTextEditor.js';
 import { Comparison, Reproduce } from './Reproduce.js';
 import { DecorBar } from './DecorBar.js';
 
@@ -33,6 +34,58 @@ export function App() {
       }
 
       if (typing || event.metaKey || event.ctrlKey) return;
+
+      /*
+       * A page's own line answers the same keys as a tile's box.
+       *
+       * Handled first and returned from, because the two selections are
+       * mutually exclusive by construction — see `selectPageText` — and
+       * because a heading in hand is what the person is looking at.
+       */
+      const text = s.selectedText;
+      if (text) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          s.selectPageText(text.pageId, null);
+          return;
+        }
+        const { step, coarse } = pageTextLimits();
+        const far = event.shiftKey ? coarse : step;
+        const moves: Record<string, [number, number]> = {
+          ArrowLeft: [-far, 0], ArrowRight: [far, 0],
+          ArrowUp: [0, -far], ArrowDown: [0, far],
+        };
+        const step2 = moves[event.key];
+        if (step2) {
+          event.preventDefault();
+          s.nudgePageText(text.pageId, text.part, step2[0], step2[1]);
+          return;
+        }
+        if (event.key === '+' || event.key === '=') {
+          event.preventDefault();
+          s.scalePageText(text.pageId, text.part, 0.05);
+          return;
+        }
+        if (event.key === '-') {
+          event.preventDefault();
+          s.scalePageText(text.pageId, text.part, -0.05);
+          return;
+        }
+        if (event.key === '0') {
+          event.preventDefault();
+          s.resetPageText(text.pageId, text.part);
+          return;
+        }
+        if (event.key === 'Backspace' || event.key === 'Delete') {
+          event.preventDefault();
+          s.setPageTextHidden(text.pageId, text.part, true);
+          s.selectPageText(text.pageId, null);
+        }
+        // Everything else belongs to whatever is selected elsewhere,
+        // and with a line in hand nothing else is.
+        return;
+      }
+
       const offerId = s.selectedOfferId;
       if (!offerId) return;
 
@@ -92,6 +145,8 @@ export function App() {
   }, [
     s.undo, s.redo, s.selectedOfferId, s.selectedPart, s.nudgePart,
     s.scalePart, s.resetPart, s.setPartHidden, s.select, s.selectPart,
+    s.selectedText, s.nudgePageText, s.scalePageText, s.resetPageText,
+    s.setPageTextHidden, s.selectPageText,
   ]);
 
   const offers = new Map((s.document?.offers ?? []).map((offer) => [offer.id, offer]));
@@ -554,6 +609,12 @@ export function App() {
                   )}
                   onDecorMoveEnd={s.endGesture}
                   selectedDecorId={s.selectedDecorId}
+                  /* The heading and the theme line are moved on the
+                     page like everything else; the fields in the bar
+                     above stay for typing the words. */
+                  textDecorator={(part) => (
+                    <PageTextEditor pageId={page.id} part={part} />
+                  )}
                   slotDecorator={(slotId) => {
                     const placement = page.placements.find((p) => p.slotId === slotId);
                     return (

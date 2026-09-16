@@ -169,7 +169,7 @@ const findings = await page.evaluate(() => {
    * anything. A structural assertion catches that in one line, where
    * the measurements cannot.
    */
-  const required = ['.tile', '.tile__media', '.tile__info', '.price'];
+  const required = ['.tile', '.tile__media', '.tile__info', '.tile__words', '.price'];
   for (const selector of required) {
     if (window.document.querySelector(selector) === null) {
       problems.push({
@@ -294,9 +294,29 @@ const findings = await page.evaluate(() => {
         problems.push({ page: n, kind: 'promo tag clipped', detail: '' });
       }
     }
+    for (const words of el.querySelectorAll('.tile__words')) {
+      const over = words.scrollHeight - words.clientHeight;
+      if (over > 2) problems.push({ page: n, kind: 'text clipped', detail: `${over}px ${where(words)}` });
+    }
+    /*
+     * A text block past the foot of its own tile.
+     *
+     * The clip above is what used to make this impossible for the
+     * whole block, and the block no longer has one: the price mark
+     * lives inside it now and leans out of it — over the artwork on a
+     * narrow cell, a few pixels above the words on a wide one — and a
+     * box that cuts everything leaving it cut the mark too. So the
+     * clip retreated to the sentences and the guard moved here, where
+     * it can say what actually went wrong: a block overflowing its
+     * tile prints its last line across the offer below it.
+     */
     for (const info of el.querySelectorAll('.tile__info')) {
-      const over = info.scrollHeight - info.clientHeight;
-      if (over > 2) problems.push({ page: n, kind: 'text clipped', detail: `${over}px ${where(info)}` });
+      const tile = info.closest('.tile');
+      if (!tile) continue;
+      const past = info.getBoundingClientRect().bottom - tile.getBoundingClientRect().bottom;
+      if (past > 2) {
+        problems.push({ page: n, kind: 'text past the foot of its tile', detail: `${Math.round(past)}px ${where(info)}` });
+      }
     }
 
     /* ------------------------------------------------- bare ground */

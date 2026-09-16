@@ -394,18 +394,94 @@ export function OfferTile({
             <span>{name.slice(0, 1).toUpperCase()}</span>
           </div>
         )}
+      </div>
+
+      <div className="tile__info">
+        {/*
+          * The words, as one box.
+          *
+          * A wrapper earns its place here: the text block is a lockup
+          * of two things — everything the chain says, and the number it
+          * says it about — and with the sentences stacking inside their
+          * own box the block itself is two cells and nothing else. Laid
+          * out as one grid with every line in it, the mark had to span
+          * a row count nobody knows in advance, and `1 / -1` does not
+          * reach implicit rows: it resolved to the first line alone, so
+          * the mark stood level with the product name instead of on
+          * the last line of the block.
+          */}
+        <div className="tile__words">
+        {/*
+          * Certification marks lead the text block.
+          *
+          * They were absolutely positioned in the artwork box's top-left
+          * corner, which put a Dannebrog or an Ø-mark floating in open
+          * ground with nothing beside it — it read as a stray graphic
+          * rather than as a claim about the product below it. The
+          * printed book sets them immediately above the headline,
+          * flush with the left edge of the words they qualify, and a
+          * mark that touches its own text is the whole reason it is
+          * there.
+          *
+          * In the text block they are also in flow, so a tight tile
+          * clips them last along with everything else instead of
+          * printing them over the product.
+          */}
+        {markRoom > 0 && marks.length > 0 && shown('marks') && (
+          <ul className="tile__marks" {...box('marks')}>
+            {marks.slice(0, markRoom).map((label) => (
+              <LabelMark key={`${label.kind}-${label.text}`} label={label} />
+            ))}
+          </ul>
+        )}
+        {showBrand && shown('brand') && (
+          <p className="tile__brand" {...box('brand')}>{wording('brand') ?? offer.brand}</p>
+        )}
+        {shown('name') && <h3 className="tile__name" {...box('name')}>{name}</h3>}
+        {quantityText && shown('quantity') && (
+          <p className="tile__quantity" {...box('quantity')}>{quantityText}</p>
+        )}
+        {showDescription && shown('description') && (
+          <p className="tile__description" {...box('description')}>{description}</p>
+        )}
+
+        {/* The previous price has moved up onto the price mark, where a
+            leaflet prints it; what is left here is the unit price the
+            law requires. */}
+        <p className="tile__meta" hidden={!showMeta || !shown('meta')} {...box('meta')}>
+          {metaText !== null ? (
+            // An empty rewrite is the editor removing the line, the same
+            // way it is on the supporting line — not an empty span.
+            metaText !== '' && <span className="tile__comparison">{metaText}</span>
+          ) : showComparison && offer.comparison && (
+            <span className="tile__comparison">
+              {formatPrice(offer.comparison.value, offer.currency)} / {offer.comparison.unit}
+            </span>
+          )}
+        </p>
+        </div>
 
         {/*
-          * The price mark sits INSIDE the artwork box, pinned to its
-          * bottom-right corner and hanging over the edge.
+          * The price mark, INSIDE the text block.
           *
-          * A leaflet does not stack a photograph above a price; it
-          * lands the price on the product like a sticker. As its own
-          * row in the tile's grid the mark left the product floating
-          * half a tile above its own number — measured at 473px of
-          * artwork and then a separate 112px price row — which is
-          * exactly what made a generated page read as a tidy web card
-          * rather than as print.
+          * Not beside it and not over it: the mark is the text block's
+          * own right-hand column — see `.tile__info` — so the number
+          * and the words it prices are laid out by one box, share a
+          * baseline, and cannot be separated by any layout. Every
+          * arrangement that moves the words takes the number with it,
+          * because there is no longer anything to keep in step.
+          *
+          * It was pinned to the artwork before that, at 6% of the
+          * picture's height, and then to the text block's cell — both
+          * of which put the number somewhere ABOVE the sentence, a
+          * distance that varied with whatever was over it. Measured on
+          * one rebuilt page: 61px from its own words on one tile, 231px
+          * on the next.
+          *
+          * Last in source order because it is last in reading order;
+          * the grid puts it in the column, not the flow. Still carrying
+          * `box('price')`, so every offset the editor writes lands on
+          * top of wherever the layout put it.
           */}
         {hasPrice && shown('price') && (
           <div className={`price price--${priceShape}`} {...box('price')}>
@@ -464,57 +540,6 @@ export function OfferTile({
             )}
           </div>
         )}
-      </div>
-
-      <div className="tile__info">
-        {/*
-          * Certification marks lead the text block.
-          *
-          * They were absolutely positioned in the artwork box's top-left
-          * corner, which put a Dannebrog or an Ø-mark floating in open
-          * ground with nothing beside it — it read as a stray graphic
-          * rather than as a claim about the product below it. The
-          * printed book sets them immediately above the headline,
-          * flush with the left edge of the words they qualify, and a
-          * mark that touches its own text is the whole reason it is
-          * there.
-          *
-          * In the text block they are also in flow, so a tight tile
-          * clips them last along with everything else instead of
-          * printing them over the product.
-          */}
-        {markRoom > 0 && marks.length > 0 && shown('marks') && (
-          <ul className="tile__marks" {...box('marks')}>
-            {marks.slice(0, markRoom).map((label) => (
-              <LabelMark key={`${label.kind}-${label.text}`} label={label} />
-            ))}
-          </ul>
-        )}
-        {showBrand && shown('brand') && (
-          <p className="tile__brand" {...box('brand')}>{wording('brand') ?? offer.brand}</p>
-        )}
-        {shown('name') && <h3 className="tile__name" {...box('name')}>{name}</h3>}
-        {quantityText && shown('quantity') && (
-          <p className="tile__quantity" {...box('quantity')}>{quantityText}</p>
-        )}
-        {showDescription && shown('description') && (
-          <p className="tile__description" {...box('description')}>{description}</p>
-        )}
-
-        {/* The previous price has moved up onto the price mark, where a
-            leaflet prints it; what is left here is the unit price the
-            law requires. */}
-        <p className="tile__meta" hidden={!showMeta || !shown('meta')} {...box('meta')}>
-          {metaText !== null ? (
-            // An empty rewrite is the editor removing the line, the same
-            // way it is on the supporting line — not an empty span.
-            metaText !== '' && <span className="tile__comparison">{metaText}</span>
-          ) : showComparison && offer.comparison && (
-            <span className="tile__comparison">
-              {formatPrice(offer.comparison.value, offer.currency)} / {offer.comparison.unit}
-            </span>
-          )}
-        </p>
       </div>
 
       {/*

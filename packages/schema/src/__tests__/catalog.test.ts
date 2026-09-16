@@ -1,10 +1,59 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CatalogDocument, PART_DEFAULTS, PlacementOverrides, TILE_PARTS, TILE_PART_NAMES,
-  mergeCatalogDocuments, partLimits, partOverride, partPatch, partTouched, tileArranged,
+  CatalogDocument, CatalogPage, PAGE_PARTS, PAGE_PART_NAMES, PAGE_TEXT_DEFAULTS,
+  PART_DEFAULTS, PlacementOverrides, TILE_PARTS, TILE_PART_NAMES,
+  mergeCatalogDocuments, pageTextOverride, pageTextPatch, pageTextTouched, pageTextsFreed,
+  partLimits, partOverride, partPatch, partTouched, tileArranged,
 } from '../catalog.js';
 
 const fresh = () => PlacementOverrides.parse({});
+
+const sheet = (texts?: unknown) => CatalogPage.parse({
+  id: 'p1', templateId: 't', title: 'Fisk og brød', subtitle: 'til den lange arbejdsdag',
+  placements: [], ...(texts ? { texts } : {}),
+});
+
+describe('page lines', () => {
+  it('names every line it can address', () => {
+    for (const part of PAGE_PARTS) expect(PAGE_PART_NAMES[part]).toBeTruthy();
+  });
+
+  it('reads a page saved before the heading was movable', () => {
+    // The field did not exist; a page without it is not broken, it is
+    // last week's — and its heading is simply where the masthead puts it.
+    const page = sheet();
+    expect(page.texts).toEqual({});
+    expect(pageTextOverride(page, 'title')).toEqual(PAGE_TEXT_DEFAULTS);
+    expect(pageTextTouched(page, 'title')).toBe(false);
+  });
+
+  it('writes one line without disturbing the other', () => {
+    const page = sheet({ subtitle: { offsetX: 4 } });
+    const patched = { ...page, ...pageTextPatch(page, 'title', { offsetY: 12 }) };
+    expect(pageTextOverride(patched, 'title').offsetY).toBe(12);
+    expect(pageTextOverride(patched, 'subtitle').offsetX).toBe(4);
+  });
+
+  it('counts a hidden line as touched but leaves the masthead clipping', () => {
+    // Hiding takes the line off the page; it does not move anything out
+    // of the strip, so the guard that keeps a long heading off the
+    // offers stays exactly where it was. See `pageTextsFreed`.
+    const page = sheet({ title: { hidden: true } });
+    expect(pageTextTouched(page, 'title')).toBe(true);
+    expect(pageTextsFreed(page)).toBe(false);
+  });
+
+  it('frees the masthead once a line is moved or resized', () => {
+    expect(pageTextsFreed(sheet({ title: { offsetY: 20 } }))).toBe(true);
+    expect(pageTextsFreed(sheet({ subtitle: { scale: 1.4 } }))).toBe(true);
+    expect(pageTextsFreed(sheet())).toBe(false);
+  });
+
+  it('refuses a line pushed further than the sheet is wide', () => {
+    expect(() => sheet({ title: { offsetY: 140 } })).toThrow();
+    expect(() => sheet({ title: { scale: 9 } })).toThrow();
+  });
+});
 
 describe('tile parts', () => {
   it('names every box it can address', () => {

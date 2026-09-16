@@ -138,6 +138,18 @@ export interface SlotCell {
    * few percent and never across a threshold.
    */
   aspect: number;
+  /**
+   * The cell's width as a share of the page's, so 0.25 is a quarter of
+   * the sheet.
+   *
+   * Handed to CSS because type has to know how wide the cell it is set
+   * in actually is. `cqw` is the PAGE's width — every measurement in
+   * the stylesheet is, deliberately, see the note below — so a price
+   * mark sized in `cqh` is the same size in a half-page hero and in a
+   * column a sixth of the page wide, where it eats the sentence beside
+   * it. This is the missing half of that sum.
+   */
+  width: number;
   /** Which edges of the grid this cell touches. */
   edges: { top: boolean; right: boolean; bottom: boolean; left: boolean };
 }
@@ -184,6 +196,7 @@ export function slotCells(template: PageTemplate, pageAspect: number): Map<strin
       columns,
       rows: slotRows,
       aspect: ((columns / columnCount) * pageAspect) / (slotRows / rowCount),
+      width: columns / columnCount,
       edges: {
         top: box.y0 === 0,
         right: box.x1 === columnCount - 1,
@@ -237,4 +250,36 @@ export const BAND_ASPECT = 1.6;
 /** How a slot's cell should be drawn: a wide band, or an upright panel. */
 export function slotShape(cell: SlotCell | undefined): 'band' | 'panel' {
   return (cell?.aspect ?? 1) >= BAND_ASPECT ? 'band' : 'panel';
+}
+
+/**
+ * Under this share of the sheet's width a cell cannot carry its price
+ * mark beside the words.
+ *
+ * Half the sheet, and the line was moved out to here twice. At a third
+ * a disc left "Den Grønne Slagter pålæg eller kalkunbacon" two
+ * characters to a line. At a half — a nemlig hero, 367px wide and 698
+ * tall — the mark and its "SPAR 5,00" took 48% of the width and set
+ * "Vindheks - Calocephalus" as "Vind- heks -…". Both were measured on
+ * the render, not reasoned about: what a mark costs the words is its
+ * own width against the cell's, and only the second number is known
+ * here.
+ *
+ * Above this the two stand side by side and end on one line; below it
+ * the mark stands ON the words instead, which costs the sentence
+ * nothing because it leans over the artwork. Either way they are one
+ * block — see `.tile__info`.
+ */
+export const LOCKUP_WIDTH = 0.55;
+
+/**
+ * Whether this cell has room for the number BESIDE the words.
+ *
+ * Aspect says whether a cell is wide FOR ITS HEIGHT; this says whether
+ * it is wide at all, and they are not the same question — a band a
+ * quarter of the page wide is still a quarter of the page wide. See
+ * `.tile__info`, which lays the two arrangements out.
+ */
+export function slotRoom(cell: SlotCell | undefined): 'wide' | 'tight' {
+  return (cell?.width ?? 1) >= LOCKUP_WIDTH ? 'wide' : 'tight';
 }

@@ -136,6 +136,58 @@ export const PageBackground = z.object({
 export type PageBackground = z.infer<typeof PageBackground>;
 
 /**
+ * The lines a page prints above its grid.
+ *
+ * The same idea as `TILE_PARTS`, one level up: a heading and the theme
+ * line under it are boxes a person can take hold of, not fixtures of
+ * the masthead. Kept as their own list rather than folded into the
+ * tile's, because they are addressed by PAGE and not by placement —
+ * nothing on a page has to be selected for a heading to be movable.
+ */
+export const PAGE_PARTS = ['title', 'subtitle'] as const;
+export type PagePart = (typeof PAGE_PARTS)[number];
+
+/** What each line is called to the person moving it. */
+export const PAGE_PART_NAMES: Record<PagePart, string> = {
+  title: 'Overskrift',
+  subtitle: 'Stemningslinje',
+};
+
+/**
+ * One heading's hand-made corrections.
+ *
+ * `PartOverride` with a longer reach and no `text`, and both
+ * differences are the point. The words live in `CatalogPage.title` and
+ * `.subtitle` — they were editable before this existed and two homes
+ * for one string is how an edit goes missing, which is the same rule
+ * the tile's headline follows. And the reach is the PAGE rather than a
+ * cell: a heading is not fenced into a grid track, and a chain that
+ * prints its section name down the side of the sheet or across the
+ * bottom is printing something an editor here has to be able to do.
+ *
+ * Offsets are page percent, spent as `cqw`/`cqh` — see `PartOverride`
+ * for why that and not a percentage of the element.
+ */
+export const PageTextOverride = z.object({
+  offsetX: z.number().min(-100).max(100).default(0),
+  offsetY: z.number().min(-100).max(100).default(0),
+  scale: z.number().min(0.3).max(4).default(1),
+  /** Taken off the page. The line is still listed, so it can come back. */
+  hidden: z.boolean().default(false),
+});
+export type PageTextOverride = z.infer<typeof PageTextOverride>;
+
+/** A heading nobody has touched. */
+export const PAGE_TEXT_DEFAULTS: PageTextOverride = Object.freeze(PageTextOverride.parse({}));
+
+/** How far a heading may be moved, and in what increments. */
+export function pageTextLimits(): {
+  reach: number; step: number; coarse: number; minScale: number; maxScale: number;
+} {
+  return { reach: 100, step: 0.25, coarse: 1, minScale: 0.3, maxScale: 4 };
+}
+
+/**
  * The boxes a tile is made of.
  *
  * Every one of them is drawn by `OfferTile` and every one of them can be
@@ -359,8 +411,58 @@ export const CatalogPage = z.object({
    * background, it is the first one hidden.
    */
   background: PageBackground.nullable().default(null),
+  /*
+   * Where the heading and the theme line have been put, keyed by
+   * `PagePart`.
+   *
+   * Sparse, like a placement's `parts` and for the same reason: almost
+   * every page leaves both lines where the masthead puts them, and
+   * writing two untouched records onto every page would say nothing at
+   * a cost. A key that is absent means the line is where the
+   * stylesheet put it.
+   *
+   * Keyed by `z.string()` so that reading it admits `undefined` — a
+   * record typed over the enum claims both keys are present, which is
+   * the lie that would crash on a catalogue saved before this existed.
+   */
+  texts: z.record(z.string(), PageTextOverride).default({}),
 });
 export type CatalogPage = z.infer<typeof CatalogPage>;
+
+/** Where one of a page's lines has been put. */
+export function pageTextOverride(page: CatalogPage, part: PagePart): PageTextOverride {
+  return page.texts[part] ?? PAGE_TEXT_DEFAULTS;
+}
+
+/** The page patch that writes one line's corrections back. */
+export function pageTextPatch(
+  page: CatalogPage, part: PagePart, patch: Partial<PageTextOverride>,
+): Pick<CatalogPage, 'texts'> {
+  return { texts: { ...page.texts, [part]: { ...pageTextOverride(page, part), ...patch } } };
+}
+
+/** Whether a line has been moved, resized or taken off the page. */
+export function pageTextTouched(page: CatalogPage, part: PagePart): boolean {
+  const t = pageTextOverride(page, part);
+  return t.offsetX !== 0 || t.offsetY !== 0 || t.scale !== 1 || t.hidden;
+}
+
+/**
+ * Whether either line has been moved out of the masthead's own strip.
+ *
+ * The masthead clips — see `.page__masthead`, where that guard stops a
+ * three-word section name from pushing the offers off the sheet. A
+ * heading someone has deliberately dragged has to escape it, and this
+ * is what tells the renderer which of the two is happening. Scale
+ * counts: a heading set at 2× is as far outside the strip as one
+ * dragged there.
+ */
+export function pageTextsFreed(page: CatalogPage): boolean {
+  return PAGE_PARTS.some((part) => {
+    const t = pageTextOverride(page, part);
+    return t.offsetX !== 0 || t.offsetY !== 0 || t.scale !== 1;
+  });
+}
 
 /**
  * The single source of truth. Composition produces it, the renderer draws

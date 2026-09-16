@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import type {
   Brand, CatalogDocument, CatalogPage, DecorAnchor, Offer, PageBackground, PageDecoration,
-  PageTemplate,
+  PagePart, PageTemplate, PageTextOverride,
   Placement, PartOverride, PlacementOverrides, TilePart,
 } from '@incitio/schema';
 import {
-  mergeCatalogDocuments, partLimits, partOverride, partPatch, slotAssignmentOrder,
+  mergeCatalogDocuments, pageTextLimits, pageTextOverride, pageTextPatch,
+  partLimits, partOverride, partPatch, slotAssignmentOrder,
 } from '@incitio/schema';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
 import * as api from './api.js';
@@ -229,6 +230,19 @@ export interface StudioState {
    * and the one people reach for first.
    */
   selectedPart: TilePart | null;
+  /**
+   * Which of a page's own lines is in hand, and whose page it is.
+   *
+   * Carries the page id because a heading is addressed by PAGE — unlike
+   * a tile's box, which is reached through the selected offer. Nothing
+   * has to be selected on a page for its heading to be movable, and a
+   * catalogue has as many headings as it has sheets.
+   *
+   * Never set at the same time as a tile or a picture: the arrow keys
+   * would have two things to move and the inspector two things to
+   * describe.
+   */
+  selectedText: { pageId: string; part: PagePart } | null;
   maxPages: number;
 
   /** Undo history of whole documents. Small, and the editor is small. */
@@ -281,6 +295,8 @@ export interface StudioState {
   /** Arm a picture for dragging, or put it back down. */
   selectDecor: (decorId: string | null) => void;
   selectPart: (part: TilePart | null) => void;
+  /** Take one of a page's own lines in hand, or put it down. */
+  selectPageText: (pageId: string, part: PagePart | null) => void;
   swapPlacements: (
     from: { pageId: string; slotId: string },
     to: { pageId: string; slotId: string },
@@ -324,6 +340,28 @@ export interface StudioState {
   setPartHidden: (offerId: string, part: TilePart, hidden: boolean) => void;
   /** Put every box of a tile back where the composer had it. */
   resetTile: (offerId: string) => void;
+  /**
+   * Change where one of a page's lines sits, how big it is, and whether
+   * it prints.
+   *
+   * The wording is NOT here: `setPageTitle`/`setPageSubtitle` own the
+   * strings, they owned them before a heading was movable, and two
+   * homes for one string is how an edit goes missing. Same split the
+   * tile's headline makes — see `PartOverride.text`.
+   */
+  updatePageText: (
+    pageId: string,
+    part: PagePart,
+    patch: Partial<PageTextOverride>,
+    gesture?: string,
+  ) => void;
+  /** Move a line, in page percent. Clamped to what the schema accepts. */
+  nudgePageText: (pageId: string, part: PagePart, dx: number, dy: number) => void;
+  scalePageText: (pageId: string, part: PagePart, delta: number) => void;
+  /** Back where the masthead put it, and back on the page. */
+  resetPageText: (pageId: string, part: PagePart) => void;
+  /** Take a line off the page, or put it back. */
+  setPageTextHidden: (pageId: string, part: PagePart, hidden: boolean) => void;
   movePage: (pageId: string, delta: number) => void;
   /**
    * Put one of the chain's own pictures on a page.
@@ -564,6 +602,10 @@ export const useStudio = create<StudioState>((set, get) => {
       ?.overrides;
   }
 
+  function pageById(pageId: string): CatalogPage | undefined {
+    return get().document?.pages.find((page) => page.id === pageId);
+  }
+
   const clamp = (value: number, low: number, high: number) =>
     Math.min(high, Math.max(low, value));
 
@@ -611,6 +653,7 @@ export const useStudio = create<StudioState>((set, get) => {
     selectedOfferId: null,
     selectedDecorId: null,
     selectedPart: null,
+    selectedText: null,
     maxPages: 6,
     past: [],
     future: [],
@@ -646,6 +689,7 @@ export const useStudio = create<StudioState>((set, get) => {
         sources: [],
         selectedOfferId: null,
         selectedPart: null,
+        selectedText: null,
         past: [],
         future: [],
         catalogues: [],
@@ -728,6 +772,7 @@ export const useStudio = create<StudioState>((set, get) => {
           future: [],
           selectedOfferId: null,
           selectedPart: null,
+          selectedText: null,
           busy: null,
           // The canvas now shows a plain draft, not rebuilt pages, so
           // the comparison strips have nothing left to compare.
@@ -781,6 +826,7 @@ export const useStudio = create<StudioState>((set, get) => {
           future: [],
           selectedOfferId: null,
           selectedPart: null,
+          selectedText: null,
           /*
            * The comparison strips do not come back, and cannot: what the
            * model was shown is a picture, and a document carries the
@@ -1025,6 +1071,7 @@ export const useStudio = create<StudioState>((set, get) => {
             future: [],
             selectedOfferId: null,
             selectedPart: null,
+            selectedText: null,
           });
         } catch (error) {
           failures.push({ refId: job.refId, name: job.name, message: message(error) });
@@ -1147,16 +1194,35 @@ export const useStudio = create<StudioState>((set, get) => {
         // A picture and a tile are never both in hand: the arrow keys
         // would have two things to move and the inspector two things to
         // describe.
-        ? { selectedOfferId: offerId, selectedDecorId: null }
-        : { selectedOfferId: offerId, selectedPart: null, selectedDecorId: null },
+        ? { selectedOfferId: offerId, selectedDecorId: null, selectedText: null }
+        : {
+          selectedOfferId: offerId,
+          selectedPart: null,
+          selectedDecorId: null,
+          selectedText: null,
+        },
     ),
 
     selectDecor: (decorId) => set({
       selectedDecorId: decorId,
-      ...(decorId ? { selectedOfferId: null, selectedPart: null } : {}),
+      ...(decorId ? { selectedOfferId: null, selectedPart: null, selectedText: null } : {}),
     }),
 
     selectPart: (part) => set({ selectedPart: part }),
+
+    selectPageText: (pageId, part) => set(
+      part === null
+        ? { selectedText: null }
+        // A line and a tile are never both in hand, for the same reason
+        // a picture and a tile are not: one selection, one thing the
+        // arrow keys move.
+        : {
+          selectedText: { pageId, part },
+          selectedOfferId: null,
+          selectedPart: null,
+          selectedDecorId: null,
+        },
+    ),
 
     /*
      * Exchange two tiles, on the same page or across pages.
@@ -1269,6 +1335,53 @@ export const useStudio = create<StudioState>((set, get) => {
       get().updateOverrides(offerId, {
         imageScale: 1, imageOffsetX: 0, imageOffsetY: 0, parts: {},
       });
+    },
+
+    updatePageText(pageId, part, patch, name) {
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId
+          ? { ...page, ...pageTextPatch(page, part, patch) }
+          : page)),
+      }), name);
+    },
+
+    nudgePageText(pageId, part, dx, dy) {
+      const page = pageById(pageId);
+      if (!page) return;
+      const now = pageTextOverride(page, part);
+      const { reach } = pageTextLimits();
+      get().updatePageText(pageId, part, {
+        offsetX: clamp(now.offsetX + dx, -reach, reach),
+        offsetY: clamp(now.offsetY + dy, -reach, reach),
+      }, repeating(`text-nudge:${pageId}:${part}`));
+    },
+
+    scalePageText(pageId, part, delta) {
+      const page = pageById(pageId);
+      if (!page) return;
+      const now = pageTextOverride(page, part);
+      const { minScale, maxScale } = pageTextLimits();
+      get().updatePageText(pageId, part, {
+        scale: clamp(now.scale + delta, minScale, maxScale),
+      }, repeating(`text-scale:${pageId}:${part}`));
+    },
+
+    /*
+     * Geometry and visibility, not wording — the same line `resetPart`
+     * draws. Putting a heading back where the masthead had it must not
+     * silently un-say what somebody typed into it.
+     */
+    resetPageText(pageId, part) {
+      gesture = null;
+      get().updatePageText(pageId, part, {
+        offsetX: 0, offsetY: 0, scale: 1, hidden: false,
+      });
+    },
+
+    setPageTextHidden(pageId, part, hidden) {
+      gesture = null;
+      get().updatePageText(pageId, part, { hidden });
     },
 
     updateOverrides(offerId, patch, name) {

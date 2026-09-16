@@ -145,6 +145,19 @@
 }
 
 .page__masthead {
+  /*
+   * Positioned, so the heading stays on top of the sheet's own picture.
+   *
+   * `.page__bg` and the decorations are absolute, and an absolute box
+   * paints AFTER every non-positioned one no matter what the source
+   * order says. The masthead was static, so uploading a background put
+   * the picture over the section heading and the logo — the words were
+   * still there, still measured, simply painted under. Joining the
+   * positioned phase is enough: the masthead comes later in the
+   * document than both layers, and at an equal `z-index` the later
+   * element wins. Same move the grid already makes below.
+   */
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2cqw;
@@ -169,6 +182,39 @@
    */
   overflow: clip;
   overflow-clip-margin: 2cqh;
+}
+
+/*
+ * A masthead whose lines have been moved does not clip.
+ *
+ * The guard above is about a heading that is too LONG — that one still
+ * has to be cut, or it pushes the offers off the sheet. A heading
+ * somebody dragged onto the middle of the page is the opposite case,
+ * and the same rule would cut it in half at the strip's edge and read
+ * as a bug. Only the painting changes: the strip's `max-height` still
+ * decides how much room the masthead takes, and a transform moves no
+ * layout. See `pageTextsFreed`.
+ */
+.page__masthead--free { overflow: visible; }
+
+/* The two lines, stacked. A box of its own so the logo beside it keeps
+   its place when a heading is moved out from under it. */
+.page__lines { min-width: 0; }
+
+/*
+ * One line, in a box that hugs it.
+ *
+ * `fit-content` rather than the block's full width, because this box is
+ * what the editor outlines and puts a handle on — a handle stretching
+ * the width of the masthead would take clicks on empty paper beside the
+ * words. Positioned so the overlay has something to be `inset: 0`
+ * against; no `z-index` until the line is actually moved (see `MOVED`
+ * in PageView), so an untouched masthead keeps the stacking it had.
+ */
+.page__text {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .page__logo { height: 6cqh; width: auto; }
@@ -381,6 +427,9 @@
 }
 
 .page__foot {
+  /* Positioned for the same reason as the masthead above: the page
+     number belongs on top of the background, not under it. */
+  position: relative;
   flex: 0 0 auto;
   padding: 0 4cqw 1.6cqh;
   font-size: 1.8cqh;
@@ -586,6 +635,12 @@
 /*
  * Room for a price mark with no field behind it. See `tile--clear-price`.
  *
+ * Only where the mark still leans over the artwork, which since the
+ * lockup is the narrow cells alone — on a wide one it stands beside the
+ * words and the corner it used to need is not over the product at all.
+ * Insetting there would shrink the packshot to clear something that is
+ * no longer above it.
+ *
  * The artwork is inset from the corner the mark hangs in rather than
  * the mark being moved off the artwork, because moving it is what the
  * page cannot afford: pushed down it lands on the product name, pushed
@@ -597,7 +652,7 @@
  * nothing crops, and a product that was already narrow simply keeps the
  * ground it had.
  */
-.tile--clear-price .tile__media {
+.slot[data-room='tight'] .tile--clear-price .tile__media {
   /*
    * Right in percent, bottom in `cqh`, and the mismatch is deliberate.
    * A percentage padding resolves against the element's WIDTH on every
@@ -731,24 +786,148 @@
   position: relative;
   z-index: 20;
   min-width: 0;
-  overflow: hidden;
+  /*
+   * The lockup does not clip; the sentences inside it do — see
+   * `.tile__words`.
+   *
+   * This box used to be the one with `overflow: hidden`, and the mark
+   * now lives inside it: on a narrow cell the mark leans out over the
+   * artwork by design, and on a wide one it is a few pixels taller
+   * than the words beside it. Both were cut. The guard the clip was
+   * really there for — a long product name pushing its last line out
+   * through the foot of the tile — is stated on the words themselves,
+   * where the mark is not, and measured by `npm run check`.
+   */
+  overflow: visible;
   /* Hugs the top of its track, so slack in a roomy tile falls between
      the words and the tag row rather than pushing the words down away
      from the price they belong to. */
   align-self: start;
-  /* Top-aligned, so what gets cut when the tile is tight is the least
-     important line — the promo tag — rather than the product name. */
+  /*
+   * Words left, price right, on one baseline.
+   *
+   * The block is the LOCKUP, not just the text: the mark lives in
+   * column two and the sentences stack up column one, so the two are
+   * laid out by one box and end on the same line. That is the whole
+   * mechanism behind "the price belongs to this offer" — there is no
+   * measurement keeping them in step, no cell to name, and no layout
+   * that can move one without the other.
+   *
+   * It was three arrangements before this, each looser than the last:
+   * the mark pinned at 6% of the artwork's height, then standing on
+   * the text block's top edge, then beside it in a reserved gutter
+   * whose width was a guess at how wide a number would be. All three
+   * left a gap that varied with whatever happened to be above the
+   * words — up to 231px on a rebuilt page — and a gap you cannot
+   * predict is a price that reads as belonging to no offer at all.
+   *
+   * `minmax(0, 1fr)` and not `auto` for the words: an auto track takes
+   * its min-content width from the longest Danish compound in the feed
+   * and pushes the number off the tile.
+   */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 2cqw;
+  align-items: end;
+}
+
+/*
+ * The sentences, stacked in column one.
+ *
+ * Their own box so the block above is exactly two cells wide and one
+ * row tall — see the note in `OfferTile`. Top-aligned inside it, so
+ * what gets cut when the tile is tight is the least important line.
+ */
+.tile__words {
+  min-width: 0;
+  /*
+   * Clips, and this is the guard that used to sit on the block: a
+   * product name long enough to need a third line otherwise pushes it
+   * out through the foot of the tile and prints across the offer
+   * below. What is cut is the last line of the least important
+   * sentence, which is the right thing to lose.
+   */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: start;
 }
 
 /*
- * Flex children shrink by default, and a two-line product name squeezed
- * to one line's height had its second line clipped mid-glyph. The block
- * as a whole still clips; its lines no longer do.
+ * Standing beside the words, the mark also answers to the cell's WIDTH.
+ *
+ * `--price-size` is its ideal, set per role in `cqh`, and on its own it
+ * is half a sum: the page is the size container, so a role's mark is
+ * the same number of pixels in a half-page hero and in a column a
+ * sixth of the sheet wide. That is right when it leans over the
+ * artwork and wrong when it shares a line with a sentence, where every
+ * pixel the mark takes is one the product name does not get.
+ *
+ * A seventh of the cell, handed in as `--cell-w` by the renderer:
+ * asking CSS how wide a grid cell is means making the tile a size
+ * container, which re-roots every measurement in this file — see
+ * `slotCells` for the whole argument. `1` where nothing sets it, which
+ * is a tile drawn outside a slot. Only in this arrangement, so a mark
+ * leaning over the artwork keeps exactly the size the chain set it.
  */
-.tile__info > * { flex: 0 0 auto; max-width: 100%; }
+.slot[data-room='wide'] .price {
+  font-size: min(var(--price-size), calc(var(--cell-w, 1) * 14cqw));
+}
+
+/*
+ * A cell too narrow for two columns stands the mark on the block
+ * instead of beside it.
+ *
+ * Still the text block's own element — that is the invariant, and it
+ * is what makes the pairing impossible to break — but taken out of the
+ * flow and set on the block's top edge, so its foot lands on the first
+ * line of the words with a hairline of air and nothing between them.
+ * A third of the sheet is where the line falls; see `slotRoom`, which
+ * answers it from the template rather than from a container query, for
+ * the reason given on `slotCells`.
+ *
+ * Out of the flow because on a quarter-page cell the mark is half the
+ * height of the words it prices: in the column it took a row of its
+ * own, the text block grew by 70px, and since the artwork's track is
+ * the elastic one, the packshot on a 214px tile went from 121px to
+ * 50px. The number would have been joined to its sentence at the price
+ * of the product being unrecognisable. Out of the flow it costs the
+ * layout nothing and leans over the artwork's bottom-right corner,
+ * which is where the printed book puts it on exactly these cells.
+ *
+ * The block stops clipping to let it: the guard that keeps a long name
+ * from pushing its last line out of the tile is stated as
+ * `overflow: hidden`, and it cuts anything leaving the box in any
+ * direction, this mark included. What replaces it is a measurement —
+ * `npm run check` fails a text block that runs past the foot of its
+ * own tile — which is the thing the clip was really for and says so
+ * out loud instead of hiding it.
+ */
+.slot[data-room='tight'] .price {
+  position: absolute;
+  /*
+   * Out of the grid's placement as well as out of its flow.
+   *
+   * An absolutely positioned grid child is laid out inside its GRID
+   * AREA, and with the mark taken out of the flow the column it named
+   * holds nothing, so that area is a strip zero pixels wide at the
+   * block's right edge: the mark measured 0×0 and its numerals printed
+   * to the right of it, across the offer in the next cell. `auto` in
+   * both axes is what hands it the block's own padding box, which is
+   * the box this rule means by `right: 0`.
+   */
+  grid-column: auto;
+  grid-row: auto;
+  right: 0;
+  bottom: calc(100% + 0.4cqh);
+}
+
+/*
+ * A line keeps its own height. The block as a whole still clips; its
+ * lines no longer do — a two-line product name squeezed into one
+ * line's height had its second line cut mid-glyph.
+ */
+.tile__words > * { flex: 0 0 auto; max-width: 100%; }
 
 /*
  * A word longer than its tile breaks rather than being sliced.
@@ -780,7 +959,7 @@
  * rules. Where no dictionary is installed this simply does nothing and
  * `anywhere` handles it.
  */
-.tile__info > * { overflow-wrap: anywhere; hyphens: auto; }
+.tile__words > * { overflow-wrap: anywhere; hyphens: auto; }
 
 /*
  * A tile with something moved on it stops clipping its own text block.
@@ -800,7 +979,7 @@
  * layering, not a boundary: words and price marks paint above every
  * tile's artwork, page-wide.
  */
-.tile--arranged .tile__info { overflow: visible; }
+.tile--arranged .tile__words { overflow: visible; }
 
 .tile__brand {
   margin: 0;
@@ -1014,19 +1193,33 @@
  * one object.
  */
 .price {
-  position: absolute;
-  right: 1%;
   /*
-   * Sits ON the product's lower right, overhanging the artwork box by
-   * a little rather than dropping below it. Hung further down it
-   * cleared the product and landed squarely on the product NAME, which
-   * trades one collision for a worse one.
+   * In flow, in the text block's second column, ending on the same
+   * line as the last sentence — see `.tile__info`.
+   *
+   * In FLOW is the load-bearing word. Absolutely positioned, the mark
+   * had to be told which cell it belonged to and how far off its edge
+   * to sit, and every layout, role and shape needed its own answer;
+   * placed in the column, the answer is the same one the words get and
+   * nothing can drift. It also means the number can no longer be
+   * printed over a product name, which used to be the worst collision
+   * the page could produce and is now not expressible.
+   *
+   * What it costs: the mark no longer hangs over the artwork like a
+   * sticker. That was a real property of a printed page and it is
+   * given up on purpose — a leaflet's price sits on the product, but a
+   * price sitting a hand's width from the name it prices is not a
+   * leaflet either, and only one of the two can be had from a box that
+   * knows nothing about what is above it.
    */
-  bottom: 6%;
+  grid-column: 2;
+  align-self: end;
+  justify-self: end;
+
+  font-size: var(--price-size);
   /* Above the words, which are above every packshot — see .tile__info. */
   z-index: 30;
 
-  font-size: var(--price-size);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1038,7 +1231,17 @@
   letter-spacing: -0.04em;
   color: var(--price-ink);
   width: max-content;
-  max-width: 62%;
+  /*
+   * The column governs, not a share of the tile.
+   *
+   * `max-width: 62%` here used to mean 62% of the artwork box; in the
+   * text block's own column it resolves against a track sized by this
+   * very element, and Chromium settles that loop by making the mark
+   * narrower than the numerals inside it — the kroner mark ended up
+   * 19px outside its own box and was clipped away by the block. The
+   * cap that matters now is on the font, above.
+   */
+  max-width: 100%;
   /*
    * Level. There is no sticker angle.
    *

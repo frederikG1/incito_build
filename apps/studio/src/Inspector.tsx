@@ -1,9 +1,143 @@
 import { useState } from 'react';
 import {
-  TILE_PARTS, TILE_PART_NAMES, pageGround, partLimits, partOverride, partTouched,
+  PAGE_PARTS, PAGE_PART_NAMES, TILE_PARTS, TILE_PART_NAMES,
+  pageGround, pageTextLimits, pageTextOverride, pageTextTouched,
+  partLimits, partOverride, partTouched,
 } from '@incitio/schema';
-import type { TilePart } from '@incitio/schema';
+import type { CatalogPage, PagePart, TilePart } from '@incitio/schema';
 import { useStudio } from './state.js';
+
+/**
+ * The page's own two lines: the heading, and the theme line under it.
+ *
+ * Listed rather than only shown when one is in hand, for the same
+ * reason the tile lists its boxes: a line taken off the page cannot be
+ * clicked to get it back, and a hidden element with no way home is a
+ * destructive edit wearing the clothes of a reversible one.
+ *
+ * The words are typed here and in the sheet's own bar and on the page
+ * itself — three doors into `page.title`/`page.subtitle`, which is one
+ * string, so none of them can drift from the others.
+ */
+function PageTexts({ page }: { page: CatalogPage }) {
+  const {
+    selectedText, selectPageText, updatePageText, resetPageText, setPageTextHidden,
+    setPageTitle, setPageSubtitle, endGesture,
+  } = useStudio();
+
+  const held: PagePart | null = selectedText?.pageId === page.id ? selectedText.part : null;
+  const limits = pageTextLimits();
+
+  return (
+    <>
+      <h3 className="inspector__group">Sidens tekster</h3>
+
+      <ul className="inspector__parts">
+        {PAGE_PARTS.map((part) => {
+          const state = pageTextOverride(page, part);
+          return (
+            <li
+              key={part}
+              className={[
+                'inspector__part',
+                held === part && 'is-held',
+                state.hidden && 'is-hidden',
+              ].filter(Boolean).join(' ')}
+            >
+              <button
+                className="inspector__part-name"
+                onClick={() => selectPageText(page.id, held === part ? null : part)}
+              >
+                {PAGE_PART_NAMES[part]}
+                {pageTextTouched(page, part) && <i aria-hidden="true">•</i>}
+              </button>
+              <button
+                className="inspector__part-eye"
+                title={state.hidden ? 'Vis igen' : 'Tag af siden'}
+                aria-label={state.hidden ? 'Vis igen' : 'Tag af siden'}
+                onClick={() => setPageTextHidden(page.id, part, !state.hidden)}
+              >{state.hidden ? '◌' : '●'}</button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {held && (() => {
+        const state = pageTextOverride(page, held);
+        return (
+          <>
+            <h3 className="inspector__group">
+              {PAGE_PART_NAMES[held]}
+              {pageTextTouched(page, held) && (
+                <button
+                  className="inspector__link"
+                  onClick={() => resetPageText(page.id, held)}
+                >Nulstil</button>
+              )}
+            </h3>
+
+            <label className="inspector__field">
+              <span>Tekst</span>
+              <input
+                type="text"
+                value={held === 'title' ? page.title : page.subtitle}
+                placeholder={held === 'title' ? 'overskrift' : 'stemningslinje'}
+                onChange={(e) => (held === 'title'
+                  ? setPageTitle(page.id, e.target.value)
+                  : setPageSubtitle(page.id, e.target.value))}
+              />
+              <small>Tom = linjen falder væk.</small>
+            </label>
+
+            <label className="inspector__field">
+              <span>Størrelse <b>{state.scale.toFixed(2)}×</b></span>
+              <input
+                type="range" min={limits.minScale} max={limits.maxScale} step={0.01}
+                value={state.scale}
+                onChange={(e) => updatePageText(
+                  page.id, held, { scale: Number(e.target.value) }, `text-scale:${page.id}:${held}`,
+                )}
+                onPointerUp={() => endGesture()}
+              />
+            </label>
+
+            <label className="inspector__field">
+              <span>Vandret <b>{state.offsetX.toFixed(2)}</b></span>
+              <input
+                type="range" min={-limits.reach} max={limits.reach} step={limits.step}
+                value={state.offsetX}
+                onChange={(e) => updatePageText(
+                  page.id, held, { offsetX: Number(e.target.value) }, `text-move:${page.id}:${held}`,
+                )}
+                onPointerUp={() => endGesture()}
+              />
+            </label>
+
+            <label className="inspector__field">
+              <span>Lodret <b>{state.offsetY.toFixed(2)}</b></span>
+              <input
+                type="range" min={-limits.reach} max={limits.reach} step={limits.step}
+                value={state.offsetY}
+                onChange={(e) => updatePageText(
+                  page.id, held, { offsetY: Number(e.target.value) }, `text-move:${page.id}:${held}`,
+                )}
+                onPointerUp={() => endGesture()}
+              />
+            </label>
+
+            <ul className="inspector__keys">
+              <li><b>Piletaster</b> flytter linjen — med shift længere</li>
+              <li><b>+</b> / <b>−</b> ændrer størrelsen, <b>0</b> nulstiller</li>
+              <li><b>⌫</b> tager linjen af siden</li>
+              <li><b>Dobbeltklik</b> retter teksten direkte på siden</li>
+              <li><b>Esc</b> slipper linjen</li>
+            </ul>
+          </>
+        );
+      })()}
+    </>
+  );
+}
 
 /**
  * The browser's own screen colour picker.
@@ -36,7 +170,9 @@ const eyeDropper = (): EyeDropperApi | null =>
  * decides, which is what every ordinary page does.
  */
 function PageGround() {
-  const { document, brand, selectedOfferId, setPageGround, setPageBackground } = useStudio();
+  const {
+    document, brand, selectedOfferId, selectedText, setPageGround, setPageBackground,
+  } = useStudio();
   const [dropping, setDropping] = useState(false);
 
   if (!document || !brand || document.pages.length === 0) return null;
@@ -50,8 +186,12 @@ function PageGround() {
    */
   const index = Math.max(
     0,
-    document.pages.findIndex((page) =>
-      page.placements.some((p) => p.offerId === selectedOfferId)),
+    // A line in hand names its own page — and is the one case where the
+    // panel is about a page with nothing selected on it at all.
+    selectedText
+      ? document.pages.findIndex((page) => page.id === selectedText.pageId)
+      : document.pages.findIndex((page) =>
+        page.placements.some((p) => p.offerId === selectedOfferId)),
   );
   const page = document.pages[index]!;
   const chains = pageGround(brand, index);
@@ -60,6 +200,10 @@ function PageGround() {
 
   return (
     <>
+      {/* First, because it is what the page SAYS — the colour and the
+          picture below are what it is printed on. */}
+      <PageTexts page={page} />
+
       <h3 className="inspector__group">
         Sidens bund
         {page.ground && (
@@ -262,6 +406,7 @@ export function Inspector() {
           <li><b>⌘ + scroll</b> eller knib for at ændre størrelsen</li>
           <li><b>Dobbeltklik</b> på en tekst for at rette den på siden</li>
           <li><b>⌫</b> tager et element af siden — det kan hentes tilbage</li>
+          <li><b>Overskriften</b> og stemningslinjen trækkes på samme måde</li>
         </ul>
       </aside>
     );

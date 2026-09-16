@@ -733,6 +733,51 @@ body {
 .handle__part--tight > b { bottom: auto; top: 2px; }
 
 /*
+ * The handle on a page's own line — see `PageTextEditor`.
+ *
+ * Grabbable straight away, unlike a tile's box: a heading sits on empty
+ * paper, so there is no neighbouring element a stray press could be
+ * meant for, and the arming step a tile needs would only be in the way.
+ * The box hugs the words (see `.page__text`), so the outline IS the
+ * selection marker and no separate rectangle is drawn.
+ */
+.handle--text {
+  cursor: grab;
+  /* Snug against the type rather than inset into it: these boxes are
+     one line tall and 2px of overlap eats a descender. */
+  outline-offset: 2px;
+}
+.handle--text:active { cursor: grabbing; }
+.handle--text:hover { outline-color: color-mix(in srgb, var(--hot) 55%, transparent); }
+.handle--text.handle--armed { outline-color: var(--hot); }
+.handle--text.handle--editing { cursor: text; }
+
+/* The line's name, above its box. Shown only while it is pointed at or
+   held — a permanent label on every heading would print-preview as
+   clutter on a canvas full of sheets. */
+.handle__tag {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 4px);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font: 600 10px/1.5 system-ui, sans-serif;
+  white-space: nowrap;
+  color: #fff;
+  background: var(--hot);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 90ms;
+}
+.handle--text:hover .handle__tag,
+.handle--text.handle--armed .handle__tag { opacity: 0.85; }
+.handle--editing .handle__tag { opacity: 0; }
+
+/* The in-place editor on a line fills its own box rather than being
+   positioned into a tile's coordinate space. */
+.handle__text--fill { inset: 0; }
+
+/*
  * The in-place text editor.
  *
  * It inherits the printed type from the element it covers — font, size,
