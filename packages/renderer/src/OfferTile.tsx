@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import type {
   Offer, OfferLabel, PlacementOverrides, PriceShape, SlotRole, TilePart,
+  TileArrangement,
 } from '@incitio/schema';
 import { partOverride, tileArranged, PlacementOverrides as Overrides } from '@incitio/schema';
 import { formatPrice, formatQuantity, splitPrice } from './format.js';
@@ -61,12 +62,36 @@ const PART_ORIGIN: Partial<Record<TilePart, string>> = {
   marks: 'left top',
 };
 
-/** How many variant images a tile shows before it stops being legible. */
+/**
+ * How many variant images a tile shows before it stops being legible.
+ *
+ * A ceiling on what a FEED hands over, where the motives are incidental:
+ * an offer arrives with eight photographs of the same yoghurt and the
+ * tile has no reason to print them all.
+ */
 const MAX_PACK: Record<SlotRole, number> = {
   hero: 5,
   feature: 4,
   standard: 3,
   compact: 1,
+};
+
+/**
+ * The same ceiling for a tile somebody ASSEMBLED — see `Offer.members`.
+ *
+ * Higher, because the two are not the same thing. A feed's motives are
+ * variations the tile may summarise; a group's members are the products
+ * an editor chose to put in that cell, and showing four of their six is
+ * not a summary, it is a tile that lost two of the things it is selling.
+ * The schema's own ceiling is eight, and it is the one that applies —
+ * except on a compact cell, which is too small for a cluster whoever
+ * built it.
+ */
+const MAX_GROUP: Record<SlotRole, number> = {
+  hero: 8,
+  feature: 8,
+  standard: 8,
+  compact: 2,
 };
 
 /** How many promotional tags each role has room for. */
@@ -103,7 +128,7 @@ const MAX_MARKS: Record<SlotRole, number> = {
  * diagonally. One arrangement everywhere is the single clearest tell
  * that a page was generated.
  */
-export type PackStyle = 'row' | 'stagger' | 'grid' | 'fan';
+export type PackStyle = TileArrangement;
 
 /**
  * Deterministic 0..1 from an offer id (FNV-1a, 32-bit).
@@ -131,10 +156,19 @@ function stableFraction(id: string): number {
  * corners leaving the tile.
  */
 export function packStyle(offerId: string, count: number, role: SlotRole): PackStyle {
-  // A 2×2 block only works at exactly four. Five items in two columns
-  // is three rows, which makes every product too small to read.
   if (count === 4) return stableFraction(offerId) < 0.55 ? 'grid' : 'stagger';
-  if (count > 4) return 'stagger';
+  /*
+   * Five or more is a block, not a row.
+   *
+   * A row divides the cell's WIDTH by the number of items and leaves
+   * its height alone, so six products in a half-page band came out a
+   * sixth of it wide, a fifth of it tall, and floating in an empty
+   * field — while the published tile this layout was read off fills
+   * the same cell edge to edge. A block spends both dimensions. See
+   * `.tile__pack--grid`, which takes its column count from how many
+   * there are rather than always being two across.
+   */
+  if (count > 4) return 'grid';
   // A fan needs room to rotate without its corners leaving the tile, so
   // a compact tile is offered only the two upright shapes.
   const options: PackStyle[] = role === 'compact'
@@ -241,9 +275,17 @@ export function OfferTile({
    * at random — 72% of SuperBrugsen's offers supply two or more motives.
    * A compact tile shows one anyway: at that size a cluster is mush.
    */
-  const pack = offer.imagePack.slice(0, MAX_PACK[role]);
+  const room = offer.members.length > 0 ? MAX_GROUP[role] : MAX_PACK[role];
+  const pack = offer.imagePack.slice(0, room);
   const isPacked = pack.length > 1;
-  const arrangement = isPacked ? packStyle(offer.id, pack.length, role) : 'row';
+  /*
+   * Whoever decided, decides. The stylesheet's own answer is drawn from
+   * the offer's id — stable and varied, and blind to what the products
+   * look like — so an arrangement written onto the placement wins.
+   */
+  const arrangement = isPacked
+    ? overrides?.arrangement ?? packStyle(offer.id, pack.length, role)
+    : 'row';
 
   // Price tags and certification marks compete for the same corner and
   // must not: a tile that can show one badge should show its Ø-mark, not
@@ -366,6 +408,9 @@ export function OfferTile({
           <div
             className={`tile__pack tile__pack--${arrangement}`}
             style={mediaStyle}
+            /* How many products share this cell. Read by the stylesheet,
+               which overlaps them harder from five up — see
+               `.tile__pack[data-count]`. */
             data-count={pack.length}
           >
             {pack.map((url, index) => (

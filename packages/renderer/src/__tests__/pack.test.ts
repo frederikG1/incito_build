@@ -26,14 +26,28 @@ describe('packStyle', () => {
     // Four items in one line leaves each too small to recognise.
     for (const id of ids) {
       expect(['grid', 'stagger']).toContain(packStyle(id, 4, 'standard'));
-      expect(packStyle(id, 6, 'hero')).toBe('stagger');
     }
   });
 
-  it('uses a two-row block only at exactly four', () => {
+  /*
+   * A row divides the cell's width and leaves its height alone, so the
+   * more items there are the smaller each one gets while the empty
+   * field above them grows. Past four, a block is the only arrangement
+   * that spends both dimensions — `.tile__pack--grid` widens to three
+   * and four columns to match.
+   */
+  it('blocks five or more', () => {
+    for (const id of ids) {
+      expect(packStyle(id, 5, 'hero')).toBe('grid');
+      expect(packStyle(id, 6, 'hero')).toBe('grid');
+      expect(packStyle(id, 8, 'standard')).toBe('grid');
+    }
+  });
+
+  it('keeps a row or a stagger below four', () => {
     for (const id of ids) {
       expect(packStyle(id, 3, 'hero')).not.toBe('grid');
-      expect(packStyle(id, 5, 'hero')).not.toBe('grid');
+      expect(packStyle(id, 2, 'hero')).not.toBe('grid');
     }
   });
 });

@@ -1,15 +1,18 @@
 import { create } from 'zustand';
 import type {
-  Brand, CatalogDocument, CatalogPage, DecorAnchor, Offer, PageBackground, PageDecoration,
+  Brand, CatalogDocument, DecorAnchor, Offer, PageBackground, PageDecoration,
   PagePart, PageTemplate, PageTextOverride,
-  Placement, PartOverride, PlacementOverrides, TilePart,
+  Placement, PartOverride, PlacementOverrides, TileArrangement, TilePart,
 } from '@incitio/schema';
 import {
-  mergeCatalogDocuments, pageTextLimits, pageTextOverride, pageTextPatch,
-  partLimits, partOverride, partPatch, slotAssignmentOrder,
+  CatalogPage, mergeCatalogDocuments, pageTextLimits, pageTextOverride, pageTextPatch,
+  partLimits, partOverride, partPatch, slotAssignmentOrder, slotCells,
 } from '@incitio/schema';
+import { groupOffers } from '@incitio/schema';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
+import { freeSlots, growTemplate, grownId } from './grid.js';
 import * as api from './api.js';
+import { countPages } from './pdf.js';
 
 /**
  * Which chain the user works for.
@@ -45,6 +48,14 @@ export interface ReferenceFile {
   base64: string;
   isPdf: boolean;
   /**
+   * How many pages the file has, when it could be read.
+   *
+   * `null` for an image, and for a PDF pdf.js could not open — in which
+   * case the row simply does not say, rather than guessing. Read in the
+   * browser on upload; see `countPages`.
+   */
+  pageCount: number | null;
+  /**
    * Which pages of a PDF this row stands for: "4", "1-6", "2,5,9".
    *
    * One row can therefore become six pages. That is the common case —
@@ -70,6 +81,8 @@ export interface PageRun {
   referenceName: string;
   template: { id: string; name: string; areas: string[] };
   ground: string;
+  /** Measured out of the PDF, or read off the picture. See `ReproduceReply`. */
+  grid: { source: 'pdf' | 'model'; columns: number; rows: number; fit: number | null };
   casting: { slotId: string; offerId: string; role: string; why: string }[];
   source: { id: string; name: string; reason: string };
   offersInFeed: number;
@@ -86,8 +99,16 @@ export interface PageRun {
  * "1-40" typed into a PDF row is forty of them. The cap is here rather
  * than in the endpoint because this is where a person can still be told
  * about it, in the panel, before they press the button.
+ *
+ * Forty, which is a whole avis. It was 24 while a row stood at one page
+ * by default and a long file was something you opted into page by page;
+ * now the row arrives holding the whole document, and a cap that trims
+ * a 30-page book to 24 drops six pages for a reason that is about this
+ * constant rather than about the work. What guards the spend is the
+ * line under the button — pages, minutes, and the cap when it bites —
+ * not a number low enough to be hit by an ordinary week's leaflet.
  */
-export const MAX_REFERENCE_PAGES = 24;
+export const MAX_REFERENCE_PAGES = 40;
 
 /**
  * A page spec as the pages it names: "2,5-7" is 2, 5, 6, 7.
@@ -111,6 +132,18 @@ export function pageNumbers(spec: string): number[] {
     if (/^\d{1,3}$/.test(trimmed)) out.push(Number(trimmed));
   }
   return [...new Set(out.filter((page) => page >= 1 && page <= 400))];
+}
+
+/**
+ * The page spec that means "all of it", for a file of this length.
+ *
+ * `"1"` when the length is unknown, which is the old behaviour and the
+ * safe one: a range built on a guess would ask the server for pages the
+ * file does not have, and each of those is a failed model call.
+ */
+export function wholeDocument(pageCount: number | null): string {
+  if (pageCount === null || pageCount < 1) return '1';
+  return pageCount === 1 ? '1' : `1-${pageCount}`;
 }
 
 /**
@@ -206,6 +239,68 @@ export interface StudioState {
   reproduceAppend: boolean;
   reproductions: PageRun[];
 
+  /* ------------------------------------------------ varerne, som liste */
+
+  /**
+   * Every product in the uploaded feed, read but not yet used.
+   *
+   * The upload used to be a string nobody could look into: it was held
+   * until something was generated from it, and the first sight of what
+   * was in the file came several minutes and one model call later. This
+   * is the same file run through the chain's own reader — free, instant
+   * and no model — so a feed can be inspected, searched and dealt onto
+   * pages by hand like a deck of cards.
+   */
+  feedOffers: Offer[];
+  /** Which reader ran, and how many of the products carry a photograph. */
+  feedReading: { source: api.FeedReading['source']; withImage: number } | null;
+  libraryOpen: boolean;
+  librarySearch: string;
+  /**
+   * The products ticked in the library, in the order they were ticked.
+   *
+   * Ordered rather than a Set because the order is the answer to "which
+   * cell does each of these land in": the first one ticked takes the
+   * most prominent free cell.
+   */
+  librarySelection: string[];
+  /**
+   * The groups that are folded away, by name.
+   *
+   * Closed rather than open is what is stored, so a feed with forty
+   * categories opens showing all of them and a person folds away what
+   * they are not working on — the other way round, a new category next
+   * week would arrive already hidden.
+   */
+  libraryClosedGroups: string[];
+  /**
+   * The page a product lands on when nothing else says which.
+   *
+   * Follows the selection — clicking a tile makes its page the active
+   * one — so the common gesture is "click a page, tick some products,
+   * add". Null until there is a document.
+   */
+  activePageId: string | null;
+
+  /* --------------------------------------------- en udgivelse, via link */
+
+  publicationUrl: string;
+  /** "4", "1-6" or "2,5,9". Empty means the whole publication. */
+  publicationPages: string;
+  /** Add the pages behind what is open instead of replacing it. */
+  publicationAppend: boolean;
+  /** Take the layout WITH the publication's own products, or empty. */
+  publicationWithOffers: boolean;
+
+  /* ------------------------------------------------- et tegnet layout */
+
+  /** How many product cells to ask the image model for. */
+  layoutCells: number;
+  /** The editor's own words for the image model. */
+  layoutNote: string;
+  /** Add the drawn page behind what is open instead of replacing it. */
+  layoutAppend: boolean;
+
   selectedOfferId: string | null;
   /**
    * Which of the chain's own pictures is in hand, if any.
@@ -251,7 +346,8 @@ export interface StudioState {
 
   start: () => Promise<void>;
   signInAs: (brandId: string) => Promise<void>;
-  uploadFeed: (name: string, text: string) => void;
+  /** Read this week's file and show what is in it. Free; no model. */
+  uploadFeed: (name: string, text: string) => Promise<void>;
   /** Re-read the saved list. Cheap, and never a model call. */
   refreshCatalogues: () => Promise<void>;
   /**
@@ -290,6 +386,89 @@ export interface StudioState {
   setDecorNote: (value: string) => void;
   setDecorStyle: (value: string) => void;
   decorate: () => Promise<void>;
+
+  setLibraryOpen: (open: boolean) => void;
+  setLibrarySearch: (query: string) => void;
+  /** Tick or untick one product. Always a toggle; the list is a basket. */
+  toggleLibraryPick: (offerId: string) => void;
+  clearLibraryPicks: () => void;
+  /** Fold one group of the library away, or open it again. */
+  toggleLibraryGroup: (name: string) => void;
+  /** Which page the next products land on. */
+  setActivePage: (pageId: string | null) => void;
+  /**
+   * Put products on a page — one, or a handful at once.
+   *
+   * Three things can happen to the page's layout, in this order of
+   * preference, and which one did is visible on the page afterwards:
+   *   1. the layout already has empty cells, and they are filled;
+   *   2. the chain has a layout at the new count, and the page moves to
+   *      it — a shape somebody drew, which is always the better page;
+   *   3. the page's own grid grows a cell, which is the only thing that
+   *      can be done for a layout read off one printed sheet.
+   */
+  addOffersToPage: (pageId: string, offerIds: string[]) => void;
+  /**
+   * Take a product off a page without deleting it.
+   *
+   * It goes to the bench — every offer in the document that no page
+   * shows — so it can be dealt out again, here or on another page. The
+   * cell it leaves stays empty rather than the page reflowing: a page
+   * somebody is editing should not rearrange itself under their hands.
+   */
+  removeOfferFromPage: (pageId: string, offerId: string) => void;
+  /**
+   * Put a selection of products into ONE cell the page already has.
+   *
+   * The other way to add a product — `addOffersToPage` — gives each one
+   * a cell of its own and grows the grid to find them. That is right
+   * when the page is yours to shape and wrong when it is a layout read
+   * off a printed sheet: the whole point of that layout is that it does
+   * not move.
+   *
+   * So this changes what is IN a cell rather than how many cells there
+   * are. Several products become one "frit valg" tile — one price, one
+   * headline, every product photographed together, which is how a
+   * printed leaflet puts six cheeses in the space of one offer. See
+   * `groupOffers` for what is resolved downwards to keep the tile true.
+   *
+   * Whatever was in the cell goes to the bench, not to the bin.
+   */
+  fillSlot: (pageId: string, slotId: string, offerIds: string[]) => Promise<void>;
+  /** The editor's own steer for how the products should sit together. */
+  arrangeNote: string;
+  setArrangeNote: (note: string) => void;
+  /**
+   * The cells of a page, in the order a reader meets them, with what is
+   * in each — for a picker that has to say "which cell".
+   */
+  pageSlots: (pageId: string) => { slotId: string; label: string }[];
+
+  setPublicationUrl: (url: string) => void;
+  setPublicationPages: (spec: string) => void;
+  setPublicationAppend: (append: boolean) => void;
+  setPublicationWithOffers: (withOffers: boolean) => void;
+  /**
+   * Rebuild a published leaflet from its own link.
+   *
+   * The one way into a page here that costs nothing and gives the same
+   * answer twice: a published page states its own grid, so there is no
+   * model in the loop at all.
+   */
+  importPublication: () => Promise<void>;
+
+  setLayoutCells: (cells: number) => void;
+  setLayoutNote: (note: string) => void;
+  setLayoutAppend: (append: boolean) => void;
+  /**
+   * A page whose layout is drawn rather than handed in.
+   *
+   * The image model draws the shape of the page; the casting model reads
+   * that drawing and decides which product sits in which cell. The
+   * drawing is never printed — it is scaffolding, and what lands on the
+   * sheet is the chain's own tiles.
+   */
+  generateLayout: () => Promise<void>;
 
   select: (offerId: string | null) => void;
   /** Arm a picture for dragging, or put it back down. */
@@ -363,6 +542,15 @@ export interface StudioState {
   /** Take a line off the page, or put it back. */
   setPageTextHidden: (pageId: string, part: PagePart, hidden: boolean) => void;
   movePage: (pageId: string, delta: number) => void;
+  /**
+   * Put a whole-sheet picture into the book at this position — an ad, a
+   * campaign page, a back cover. `at` is the index it lands on.
+   */
+  addImagePage: (at: number, file: File) => Promise<void>;
+  /** Swap the picture on an image page for another. */
+  replaceImagePage: (pageId: string, file: File) => Promise<void>;
+  /** Take a page out of the book. */
+  removePage: (pageId: string) => void;
   /**
    * Put one of the chain's own pictures on a page.
    *
@@ -527,6 +715,7 @@ async function reachable(url: string): Promise<boolean> {
 /** A placement nobody has corrected yet. */
 const FRESH: PlacementOverrides = {
   pinned: false,
+  arrangement: null,
   displayName: null,
   description: null,
   imageScale: 1,
@@ -594,6 +783,54 @@ export const useStudio = create<StudioState>((set, get) => {
     return name;
   }
 
+  /**
+   * Run a feed through the chain's own reader and put the products in
+   * the library.
+   *
+   * Shared by the upload and by the sample the chain ships, because the
+   * difference between the two is only how loudly it is announced: an
+   * upload is something somebody just did and gets a line about what was
+   * in the file; the sample is simply what the editor opens with, and
+   * saying "1235 varer" about it every time the page reloads is noise.
+   *
+   * Failure never costs the feed. The plain draft and the rebuild both
+   * take the raw text and run their own reader, and one of them may yet
+   * be pointed at the right source by hand — so a file this could not
+   * read stays loaded, and only the library is empty.
+   */
+  async function loadFeed(
+    brandId: string, name: string, text: string, announce: boolean,
+  ): Promise<void> {
+    if (announce) set({ busy: 'Læser feedet…' });
+    try {
+      const reading = await api.readFeed(brandId, text, name);
+      set({
+        feedOffers: reading.offers,
+        feedReading: { source: reading.source, withImage: reading.withImage },
+        librarySelection: [],
+        ...(announce
+          ? {
+            libraryOpen: true,
+            busy: null,
+            note: [
+              reading.source.name,
+              count(reading.offers.length, 'vare', 'varer'),
+              `${reading.withImage} med billede`,
+            ].join(' · '),
+          }
+          : {}),
+      });
+    } catch (error) {
+      set({
+        feedOffers: [],
+        feedReading: null,
+        ...(announce
+          ? { busy: null, error: `${name} kunne ikke læses: ${message(error)}` }
+          : {}),
+      });
+    }
+  }
+
   /** One placement's corrections, or undefined if it is not on a page. */
   function overridesOf(offerId: string) {
     return get().document?.pages
@@ -650,6 +887,21 @@ export const useStudio = create<StudioState>((set, get) => {
     reproduceNote: '',
     reproduceAppend: false,
     reproductions: [],
+    feedOffers: [],
+    feedReading: null,
+    libraryOpen: false,
+    librarySearch: '',
+    librarySelection: [],
+    libraryClosedGroups: [],
+    arrangeNote: '',
+    activePageId: null,
+    publicationUrl: '',
+    publicationPages: '',
+    publicationAppend: false,
+    publicationWithOffers: true,
+    layoutCells: 6,
+    layoutNote: '',
+    layoutAppend: false,
     selectedOfferId: null,
     selectedDecorId: null,
     selectedPart: null,
@@ -687,6 +939,13 @@ export const useStudio = create<StudioState>((set, get) => {
         feed: null,
         brand: null,
         sources: [],
+        // The products belong to one chain as much as the feed they
+        // came out of does — see the note above.
+        feedOffers: [],
+        feedReading: null,
+        librarySelection: [],
+        libraryClosedGroups: [],
+        activePageId: null,
         selectedOfferId: null,
         selectedPart: null,
         selectedText: null,
@@ -706,12 +965,15 @@ export const useStudio = create<StudioState>((set, get) => {
       try {
         const profile = await api.fetchBrandProfile(brandId);
         /*
-         * The chain's default reader is the first source, and its
-         * sample is only a convenience so the editor opens with
-         * something on screen. A chain with no shipped sample simply
-         * starts empty and waits for an upload.
+         * The file the editor opens with, which is not the same
+         * question as which reader an unlabelled upload belongs to.
+         * A chain says which one by marking it — see `FeedSource.sample`
+         * — and otherwise the first one that ships a file will do. A
+         * chain with no shipped sample simply starts empty and waits
+         * for an upload.
          */
-        const sample = profile.sources.find((source) => source.path);
+        const sample = profile.sources.find((source) => source.path && source.sample)
+          ?? profile.sources.find((source) => source.path);
         const [curationReady, decor, text] = await Promise.all([
           api.fetchCurationStatus(brandId),
           api.fetchDecorStatus(brandId),
@@ -730,13 +992,31 @@ export const useStudio = create<StudioState>((set, get) => {
             : null,
           busy: null,
         });
+        // The shipped sample fills the library too, quietly: it is what
+        // the editor opens with, not something somebody just did.
+        if (text && sample?.path) {
+          void loadFeed(brandId, sample.path.split('/').pop() ?? sample.path, text, false);
+        }
       } catch (error) {
         set({ busy: null, brandId, error: message(error) });
       }
     },
 
-    uploadFeed(name, text) {
-      set({ feed: { text, source: name }, note: `Indlæste ${name}`, error: null });
+    async uploadFeed(name, text) {
+      const { brandId } = get();
+      set({ feed: { text, source: name }, error: null, note: null });
+      if (!brandId) return;
+      /*
+       * Read straight away, and never quietly.
+       *
+       * The file used to be stored as a string and nothing more, so a
+       * feed in the wrong format — or one this chain's reader does not
+       * recognise — looked exactly like a good one until a rebuild had
+       * been paid for. This runs the chain's own reader immediately, for
+       * free and with no model, and what comes back is both the answer
+       * to "did it parse" and the library of products.
+       */
+      await loadFeed(brandId, name, text, true);
     },
 
     async build(options = {}) {
@@ -770,6 +1050,9 @@ export const useStudio = create<StudioState>((set, get) => {
           document: reply.document,
           past: [],
           future: [],
+          // The library deals onto a page, and a fresh document needs
+          // one named or the first click would have nowhere to land.
+          activePageId: reply.document.pages[0]?.id ?? null,
           selectedOfferId: null,
           selectedPart: null,
           selectedText: null,
@@ -824,6 +1107,7 @@ export const useStudio = create<StudioState>((set, get) => {
           busy: null,
           past: [],
           future: [],
+          activePageId: document.pages[0]?.id ?? null,
           selectedOfferId: null,
           selectedPart: null,
           selectedText: null,
@@ -884,14 +1168,28 @@ export const useStudio = create<StudioState>((set, get) => {
       for (const file of files) {
         try {
           const bytes = new Uint8Array(await file.arrayBuffer());
+          // Read from the bytes, not the name: what matters is whether a
+          // page has to be picked out of it.
+          const isPdf = String.fromCharCode(...bytes.subarray(0, 5)) === '%PDF-';
+          const pageCount = isPdf ? await countPages(bytes) : null;
           added.push({
             id: `ref-${Date.now().toString(36)}-${added.length}-${Math.random().toString(36).slice(2, 7)}`,
             name: file.name,
             base64: toBase64(bytes),
-            // Read from the bytes, not the name: what matters is
-            // whether a page has to be picked out of it.
-            isPdf: String.fromCharCode(...bytes.subarray(0, 5)) === '%PDF-',
-            pages: '1',
+            isPdf,
+            pageCount,
+            /*
+             * The whole file, not its first page.
+             *
+             * A chain hands in last week's avis as one PDF, and a row
+             * that defaults to "1" reads as a tool that can only see the
+             * front page — which is what it looked like. The field is
+             * still the editor's: it is filled in, not locked, and
+             * nothing is spent until the run button is pressed. What a
+             * long file costs is on the button itself, in pages and
+             * minutes, beside the cap.
+             */
+            pages: wholeDocument(pageCount),
           });
         } catch (error) {
           failed.push(`${file.name} (${message(error)})`);
@@ -1048,6 +1346,7 @@ export const useStudio = create<StudioState>((set, get) => {
             referenceName: job.name,
             template: reply.template,
             ground: reply.ground,
+            grid: reply.grid,
             casting: reply.casting,
             source: reply.source,
             offersInFeed: reply.offersInFeed,
@@ -1069,6 +1368,7 @@ export const useStudio = create<StudioState>((set, get) => {
             reproductions: runs,
             past: [],
             future: [],
+            activePageId: document.pages[document.pages.length - 1]?.id ?? null,
             selectedOfferId: null,
             selectedPart: null,
             selectedText: null,
@@ -1397,6 +1697,64 @@ export const useStudio = create<StudioState>((set, get) => {
       }), name);
     },
 
+    async addImagePage(at, file) {
+      const { brandId } = get();
+      if (!brandId) return;
+      set({ busy: `Lægger ${file.name} ind i avisen…`, error: null });
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { url } = await api.uploadImage(brandId, toBase64(bytes), file.name);
+        if (!await reachable(url)) throw new Error(`${url} kunne ikke hentes igen`);
+
+        set({ busy: null, note: `${file.name} lagt ind som side ${at + 1}` });
+        mutate((document) => {
+          const pages = [...document.pages];
+          pages.splice(Math.max(0, Math.min(at, pages.length)), 0, CatalogPage.parse({
+            id: `img-${Date.now().toString(36)}`,
+            kind: 'image',
+            background: {
+              imageUrl: url,
+              subject: file.name.replace(/\.[a-z0-9]+$/i, ''),
+              fit: 'cover',
+              opacity: 1,
+              focusX: 50,
+              focusY: 50,
+            },
+            placements: [],
+          }));
+          return { ...document, pages };
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    async replaceImagePage(pageId, file) {
+      const { brandId } = get();
+      if (!brandId) return;
+      set({ busy: `Skifter billedet på siden…`, error: null });
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { url } = await api.uploadImage(brandId, toBase64(bytes), file.name);
+        if (!await reachable(url)) throw new Error(`${url} kunne ikke hentes igen`);
+        set({ busy: null, note: `${file.name} lagt på siden` });
+        get().setPageBackground(pageId, {
+          imageUrl: url,
+          subject: file.name.replace(/\.[a-z0-9]+$/i, ''),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    removePage(pageId) {
+      gesture = null;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.filter((page) => page.id !== pageId),
+      }));
+    },
+
     movePage(pageId, delta) {
       mutate((document) => {
         const index = document.pages.findIndex((p) => p.id === pageId);
@@ -1550,11 +1908,465 @@ export const useStudio = create<StudioState>((set, get) => {
       }), `ground:${pageId}`);
     },
 
+    setLibraryOpen: (open) => set({ libraryOpen: open }),
+    setLibrarySearch: (query) => set({ librarySearch: query }),
+
+    toggleLibraryPick(offerId) {
+      const picked = get().librarySelection;
+      set({
+        librarySelection: picked.includes(offerId)
+          ? picked.filter((id) => id !== offerId)
+          // Appended rather than prepended: the order of ticking is the
+          // order the products are dealt into the page's free cells.
+          : [...picked, offerId],
+      });
+    },
+
+    clearLibraryPicks: () => set({ librarySelection: [] }),
+
+    setArrangeNote: (note) => set({ arrangeNote: note }),
+
+    toggleLibraryGroup(name) {
+      const closed = get().libraryClosedGroups;
+      set({
+        libraryClosedGroups: closed.includes(name)
+          ? closed.filter((other) => other !== name)
+          : [...closed, name],
+      });
+    },
+
+    setActivePage: (pageId) => set({ activePageId: pageId }),
+
+    addOffersToPage(pageId, offerIds) {
+      const { brand, document, feedOffers } = get();
+      if (!brand || !document) return;
+      const page = document.pages.find((p) => p.id === pageId);
+      if (!page || page.kind !== 'offers') return;
+
+      const onPage = new Set(page.placements.map((placement) => placement.offerId));
+      const wanted = [...new Set(offerIds)].filter((id) => !onPage.has(id));
+      if (wanted.length === 0) return;
+
+      /*
+       * A product picked out of the library may not be in the document
+       * yet — the library also lists what is merely in the feed. It is
+       * copied in here, because a document embeds the offers it prints:
+       * a catalogue that could only be re-rendered while this week's
+       * file was still open would not be reproducible.
+       */
+      const known = new Map(document.offers.map((offer) => [offer.id, offer]));
+      const library = new Map(feedOffers.map((offer) => [offer.id, offer]));
+      const missing = wanted.filter((id) => !known.has(id) && !library.has(id));
+      if (missing.length > 0) {
+        set({ error: `${count(missing.length, 'vare', 'varer')} findes hverken i avisen eller i feedet` });
+        return;
+      }
+      const incoming = wanted
+        .filter((id) => !known.has(id))
+        .map((id) => library.get(id)!);
+
+      const current = resolveTemplate(brand, page.templateId)
+        ?? document.templates.find((t) => t.id === page.templateId);
+      if (!current) return;
+
+      const open = freeSlots(page, current).map((slot) => slot.id);
+      const needed = page.placements.length + wanted.length;
+
+      let templateId = page.templateId;
+      let templates = document.templates;
+      let placements = page.placements;
+      let seats = open;
+
+      if (open.length < wanted.length) {
+        /*
+         * A shape somebody drew beats a shape we grew, every time — so
+         * the chain's own set is asked first, and only a page whose
+         * layout is already the chain's may move within it. A page read
+         * off a printed sheet has a grid describing that sheet; swapping
+         * it for a brand layout would throw away the very thing the
+         * import was for.
+         *
+         * Asked of the DOCUMENT, not of the brand. `state.brand` carries
+         * the document's own layouts folded in — that is what makes them
+         * renderable and re-seatable — so `resolveTemplate` answers yes
+         * for both kinds and cannot tell them apart. The document's list
+         * can: a template in it is one that travelled with these pages
+         * and belongs to them.
+         */
+        const ownLayout = document.templates.some((t) => t.id === page.templateId);
+        const designed = ownLayout ? undefined : templatesForCount(brand, needed)[0];
+
+        if (designed) {
+          const slots = slotAssignmentOrder(designed);
+          placements = reseat(page, brand, designed);
+          templateId = designed.id;
+          seats = slots.slice(placements.length).map((slot) => slot.id);
+        } else {
+          const grown = growTemplate(
+            current, wanted.length - open.length, grownId(pageId, needed),
+          );
+          if (!grown) {
+            set({ error: 'siden kan ikke bære flere varer — læg dem på en ny side' });
+            return;
+          }
+          templateId = grown.template.id;
+          templates = [
+            ...document.templates.filter((t) => t.id !== grown.template.id),
+            grown.template,
+          ];
+          seats = [...open, ...grown.added];
+        }
+      }
+
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        offers: [...doc.offers, ...incoming],
+        templates,
+        pages: doc.pages.map((p) => (p.id === pageId ? {
+          ...p,
+          templateId,
+          placements: [
+            ...placements,
+            ...wanted.map((offerId, index) => ({
+              offerId,
+              slotId: seats[index]!,
+              overrides: FRESH,
+            })).filter((placement) => placement.slotId),
+          ],
+        } : p)),
+      }));
+
+      set({
+        librarySelection: get().librarySelection.filter((id) => !wanted.includes(id)),
+        note: `${count(wanted.length, 'vare', 'varer')} lagt på siden`,
+        error: null,
+      });
+    },
+
+    removeOfferFromPage(pageId, offerId) {
+      gesture = null;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId ? {
+          ...page,
+          placements: page.placements.filter((placement) => placement.offerId !== offerId),
+        } : page)),
+      }));
+      if (get().selectedOfferId === offerId) set({ selectedOfferId: null, selectedPart: null });
+    },
+
+    async fillSlot(pageId, slotId, offerIds) {
+      const { brand, document, feedOffers } = get();
+      if (!brand || !document) return;
+      const page = document.pages.find((p) => p.id === pageId);
+      if (!page || page.kind !== 'offers') return;
+
+      const template = resolveTemplate(brand, page.templateId)
+        ?? document.templates.find((t) => t.id === page.templateId);
+      const slot = template?.slots.find((entry) => entry.id === slotId);
+      if (!template || !slot) return;
+
+      /*
+       * Looked up in the document first and in the week's file second,
+       * because a product picked out of the library may be either: what
+       * is already in the catalogue, or what is merely in the feed.
+       */
+      const known = new Map([
+        ...document.offers.map((offer) => [offer.id, offer] as const),
+        ...feedOffers.map((offer) => [offer.id, offer] as const),
+      ]);
+      const picked = [...new Set(offerIds)]
+        .map((id) => known.get(id))
+        .filter((offer): offer is Offer => Boolean(offer));
+      if (picked.length === 0) return;
+      if (picked.length > 8) {
+        set({ error: 'en plads kan bære otte varer — vælg færre' });
+        return;
+      }
+
+      /*
+       * How they sit together is asked, not assumed.
+       *
+       * The stylesheet's own rule draws the arrangement from the
+       * offer's id: stable between renders, varied across a page, and
+       * blind to what the products actually look like. That is the
+       * right default for a tile nobody chose and a poor answer for one
+       * an editor has just assembled — six upright bottles fan and six
+       * flat trays do not, and the difference is in the photographs.
+       *
+       * So the model is shown the packshots and answers with an order,
+       * one of four arrangement names and the two lines of Danish the
+       * tile prints. It never returns geometry: the cell is where it
+       * was and the stylesheet still draws the page.
+       *
+       * One product needs none of this, and a failure costs nothing —
+       * `arrangeGroup` answers with the stylesheet's own choice and
+       * says so with `model: null`.
+       */
+      const cell = slotCells(template, brand.pageAspect).get(slotId);
+      let seated = picked;
+      let arrangement: TileArrangement | null = null;
+      let wording: { heading: string; support: string } | null = null;
+      let by: string | null = null;
+
+      if (picked.length > 1 && get().brandId) {
+        set({ busy: 'Modellen sætter varerne sammen…', error: null, note: null });
+        try {
+          const said = await api.arrangeGroup(get().brandId!, {
+            offers: picked,
+            cell: {
+              role: slot.role,
+              aspect: cell?.aspect ?? 1,
+              width: cell?.width ?? 0.5,
+            },
+            ...(get().arrangeNote.trim() ? { note: get().arrangeNote.trim() } : {}),
+          });
+          const order = new Map(said.order.map((id, index) => [id, index]));
+          seated = [...picked].sort(
+            (a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
+          );
+          arrangement = said.arrangement;
+          by = said.model;
+          if (said.heading) wording = { heading: said.heading, support: said.support };
+        } catch (error) {
+          // The drop lands anyway. A tile that could not be assembled
+          // because an API was unreachable is a worse product than one
+          // that assembles it the plain way and says so.
+          set({ error: `varerne blev sat sammen uden model: ${message(error)}` });
+        }
+        set({ busy: null });
+      }
+
+      /*
+       * Named after the cell it fills, so filling the same cell twice
+       * replaces the tile rather than leaving the first one behind in
+       * the document. It is also what keeps the cluster's arrangement
+       * steady between renders when no model chose one — `packStyle`
+       * draws it from the id.
+       */
+      const assembled = seated.length === 1
+        ? seated[0]!
+        : groupOffers(seated, `group/${pageId}/${slotId}`);
+
+      const overrides: PlacementOverrides = {
+        ...FRESH,
+        arrangement,
+        // Written onto the PLACEMENT rather than into the offer, the
+        // same way every other hand correction is: the assembled record
+        // keeps the feed's own facts, and the page keeps what somebody
+        // decided to print. Rewriting either survives the other.
+        displayName: wording?.heading ?? null,
+        description: wording?.support ?? null,
+      };
+
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        /*
+         * The members travel with the document as well as the group.
+         *
+         * They are what the tile is showing, and a catalogue that
+         * carried only the assembled record could not say what the
+         * price covers once this week's file was gone. `benched` knows
+         * they are on the page — see the note there.
+         *
+         * The group itself is rewritten rather than appended: filling
+         * the same cell twice replaces its tile, and two offers under
+         * one id is how a placement ends up pointing at last week's.
+         */
+        offers: [
+          ...doc.offers.filter((offer) => offer.id !== assembled.id),
+          ...seated.filter((member) => member.id !== assembled.id
+            && !doc.offers.some((offer) => offer.id === member.id)),
+          assembled,
+        ],
+        pages: doc.pages.map((p) => (p.id === pageId ? {
+          ...p,
+          placements: [
+            // Whatever stood here goes to the bench: it stays in the
+            // document, it is simply no longer on a page.
+            ...p.placements.filter((placement) => placement.slotId !== slotId),
+            { offerId: assembled.id, slotId, overrides },
+          ],
+        } : p)),
+      }));
+
+      set({
+        librarySelection: [],
+        selectedOfferId: assembled.id,
+        selectedPart: null,
+        note: seated.length === 1
+          ? 'Varen lagt i pladsen'
+          : [
+            `${count(seated.length, 'vare', 'varer')} samlet i én plads`,
+            by ? `sat op af ${by}` : 'sat op uden model',
+          ].join(' · '),
+      });
+    },
+
+    pageSlots(pageId) {
+      const { brand, document } = get();
+      const page = document?.pages.find((p) => p.id === pageId);
+      if (!brand || !document || !page || page.kind !== 'offers') return [];
+      const template = resolveTemplate(brand, page.templateId)
+        ?? document.templates.find((t) => t.id === page.templateId);
+      if (!template) return [];
+
+      const names = new Map(document.offers.map((offer) => [offer.id, offer.name]));
+      // Reading order, which is the order the cells are drawn in — a
+      // picker numbered by the template's declaration order would count
+      // differently from the page in front of the person using it.
+      return slotAssignmentOrder(template).map((slot, index) => {
+        const sitting = page.placements.find((placement) => placement.slotId === slot.id);
+        const name = sitting ? names.get(sitting.offerId) ?? sitting.offerId : 'tom';
+        return { slotId: slot.id, label: `${index + 1} · ${name.slice(0, 28)}` };
+      });
+    },
+
+    setPublicationUrl: (url) => set({ publicationUrl: url }),
+    setPublicationPages: (spec) => set({ publicationPages: spec }),
+    setPublicationAppend: (append) => set({ publicationAppend: append }),
+    setPublicationWithOffers: (withOffers) => set({ publicationWithOffers: withOffers }),
+
+    async importPublication() {
+      const { brandId, publicationUrl, publicationPages, publicationAppend } = get();
+      if (!brandId || !publicationUrl.trim()) return;
+
+      set({ busy: 'Henter udgivelsen…', error: null, note: null });
+      try {
+        const pages = pageNumbers(publicationPages);
+        const reply = await api.importPublication(brandId, {
+          url: publicationUrl.trim(),
+          withOffers: get().publicationWithOffers,
+          ...(pages.length > 0 ? { pages } : {}),
+        });
+
+        /*
+         * Appending keeps the open catalogue's id and name, exactly as
+         * a rebuild does: adding six pages to an avis is the same avis.
+         */
+        const base = publicationAppend ? get().document : null;
+        const document = base
+          ? mergeCatalogDocuments([base, reply.document], { id: base.id, name: base.name })
+          : reply.document;
+
+        const read = reply.readings.filter((reading) => !reading.skipped).length;
+        const skipped = reply.readings.length - read;
+
+        set({
+          document,
+          brand: get().brand ? withTemplates(get().brand!, document.templates) : get().brand,
+          // The pages arrived whole; there is nothing to compare them
+          // against, so the reproduction strip stays as it was.
+          past: [],
+          future: [],
+          activePageId: document.pages[0]?.id ?? null,
+          selectedOfferId: null,
+          selectedPart: null,
+          selectedText: null,
+          busy: null,
+          note: [
+            `${count(read, 'side', 'sider')} hentet fra udgivelsen`,
+            skipped > 0 ? `${skipped} uden gitter` : '',
+            `${document.offers.length} varer`,
+            'ingen modelkald',
+          ].filter(Boolean).join(' · '),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    setLayoutCells: (cells) => set({ layoutCells: cells }),
+    setLayoutNote: (note) => set({ layoutNote: note }),
+    setLayoutAppend: (append) => set({ layoutAppend: append }),
+
+    async generateLayout() {
+      const { brandId, feed, layoutCells, layoutNote, layoutAppend } = get();
+      if (!brandId || !feed) return;
+
+      const base = layoutAppend ? get().document : null;
+      const spent = base ? base.offers.map((offer) => offer.id) : [];
+
+      set({ busy: 'Gemini tegner et layout…', error: null, note: null });
+      try {
+        const reply = await api.generateLayout(brandId, {
+          feed: feed.text,
+          cells: layoutCells,
+          ...(layoutNote.trim() ? { note: layoutNote.trim() } : {}),
+          ...(spent.length > 0 ? { exclude: spent } : {}),
+        });
+
+        const document = base
+          ? mergeCatalogDocuments([base, reply.document], { id: base.id, name: base.name })
+          : reply.document;
+        const landed = document.pages[document.pages.length - 1];
+
+        /*
+         * Kept in the reproduction strip like any other rebuilt page.
+         *
+         * What is shown there is the DRAWING, which never reaches the
+         * sheet — it is the layout the casting step read, and the only
+         * way to judge whether it read it right is to see the two side
+         * by side.
+         */
+        const run: PageRun = {
+          pageId: landed?.id ?? `page-${document.pages.length}`,
+          reference: reply.reference,
+          referenceName: `tegnet layout · ${reply.imageModel}`,
+          template: reply.template,
+          ground: reply.ground,
+          grid: reply.grid,
+          casting: reply.casting,
+          source: reply.source,
+          offersInFeed: reply.offersInFeed,
+          poolSize: reply.poolSize,
+          rejected: reply.rejected,
+          usage: reply.usage,
+          elapsedMs: reply.elapsedMs,
+        };
+
+        set({
+          document,
+          brand: withTemplates(reply.brand, document.templates),
+          reproductions: base ? [...get().reproductions, run] : [run],
+          past: [],
+          future: [],
+          activePageId: landed?.id ?? null,
+          selectedOfferId: null,
+          selectedPart: null,
+          selectedText: null,
+          layoutAppend: true,
+          busy: null,
+          note: [
+            'Layout tegnet og fyldt',
+            `${(reply.drawnInMs / 1000).toFixed(0)}s tegning`,
+            `${(reply.elapsedMs / 1000).toFixed(0)}s casting`,
+            reply.rejected > 0 ? `${reply.rejected} plads(er) tomme` : '',
+          ].filter(Boolean).join(' · '),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
     benched() {
       const { document } = get();
       if (!document) return [];
       const placed = new Set(document.pages.flatMap((p) => p.placements).map((p) => p.offerId));
-      return document.offers.filter((offer) => !placed.has(offer.id));
+      /*
+       * A product inside a placed group is ON the page, even though no
+       * placement names it: the tile shows its photograph and the price
+       * covers it. Counting it as bench would tell the editor there are
+       * six spare products waiting when in fact they are printed.
+       */
+      const shown = new Set(document.offers
+        .filter((offer) => placed.has(offer.id))
+        .flatMap((offer) => offer.members));
+      return document.offers.filter(
+        (offer) => !placed.has(offer.id) && !shown.has(offer.id),
+      );
     },
 
     setPageTemplate(pageId, templateId) {

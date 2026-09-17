@@ -1,14 +1,20 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
-import { CatalogDocument } from '@incitio/schema';
-import { findBrand, listBrands, type BrandDefinition } from '@incitio/brands';
+import { CatalogDocument, Offer } from '@incitio/schema';
+import {
+  findBrand, findSource, listBrands, resolveSource, type BrandDefinition,
+} from '@incitio/brands';
 import { buildCatalogue } from '@incitio/pipeline';
-import { EMPTY_LABEL_DICTIONARY, type LabelDictionary } from '@incitio/ingest';
-import { matchPage, MatchError, mediaType } from '@incitio/match';
+import { arrangeGroup } from '@incitio/curator';
+import {
+  EMPTY_LABEL_DICTIONARY, ingestCsv, ingestJson, type LabelDictionary,
+} from '@incitio/ingest';
+import { imaginePage, matchPage, MatchError, mediaType } from '@incitio/match';
 import { uploadStore } from './uploads.js';
 import { renderCataloguePdf } from '@incitio/pdf';
-import { decorate, DEFAULT_IMAGE_MODEL } from '@incitio/decor';
+import { decorate, DEFAULT_IMAGE_MODEL, GeminiError } from '@incitio/decor';
+import { importPublication, PublicationError } from '@incitio/publication';
 import { Store } from './db.js';
 
 export { Store } from './db.js';
@@ -92,6 +98,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
       // live.
       sources: sources.map((s) => ({
         id: s.id, name: s.name, format: s.format, path: s.path ?? null,
+        sample: s.sample ?? false,
       })),
     });
   });
@@ -418,6 +425,301 @@ export function createApp(store: Store, options: AppOptions = {}) {
    * same shape as every other route in this file. The 24 MB cap is the
    * 18 MB the API accepts for an image, plus base64's third.
    */
+  const FeedRequest = z.object({
+    feed: z.string().max(20_000_000),
+    /** The uploaded file's name, which helps tell a CSV from a JSON. */
+    filename: z.string().max(200).optional(),
+    sourceId: z.string().max(40).optional(),
+  });
+
+  /**
+   * What is actually in the file somebody just uploaded.
+   *
+   * The same reader the build and the rebuild use, run for its own sake:
+   * an upload used to be a string the studio held until something was
+   * generated from it, so the first time anyone saw whether the file had
+   * parsed — or which of the chain's formats it had been read as, or
+   * that half its products have no photograph — was several minutes and
+   * one model call later.
+   *
+   * Free, and no model is involved. The offers come back whole rather
+   * than summarised: the editor's library shows a picture and a name,
+   * and everything else it shows is already in this record.
+   */
+  app.post('/api/brand/feed', async (c) => {
+    const definition = c.get('brand');
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = FeedRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+    if (!parsed.data.feed.trim()) return c.json({ error: 'filen er tom' }, 400);
+
+    /*
+     * Matched against THIS chain's readers, never against every chain's
+     * — see "Kæder er adskilte" in the README. A Netto file uploaded to
+     * a SuperBrugsen session is rejected with what was missing, not
+     * quietly read by whichever mapping happened to fit.
+     */
+    let source;
+    let reason: string;
+    if (parsed.data.sourceId) {
+      const named = findSource(definition, parsed.data.sourceId);
+      if (!named) {
+        return c.json({
+          error: `${definition.brand.name} har ingen kilde "${parsed.data.sourceId}"`,
+          detail: `Kendte: ${definition.sources.map((s) => s.id).join(', ')}`,
+        }, 400);
+      }
+      source = named;
+      reason = `valgt manuelt: ${named.name}`;
+    } else {
+      const match = resolveSource(definition, parsed.data.feed, parsed.data.filename ?? '');
+      if (!match.source) return c.json({ error: match.reason }, 422);
+      source = match.source;
+      reason = match.reason;
+    }
+
+    try {
+      const { feed } = source.format === 'csv'
+        ? ingestCsv(parsed.data.feed, source.mapping, labels)
+        : ingestJson(parsed.data.feed, source.mapping, labels);
+
+      return c.json({
+        source: { id: source.id, name: source.name, reason },
+        offers: feed.offers,
+        // Said here rather than counted in the browser, because it is the
+        // number that decides what can go on a page: an offer without a
+        // photograph cannot stand in for a product in print.
+        withImage: feed.offers.filter((offer) => offer.imageUrl).length,
+      });
+    } catch (error) {
+      return c.json({
+        error: error instanceof Error ? error.message : 'feedet kunne ikke læses',
+      }, 422);
+    }
+  });
+
+  const ArrangeRequest = z.object({
+    /** The products that are to share one cell. Two or more. */
+    offers: z.array(Offer).min(1).max(8),
+    /** What the cell is, in the only terms that change the answer. */
+    cell: z.object({
+      role: z.enum(['hero', 'feature', 'standard', 'compact']),
+      aspect: z.number().positive().max(20),
+      width: z.number().positive().max(1),
+    }),
+    /** The editor's own steer, when they gave one. */
+    note: z.string().max(500).optional(),
+  });
+
+  /**
+   * How several products should share one cell.
+   *
+   * Called when the editor drops a handful of products into a cell that
+   * already exists. The model sees the PHOTOGRAPHS and answers with an
+   * ordering, one of four arrangement names, and the two lines of
+   * Danish the tile prints — never a coordinate, a size or a colour.
+   *
+   * Never fails. `arrangeGroup` answers with the stylesheet's own
+   * choice when there is no key, when the model refuses, or when the
+   * network is down, and says so by returning `model: null`. An editor
+   * whose drop would not land because an API was unreachable is a worse
+   * product than one with no API at all.
+   */
+  app.post('/api/brand/arrange', async (c) => {
+    const definition = c.get('brand');
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = ArrangeRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+
+    const result = await arrangeGroup({
+      offers: parsed.data.offers,
+      cell: parsed.data.cell,
+      brandName: definition.brand.name,
+      ...(parsed.data.note ? { note: parsed.data.note } : {}),
+    });
+    return c.json(result);
+  });
+
+  const PublicationRequest = z.object({
+    url: z.string().min(1).max(4000),
+    /** Which pages to take, 1-based. All of them when absent. */
+    pages: z.array(z.number().int().positive().max(400)).max(400).optional(),
+    /** The grid without the products on it. They still travel, on the bench. */
+    withOffers: z.boolean().optional(),
+    name: z.string().max(200).optional(),
+  });
+
+  /**
+   * Rebuild a published leaflet from its own link.
+   *
+   * The cheap half of this whole repo: a published page states its own
+   * grid, so there is no model call, no cost and no variation between
+   * two runs of the same link. The request is made from the SERVER
+   * rather than the browser because a publication is served from
+   * another origin — and because a URL that reaches the server's own
+   * network is checked before it is fetched, in `@incitio/publication`.
+   */
+  app.post('/api/brand/publication', async (c) => {
+    const definition = c.get('brand');
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = PublicationRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+
+    try {
+      const run = await importPublication(parsed.data.url, {
+        brandId: definition.brand.id,
+        catalogId: `${definition.brand.id}-${Date.now().toString(36)}`,
+        name: parsed.data.name || 'Hentet udgivelse',
+        ...(parsed.data.pages?.length ? { pages: parsed.data.pages } : {}),
+        ...(parsed.data.withOffers === false ? { withOffers: false } : {}),
+      });
+
+      return c.json({
+        document: run.document,
+        readings: run.readings,
+        publication: { id: run.publication.id, pages: run.publication.pages.length },
+      });
+    } catch (error) {
+      // A link that cannot be read is the editor's problem to fix — a
+      // wrong address, an expired signature — and says which.
+      if (error instanceof PublicationError) return c.json({ error: error.message }, 422);
+      return c.json({
+        error: error instanceof Error ? error.message : 'udgivelsen kunne ikke hentes',
+      }, 500);
+    }
+  });
+
+  const LayoutRequest = z.object({
+    feed: z.string().max(20_000_000).default(''),
+    sourceId: z.string().max(40).optional(),
+    /** How many product cells to ask the image model for. */
+    cells: z.number().int().min(1).max(12).optional(),
+    /** The editor's own words, added to the standing layout prompt. */
+    note: z.string().max(500).optional(),
+    /** A steer for the casting step — the same one `reproduce` takes. */
+    brief: z.string().max(2000).optional(),
+    /** The sheet colour to draw on. Defaults to the chain's own. */
+    ground: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    exclude: z.array(z.string().max(200)).max(2000).optional(),
+    poolSize: z.number().int().min(4).max(200).optional(),
+  });
+
+  /**
+   * A page whose layout was DRAWN rather than handed in.
+   *
+   * Two models, and the split is the point: the image model decides what
+   * shape the page is, and the casting step decides which product sits
+   * in which cell. The drawing never reaches the sheet — it is read and
+   * discarded, and what prints is the chain's own tiles in the cells it
+   * turned out to have. It is returned only so the editor can see what
+   * was read, the same way a scanned reference is.
+   *
+   * Needs both keys, and says which one is missing: the drawing is
+   * Gemini's and the casting is Claude's, and a single "no API key"
+   * would send someone to the wrong line of `.env`.
+   */
+  app.post('/api/brand/layout', async (c) => {
+    const definition = c.get('brand');
+
+    if (!process.env['GEMINI_API_KEY']) {
+      return c.json({
+        error: 'ingen nøgle til billedmodellen',
+        detail: 'Sæt GEMINI_API_KEY i .env og genstart API-serveren. '
+          + 'Billedgenerering kræver desuden fakturering på Google-projektet.',
+      }, 503);
+    }
+    if (!process.env['ANTHROPIC_API_KEY']) {
+      return c.json({
+        error: 'ingen nøgle til modellen der læser layoutet',
+        detail: 'Sæt ANTHROPIC_API_KEY i .env og genstart API-serveren.',
+      }, 503);
+    }
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = LayoutRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+
+    try {
+      const result = await imaginePage({
+        brandId: definition.brand.id,
+        feedText: parsed.data.feed,
+        catalogId: `${definition.brand.id}-layout`,
+        labels,
+        layout: {
+          ...(parsed.data.cells ? { cells: parsed.data.cells } : {}),
+          ...(parsed.data.note ? { note: parsed.data.note } : {}),
+          ground: parsed.data.ground ?? definition.brand.groundTints?.[0] ?? '',
+        },
+        ...(parsed.data.brief ? { note: parsed.data.brief } : {}),
+        ...(parsed.data.sourceId ? { sourceId: parsed.data.sourceId } : {}),
+        ...(parsed.data.exclude?.length ? { exclude: parsed.data.exclude } : {}),
+        ...(parsed.data.poolSize ? { poolSize: parsed.data.poolSize } : {}),
+        referenceName: 'genereret layout',
+      });
+
+      return c.json({
+        document: result.document,
+        brand: result.brand,
+        template: result.template,
+        ground: result.ground,
+        casting: result.casting,
+        grid: result.grid,
+        source: result.source,
+        // The drawing, for the side-by-side. It is NOT on the page and
+        // never will be — see `imaginePage`.
+        reference: `data:${result.reference.type};base64,`
+          + `${result.reference.image.toString('base64')}`,
+        prompt: result.prompt,
+        imageModel: result.imageModel,
+        drawnInMs: result.drawnInMs,
+        offersInFeed: result.offersInFeed,
+        poolSize: result.poolSize,
+        rejected: result.rejected,
+        usage: result.usage,
+        elapsedMs: result.elapsedMs,
+      });
+    } catch (error) {
+      if (error instanceof MatchError) return c.json({ error: error.message }, 422);
+      if (error instanceof GeminiError) return c.json({ error: error.message }, 422);
+      return c.json({ error: error instanceof Error ? error.message : 'layout failed' }, 500);
+    }
+  });
+
   const ReproduceRequest = z.object({
     /** The reference page, base64. An image, or a PDF to take a page of. */
     file: z.string().min(1).max(24_000_000),
@@ -496,6 +798,10 @@ export function createApp(store: Store, options: AppOptions = {}) {
         template: result.template,
         ground: result.ground,
         casting: result.casting,
+        // Whether the grid was measured out of the PDF or read off the
+        // picture by the model. Two different levels of trust, and the
+        // editor is the one who should be told which it got.
+        grid: result.grid,
         source: result.source,
         // What the model was shown, so the editor can put the two pages
         // side by side. PNG for a PDF page, the original otherwise.

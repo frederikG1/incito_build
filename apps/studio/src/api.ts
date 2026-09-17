@@ -1,4 +1,4 @@
-import { Brand, CatalogDocument } from '@incitio/schema';
+import { Brand, CatalogDocument, Offer } from '@incitio/schema';
 
 const BASE = '/api';
 
@@ -35,6 +35,8 @@ export interface BrandSource {
   format: 'csv' | 'json';
   /** A sample shipped with the repo, or null. */
   path: string | null;
+  /** Whether this is the sample the editor should open with. */
+  sample: boolean;
 }
 
 export interface BrandProfile {
@@ -283,6 +285,15 @@ export interface ReproduceReply {
   ground: string;
   /** What went where, and why. Shown beside the rebuilt page. */
   casting: { slotId: string; offerId: string; role: string; why: string }[];
+  /**
+   * Where the page's grid came from.
+   *
+   * `pdf` means it was measured out of the file itself and handed to
+   * the model; `model` means the model counted the columns off the
+   * picture. The first is a fact and the second is a reading, and the
+   * strip beside the rebuilt page says which one this was.
+   */
+  grid: { source: 'pdf' | 'model'; columns: number; rows: number; fit: number | null };
   source: { id: string; name: string; reason: string };
   /** What the model was shown, as a data URL, for comparing side by side. */
   reference: string;
@@ -349,4 +360,168 @@ export async function uploadImage(
   });
   if (!response.ok) await fail(response);
   return (await response.json()) as UploadedImage;
+}
+
+/* ------------------------------------------------------ hvad er i feedet */
+
+export interface FeedReading {
+  source: { id: string; name: string; reason: string };
+  offers: Offer[];
+  /** How many of them could stand in for a product in print. */
+  withImage: number;
+}
+
+/**
+ * Read an uploaded feed without building anything from it.
+ *
+ * Free, instant and modelless: the server runs the chain's own reader
+ * and hands back the products. Until this existed an upload was a
+ * string the studio held on to, and the first time anyone learned
+ * whether it had parsed was after a rebuild had been paid for.
+ */
+export async function readFeed(
+  brandId: string,
+  feed: string,
+  filename?: string,
+): Promise<FeedReading> {
+  const response = await fetch(`${BASE}/brand/feed`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify({ feed, ...(filename ? { filename } : {}) }),
+  });
+  if (!response.ok) await fail(response);
+  const body = (await response.json()) as FeedReading;
+  return { ...body, offers: body.offers.map((offer) => Offer.parse(offer)) };
+}
+
+/* ------------------------------------------------ hent en udgivet avis */
+
+export interface PageReading {
+  number: number;
+  offers: number;
+  columns: number;
+  rows: number;
+  fit: number;
+  skipped: string | null;
+}
+
+export interface PublicationReply {
+  document: CatalogDocument;
+  readings: PageReading[];
+  publication: { id: string; pages: number };
+}
+
+/**
+ * Rebuild a published leaflet from its own link.
+ *
+ * No model, no cost, and the same answer every time: a published page
+ * states its own grid, so this reads it rather than asking anyone. The
+ * fetch happens on the server — a publication is served from another
+ * origin, and the browser may not read it.
+ */
+export async function importPublication(
+  brandId: string,
+  request: { url: string; pages?: number[]; withOffers?: boolean; name?: string },
+): Promise<PublicationReply> {
+  const response = await fetch(`${BASE}/brand/publication`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) await fail(response);
+  const body = (await response.json()) as PublicationReply;
+  return { ...body, document: CatalogDocument.parse(body.document) };
+}
+
+/* ------------------------------------------------- et tegnet layout */
+
+export interface LayoutRequest {
+  feed: string;
+  /** How many product cells to ask the image model for. */
+  cells?: number;
+  /** The editor's own words for the image model. */
+  note?: string;
+  /** A steer for the casting step — "kød skal føre siden". */
+  brief?: string;
+  exclude?: string[];
+}
+
+export interface LayoutReply extends ReproduceReply {
+  /** Exactly what the image model was asked for. */
+  prompt: string;
+  imageModel: string;
+  drawnInMs: number;
+}
+
+/**
+ * A page whose layout was drawn rather than handed in.
+ *
+ * Two models: one draws the shape of the page, the other reads that
+ * drawing and decides which product sits in which cell. The drawing is
+ * returned for the side-by-side and is never put on the sheet — what
+ * prints is the chain's own tiles in the cells the drawing turned out
+ * to have.
+ */
+export async function generateLayout(
+  brandId: string,
+  request: LayoutRequest,
+): Promise<LayoutReply> {
+  const response = await fetch(`${BASE}/brand/layout`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) await fail(response);
+  const body = (await response.json()) as LayoutReply;
+  return {
+    ...body,
+    document: CatalogDocument.parse(body.document),
+    brand: Brand.parse(body.brand),
+  };
+}
+
+/* -------------------------------------------- hvordan varerne står sammen */
+
+export interface ArrangeReply {
+  /** The products left to right as printed — a permutation of what went in. */
+  order: string[];
+  arrangement: 'row' | 'stagger' | 'grid' | 'fan';
+  /** What the page calls the assembled offer. Empty when nobody wrote one. */
+  heading: string;
+  /** The fine print under it. Empty when nobody wrote one. */
+  support: string;
+  /** The model's own reason. Shown in the editor, never printed. */
+  why: string;
+  /** Which model answered, or null when the stylesheet's own rule did. */
+  model: string | null;
+  usage: { inputTokens: number; outputTokens: number } | null;
+}
+
+/**
+ * Ask how a handful of products should sit in one cell.
+ *
+ * The model is shown the packshots, because the answer is a fact about
+ * what the products look like — six upright bottles fan and six flat
+ * trays do not — and nothing in the feed says so. What comes back is an
+ * ordering, one of four arrangement names and two lines of Danish.
+ *
+ * Never throws for want of a model: the server answers with the
+ * stylesheet's own choice and `model: null` when there is no key or the
+ * call fails, so a drop always lands.
+ */
+export async function arrangeGroup(
+  brandId: string,
+  request: {
+    offers: Offer[];
+    cell: { role: string; aspect: number; width: number };
+    note?: string;
+  },
+): Promise<ArrangeReply> {
+  const response = await fetch(`${BASE}/brand/arrange`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as ArrangeReply;
 }

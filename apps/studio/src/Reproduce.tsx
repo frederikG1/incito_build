@@ -1,5 +1,6 @@
 import {
-  MAX_REFERENCE_PAGES, count, pageNumbers, referenceJobs, useStudio, type PageRun,
+  MAX_REFERENCE_PAGES, count, pageNumbers, referenceJobs, useStudio, wholeDocument,
+  type PageRun,
 } from './state.js';
 
 /**
@@ -83,6 +84,15 @@ export function Reproduce() {
               <ul className="reflist">
                 {s.references.map((reference, index) => {
                   const pages = pageNumbers(reference.pages);
+                  /*
+                   * A page the file does not have is a model call that
+                   * fails, so it is worth saying before the run rather
+                   * than after it. Only knowable because the length is
+                   * read out of the PDF on upload — see `countPages`.
+                   */
+                  const beyond = reference.pageCount !== null
+                    && pages.some((page) => page > reference.pageCount!);
+                  const all = wholeDocument(reference.pageCount);
                   return (
                     <li key={reference.id}>
                       <span className="reflist__name" title={reference.name}>
@@ -103,9 +113,26 @@ export function Reproduce() {
                             value={reference.pages}
                             onChange={(e) => s.setReferencePages(reference.id, e.target.value)}
                           />
-                          <i className={pages.length === 0 ? 'is-bad' : ''}>
+                          <i className={pages.length === 0 || beyond ? 'is-bad' : ''}>
                             {pages.length === 0 ? 'ingen' : count(pages.length, 'side', 'sider')}
+                            {/* The file's real length, so the field
+                                reads as a choice rather than as the
+                                only page the tool can see. */}
+                            {reference.pageCount !== null && <> af {reference.pageCount}</>}
+                            {beyond && <> — filen har ikke så mange</>}
                           </i>
+
+                          {/* One click back to the whole file, for
+                              someone who narrowed it and changed their
+                              mind. Absent when it is already all of it. */}
+                          {reference.pageCount !== null && reference.pages !== all && (
+                            <button
+                              type="button"
+                              className="reflist__all"
+                              title={`Alle ${reference.pageCount} sider`}
+                              onClick={() => s.setReferencePages(reference.id, all)}
+                            >alle</button>
+                          )}
                         </label>
                       )}
 
@@ -249,7 +276,28 @@ export function Comparison({ run }: { run: PageRun }) {
         <h3>Sådan blev den læst</h3>
         <dl>
           <dt>Gitter</dt>
-          <dd><code>{run.template.areas.join(' / ')}</code></dd>
+          <dd>
+            <code>{run.template.areas.join(' / ')}</code>
+            {/*
+              * Where the grid came from, said plainly.
+              *
+              * A grid measured out of a vector PDF is a fact about the
+              * printed page; one counted off a picture is a reading, and
+              * a good one is still a reading. They are not worth the
+              * same amount of trust, and the person deciding whether to
+              * keep the page is the one who should be told which this
+              * was. The deviation is the honest half of a measurement:
+              * a page whose lead artwork bleeds over its cell edge comes
+              * back at a few per cent, and that number is what says the
+              * lattice was read rather than fitted.
+              */}
+            <small>
+              {run.grid.source === 'pdf'
+                ? `${run.grid.columns} × ${run.grid.rows}, målt i PDF'en`
+                  + `${run.grid.fit !== null ? ` — afvigelse ${(run.grid.fit * 100).toFixed(1)}%` : ''}`
+                : 'aflæst af modellen på billedet — en vektor-PDF ville blive målt'}
+            </small>
+          </dd>
           <dt>Bundfarve</dt>
           <dd>
             <i className="compare__swatch" style={{ background: run.ground }} /> {run.ground}

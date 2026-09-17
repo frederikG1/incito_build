@@ -209,28 +209,50 @@ export function slotCells(template: PageTemplate, pageAspect: number): Map<strin
 }
 
 /**
- * Where a cell's artwork should grow FROM, as a `transform-origin`.
+ * Which way a cell's artwork is allowed to overrun, per side.
  *
- * Growing from the centre shares the overrun between the neighbours on
- * each side, which is right in the middle of a page and wrong at its
- * rim: there is no neighbour out there, only the sheet, and the page
- * clips. Measured before this existed, a full-width lead with a 1.15
- * bleed painted 82px past the left edge and printed sliced down its
- * side.
+ * 1 means "grow this way", 0 means "do not" — read by `.tile__media`,
+ * which spends the overrun as a negative margin on the artwork's box.
  *
- * So an edge pins the origin to itself and the artwork grows inward —
- * `left` means "grow rightward". A cell touching both the left and
- * right edge is full width and has nowhere to grow horizontally, so it
- * keeps the centre and the overrun is a deliberate full-bleed: the
- * page will trim it evenly rather than lopsidedly, which is what a
- * printed edge-to-edge photograph does anyway.
+ * It used to be a transform origin, because the overrun used to be a
+ * uniform `scale` on the image. That scale is gone: it grew the artwork
+ * downward onto the tile's own product name and upward onto the
+ * previous row's, on every cell of every page. See `.tile__media`.
+ *
+ * Only the horizontal sides, because only they have a choice: an
+ * overrun downward always lands on this tile's own product name and an
+ * overrun upward on the previous row's, so the vertical growth is the
+ * page's alley everywhere and is not a per-cell decision at all.
+ *
+ * A cell touching the left edge grows right, and vice versa. One
+ * touching both is full width and has nowhere to go, so it grows evenly
+ * and the page trims it evenly — which is what a printed edge-to-edge
+ * photograph does anyway.
  */
-export function artworkOrigin(cell: SlotCell | undefined): string {
-  if (!cell) return '50% 50%';
-  const { top, right, bottom, left } = cell.edges;
-  const x = left === right ? '50%' : left ? '0%' : '100%';
-  const y = top === bottom ? '50%' : top ? '0%' : '100%';
-  return `${x} ${y}`;
+export function artworkGrowth(cell: SlotCell | undefined): { left: 0 | 1; right: 0 | 1 } {
+  if (!cell) return { left: 1, right: 1 };
+  /*
+   * A cell taller than one row grows sideways into nothing.
+   *
+   * Sideways is normally the free direction: the tile beside this one
+   * is a tile of the same height, so its artwork band lines up with
+   * ours and its words are below both of us. A cell spanning two rows
+   * breaks that — it stands beside a whole extra tile, and that tile's
+   * product name sits squarely in the band this one's artwork occupies.
+   * Measured on three imported pages: a two-row lead printed 9px into
+   * its neighbour's headline, on every one of them.
+   */
+  if (cell.rows > 1) return { left: 0, right: 0 };
+  /*
+   * A cell touching both rims is already the full width of the grid.
+   * Growing it sideways cannot reveal more product — `.page` clips, so
+   * the only thing past the rim is trim. Measured on a full-page offer:
+   * 45px of packshot cut off each side for nothing.
+   */
+  const { left, right } = cell.edges;
+  if (left && right) return { left: 0, right: 0 };
+  if (!left && !right) return { left: 1, right: 1 };
+  return { left: left ? 0 : 1, right: right ? 0 : 1 };
 }
 
 /**

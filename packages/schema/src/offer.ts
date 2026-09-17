@@ -152,8 +152,140 @@ export const Offer = z.object({
    * value the layout engine derives one from discount depth.
    */
   priority: z.number().min(0).max(1).nullable().default(null),
+
+  /**
+   * The offers this one was assembled from, when somebody assembled it.
+   *
+   * A printed leaflet does not give every product a cell. It groups: one
+   * price, one headline, six cheeses photographed together, "frit valg"
+   * in the fine print. That is an editorial act — the editor picked
+   * those six — and it is the only way to put new products on a page
+   * whose layout is already decided, because the alternative is to
+   * change the layout.
+   *
+   * Empty on everything that came out of a feed, which is the point: a
+   * grouped offer is not a feed record and must not be mistaken for
+   * one. What is in here is exactly what a reader is being told the
+   * price covers, so it is also what an editor gets to see and undo.
+   *
+   * Defaulted, so every catalogue saved before grouping existed still
+   * parses.
+   */
+  members: z.array(z.string()).max(8).default([]),
 });
 export type Offer = z.infer<typeof Offer>;
+
+/** The words `a` and `b` start with, as whole words. */
+function sharedPrefix(a: string, b: string): string {
+  const one = a.split(/\s+/);
+  const two = b.split(/\s+/);
+  const out: string[] = [];
+  for (let i = 0; i < Math.min(one.length, two.length); i += 1) {
+    if (one[i]!.toLowerCase() !== two[i]!.toLowerCase()) break;
+    out.push(one[i]!);
+  }
+  return out.join(' ');
+}
+
+/** The one value they all share, or null. */
+function agreed<T>(values: T[], same: (a: T, b: T) => boolean): T | null {
+  const first = values[0];
+  if (first === undefined) return null;
+  return values.every((value) => same(value, first)) ? first : null;
+}
+
+/**
+ * Several offers as one, the way a leaflet prints "frit valg".
+ *
+ * One cell, one price, every product photographed together. This is how
+ * products are added to a page whose layout is already settled — the
+ * grid does not move, the tile's contents do.
+ *
+ * Everything that could be untrue about the result is resolved
+ * downwards, never upwards:
+ *
+ *   price       the LOWEST, marked `priceFrom` the moment they differ.
+ *               One figure printed over goods that are not all that
+ *               price is what a shopper discovers at the till.
+ *   comparison  the HIGHEST unit price, which is precisely what the
+ *               chains' own "Kg-pris maks. 61,25" means. Dropped
+ *               entirely unless every member quotes the same unit.
+ *   validity    the window in which they are ALL on offer — the latest
+ *               start and the earliest end.
+ *   labels      only the ones every member carries. An Ø-mark on a
+ *               tile where one of six is not organic is a false claim,
+ *               not a rounding error.
+ *   quantity    theirs if they agree, nothing if they do not. A weight
+ *               that describes one of six products is worse than none.
+ *
+ * The name is a first draft and is meant to be rewritten: two members
+ * read "A eller B", more than two take whatever words they all begin
+ * with, and everything else falls back to the first name and "m.fl.".
+ * The editor renames it in place — see `PlacementOverrides.displayName`.
+ */
+export function groupOffers(members: Offer[], id: string): Offer {
+  const first = members[0];
+  if (!first) throw new Error('kan ikke samle nul tilbud');
+  if (members.length === 1) return first;
+
+  const names = members.map((offer) => offer.name);
+  const prefix = names.slice(1).reduce((all, name) => sharedPrefix(all, name), names[0]!);
+  const name = members.length === 2
+    ? `${names[0]} eller ${names[1]}`
+    : (prefix.split(/\s+/).filter(Boolean).length >= 2
+      ? `${prefix} — flere varianter`
+      : `${names[0]} m.fl.`);
+
+  const prices = members.map((offer) => offer.price);
+  const units = members.map((offer) => offer.comparison?.unit ?? null);
+  const unit = agreed(units, (a, b) => a === b);
+  const quantity = agreed(
+    members.map((offer) => offer.quantity),
+    (a, b) => a.size === b.size && a.unit === b.unit && a.pieceCount === b.pieceCount,
+  );
+
+  const everyone = (label: OfferLabel) =>
+    members.every((offer) => offer.labels.some(
+      (other) => other.kind === label.kind && other.text === label.text,
+    ));
+
+  return {
+    id,
+    name,
+    /* What the page has to say about a grouped tile, in the chain's own
+       words. The sizes are not listed: they differ, that is the whole
+       reason this is one tile, and the unit price below carries the
+       comparison the law asks for. */
+    description: 'Flere varianter. Frit valg.',
+    brand: agreed(members.map((offer) => offer.brand), (a, b) => a === b) ?? '',
+    category: agreed(members.map((offer) => offer.category), (a, b) => a === b) ?? first.category,
+
+    price: Math.min(...prices),
+    priceFrom: new Set(prices).size > 1,
+    prePrice: null,
+    savings: null,
+    savingsMax: null,
+    currency: first.currency,
+    comparison: unit
+      ? { value: Math.max(...members.map((offer) => offer.comparison!.value)), unit }
+      : null,
+
+    quantity: quantity ?? { size: null, unit: 'pcs', pieceCount: 1 },
+    pack: agreed(members.map((offer) => offer.pack), (a, b) => a === b) ?? '',
+    validFrom: members.map((offer) => offer.validFrom).sort().at(-1)!,
+    validTo: members.map((offer) => offer.validTo).sort()[0]!,
+
+    imageUrl: first.imageUrl,
+    // Deduplicated: two variants of one product often carry the same
+    // photograph, and a cluster that prints it twice reads as a mistake.
+    imagePack: [...new Set(members.map((offer) => offer.imageUrl).filter(
+      (url): url is string => Boolean(url),
+    ))].slice(0, 8),
+    labels: first.labels.filter(everyone),
+    priority: Math.max(...members.map((offer) => offer.priority ?? 0)) || null,
+    members: members.map((offer) => offer.id).slice(0, 8),
+  };
+}
 
 export const OfferFeed = z.object({
   retailerId: z.string().min(1),

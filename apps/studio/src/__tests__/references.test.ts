@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_REFERENCE_PAGES, pageNumbers, referenceJobs, type ReferenceFile } from '../state.js';
+import {
+  MAX_REFERENCE_PAGES, pageNumbers, referenceJobs, wholeDocument, type ReferenceFile,
+} from '../state.js';
 
 const file = (over: Partial<ReferenceFile> = {}): ReferenceFile => ({
   id: 'r1',
   name: 'p08.jpg',
   base64: 'AAA',
   isPdf: false,
+  pageCount: null,
   pages: '1',
   ...over,
 });
@@ -77,5 +80,25 @@ describe('referenceJobs', () => {
   it('stops at the cap, because every page is a model call', () => {
     const jobs = referenceJobs([file({ name: 'avis.pdf', isPdf: true, pages: '1-80' })]);
     expect(jobs).toHaveLength(MAX_REFERENCE_PAGES);
+  });
+});
+
+describe('wholeDocument', () => {
+  it('names every page of the file', () => {
+    // A chain hands in last week's avis as one PDF: a row that stood at
+    // "1" read as a tool that could only see the front page.
+    expect(wholeDocument(30)).toBe('1-30');
+    expect(pageNumbers(wholeDocument(30))).toHaveLength(30);
+  });
+
+  it('writes a single page as a page, not as a range', () => {
+    expect(wholeDocument(1)).toBe('1');
+  });
+
+  it('asks for one page when the length could not be read', () => {
+    // A range built on a guess asks the server for pages the file does
+    // not have, and every one of those is a failed model call.
+    expect(wholeDocument(null)).toBe('1');
+    expect(wholeDocument(0)).toBe('1');
   });
 });

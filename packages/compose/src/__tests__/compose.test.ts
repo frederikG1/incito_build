@@ -31,6 +31,7 @@ function offer(id: string, overrides: Partial<Offer> = {}): Offer {
     savingsMax: null,
     labels: [],
     priority: null,
+    members: [],
     ...overrides,
   };
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CatalogDocument, CatalogPage, PAGE_PARTS, PAGE_PART_NAMES, PAGE_TEXT_DEFAULTS,
   PART_DEFAULTS, PlacementOverrides, TILE_PARTS, TILE_PART_NAMES,
+  isImagePage,
   mergeCatalogDocuments, pageTextOverride, pageTextPatch, pageTextTouched, pageTextsFreed,
   partLimits, partOverride, partPatch, partTouched, tileArranged,
 } from '../catalog.js';
@@ -231,5 +232,21 @@ describe('mergeCatalogDocuments', () => {
 
   it('refuses to invent a catalogue out of nothing', () => {
     expect(() => mergeCatalogDocuments([])).toThrow();
+  });
+});
+
+describe('image pages', () => {
+  it('reads a page saved before ads existed as an offer page', () => {
+    expect(CatalogPage.parse({ id: 'p1', templateId: 't', placements: [] }).kind).toBe('offers');
+  });
+
+  it('takes an image page with no template', () => {
+    const page = CatalogPage.parse({
+      id: 'ad', kind: 'image', placements: [],
+      background: { imageUrl: '/uploads/ad.jpg' },
+    });
+    expect(page.templateId).toBe('');
+    expect(isImagePage(page)).toBe(true);
+    expect(page.background?.fit).toBe('cover');
   });
 });

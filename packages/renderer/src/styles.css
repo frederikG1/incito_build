@@ -126,13 +126,40 @@
   display: flex;
   flex-direction: column;
   /*
-   * How far every product overruns its cell — see `.tile__media > img`.
+   * How far every product overruns its cell SIDEWAYS, as a share of the
+   * cell's own width — see `.tile__media`.
+   *
+   * Sideways only, and that is the whole of it: what lies beside a
+   * packshot is the neighbouring cell's packshot, and what lies under
+   * one is always this tile's own product name. An overrun that is the
+   * same in both directions therefore reads as a printed page in one
+   * axis and as a collision in the other. The vertical room is the
+   * alley, and only the alley — see `--alley` on `.page__grid`.
+   *
+   * 0.16 is what `npm run check` will pass on every document in this
+   * repo — the three chains' drafts, a rebuilt page and a fourteen-page
+   * import. It was 0.22 for a day, which reads about two points better
+   * on the coverage figures and grazed a neighbour's headline on one
+   * page in fourteen. Two points of ground is worth less than a product
+   * name with a slate plate through it.
+   *
    * Declared here rather than in the brand layer because it is a
    * property of how a grid meets a photograph, not of a chain's
    * identity; a chain that wants a calmer page lowers it in its own
    * block below.
    */
-  --fill: 1.22;
+  --fill: 0.16;
+}
+
+/* A whole-sheet picture: an ad or a campaign page, printed in the book
+   between the offer pages. See `ImagePage`. */
+.page--image { background: #fff; }
+.page--image .page__bg { background-size: cover; }
+.page--image .page__foot { position: absolute; right: 0; bottom: 0; z-index: 2; }
+.page__missing {
+  margin: auto;
+  font: 500 2cqh/1.4 system-ui, sans-serif;
+  color: #8b919b;
 }
 
 .page--error {
@@ -414,8 +441,23 @@
 .page__grid {
   flex: 1 1 auto;
   display: grid;
-  gap: 1.4cqh;
-  padding: 2.5cqh 4cqw;
+  /*
+   * The alley between two cells — and the only vertical room a packshot
+   * has to grow into.
+   *
+   * It was 1.4cqh, and that was a number about white space alone. It is
+   * now load-bearing: `.tile__media` grows by exactly half of it above
+   * and below, so the artwork fills the alley and stops at it. Widen
+   * this and the products grow with it; narrow it and they shrink. What
+   * cannot happen either way is a packshot reaching the row's type.
+   *
+   * 2.6cqh is what a six-up page needs for the growth to be visible at
+   * all — below about 2 the products stop overrunning and the page goes
+   * back to looking like a table of boxes.
+   */
+  --alley: 2.6cqh;
+  gap: var(--alley);
+  padding: 3cqh 4.5cqw;
   min-height: 0;
   /*
    * The grid establishes a stacking position of its own so the artwork
@@ -462,72 +504,6 @@
   min-width: 0;
   min-height: 0;
   overflow: visible;
-}
-
-/*
- * The artwork fills its cell and spills, rather than fitting inside it.
- *
- * Two factors, and they mean different things:
- *
- *   --fill  is the standing overrun every product gets, and it is what
- *           removes the letterboxing above. `contain` will not crop, so
- *           the only way to make a packshot meet the wide edge of its
- *           cell is to let it pass the narrow one.
- *   --bleed is the extra a TEMPLATE grants one slot, to say that offer
- *           outranks the ones around it. See `TemplateSlot.bleed`.
- *
- * Applied to the artwork, NOT to `.tile__media`. The price mark is a
- * child of that box — it hangs off the product's corner — so scaling
- * the box scaled the numeral too, and a slot with bleed 1.15 printed a
- * price 15% larger than the identical offer next to it. Only what is
- * being sold grows.
- */
-.tile__media > img,
-.tile__pack,
-.tile__placeholder {
-  /*
-   * `scale`, the individual transform property — NOT `transform`.
-   *
-   * Every packshot and every cluster already carries an inline
-   * `transform` from the editor: `mediaStyle` writes the per-placement
-   * nudge on it, and on an untouched tile that reads
-   * `translate(0%, 0%) scale(1)`. An identity transform is still a
-   * transform, and inline beats any stylesheet, so a rule written as
-   * `transform:` here was silently discarded on every tile in the book
-   * — the value computed to `matrix(1, 0, 0, 1, 0, 0)` and two renders
-   * at different fill factors came out byte-identical.
-   *
-   * `scale`, `rotate` and `translate` are applied BEFORE `transform`
-   * and compose with it rather than replacing it. So the page states
-   * the standing overrun here and the editor keeps nudging on top of
-   * it, with neither having to know about the other.
-   */
-  /*
-   * The LARGER of the two, not their product.
-   *
-   * Multiplying them was the first attempt and it compounds: a
-   * full-width lead carrying the template's 1.1 came out at 1.34 and
-   * printed over its own headline. They are not two overruns to add
-   * up — `--fill` is the standing minimum every product gets so the
-   * page has no letterboxing, and `--bleed` is a template saying THIS
-   * offer should overrun further than that. Whichever is greater is
-   * the one that was meant.
-   */
-  scale: max(var(--fill, 1), var(--bleed, 1));
-  /*
-   * Grown away from the sheet's edge, not from the centre.
-   *
-   * Centre was the old rule and it is right in the middle of a page,
-   * where the overrun is shared between the neighbours on each side.
-   * At an edge there is no neighbour on that side, only paper — and
-   * `.page` clips, so the overrun was simply cut off: measured, a
-   * full-width lead with bleed 1.15 painted 82px past the left edge
-   * and the product came out sliced down its side. `--art-origin` is
-   * set per slot from the template's own grid, so a cell touching the
-   * left edge grows right and a cell in the middle still grows both
-   * ways.
-   */
-  transform-origin: var(--art-origin, 50% 50%);
 }
 
 .slot__empty {
@@ -614,6 +590,46 @@
  * 108px box and `overflow: hidden` quietly cut the bottom off every
  * product. A definite cell plus `object-fit: contain` cannot crop.
  */
+/*
+ * The artwork fills its cell and spills, rather than fitting inside it.
+ *
+ * Two factors, and they mean different things:
+ *
+ *   --fill  is the standing overrun every product gets, and it is what
+ *           removes the letterboxing: `contain` will not crop, so the
+ *           only way to make a packshot meet the wide edge of its cell
+ *           is to let it pass the narrow one.
+ *   --bleed is the extra a TEMPLATE grants one slot, to say that offer
+ *           outranks the ones around it. See `TemplateSlot.bleed`.
+ *
+ * Both are SHARES of the cell, and both are spent sideways only.
+ *
+ * This used to be one uniform `scale` on the artwork, and the scale is
+ * what had to go. A tile is artwork stacked on top of its own words, so
+ * every cell on the page has type directly under its picture and the
+ * previous row's type directly above it — and a uniform overrun puts a
+ * packshot on both. Measured on a two-by-three page: 129px of artwork
+ * grown 22% reached 14px past its own headline and 14px into the row
+ * above, on all six cells. The words still printed on top, because they
+ * are layered to — but a product name read through a photograph is not
+ * a page anybody would send to print.
+ *
+ * So the growth is stated per axis instead, on the BOX rather than on
+ * the image inside it:
+ *
+ *   sideways  a share of the cell's width, into the neighbouring
+ *             product — which is what a printed leaflet does, and the
+ *             axis where there is nothing to collide with.
+ *   downward  exactly half the alley, and never further. The alley is
+ *             the page's own gap, so the artwork grows into the white
+ *             between the rows and stops where it ends.
+ *
+ * Growing the box rather than scaling the image is possible now because
+ * the price mark left it: the mark used to hang off the artwork's
+ * corner and would have grown with the box, which is why the old rule
+ * scaled the image alone. It sits in the text block's own column today
+ * — see `.price` — so nothing but the product moves.
+ */
 .tile__media {
   /* The positioning context for the price mark below. */
   position: relative;
@@ -622,6 +638,37 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+
+  /*
+   * Half the share on each side, and only towards a side the cell has
+   * room on: a cell against the sheet's edge grows inward, because
+   * `.page` clips and the overrun would simply be cut off. `--art-l`
+   * and `--art-r` are set per slot from the template's own grid.
+   */
+  --art-x: max(var(--fill, 0), var(--bleed, 0));
+  margin-left: calc(var(--art-l, 1) * var(--art-x) * -50%);
+  margin-right: calc(var(--art-r, 1) * var(--art-x) * -50%);
+  /*
+   * Upward into the alley, and NOT ONE PIXEL DOWNWARD.
+   *
+   * The two directions are not symmetric and never were. Above a
+   * packshot is the top of its own tile and then the page's alley —
+   * white, because the tile above ends in its own words and those do
+   * not grow. Below a packshot is its own product name, every time, on
+   * every tile this stylesheet draws. So the overrun goes up.
+   *
+   * Measured on Netto's nine-up page, which is what caught it: half the
+   * alley downward is 1.3cqh and the tile's own gap between artwork and
+   * words is 0.6cqh, so every one of the nine products printed 8px into
+   * its own headline.
+   *
+   * `cqh`, NOT a percentage — the same trap that cost this stylesheet
+   * two broken renders. A percentage margin resolves against the
+   * containing block's INLINE size on every edge, top included, so
+   * `-2%` on a wide tile is a far deeper overrun than on a narrow one
+   * and the artwork jumps about as the grid changes.
+   */
+  margin-top: calc(var(--alley, 1.4cqh) * -1);
 }
 
 .tile__media > img {
@@ -738,12 +785,44 @@
 .tile--feature .tile__pack--stagger > img { margin-inline: -12%; }
 .tile__pack--stagger > img:nth-child(odd) { transform: translateY(4%) scale(0.8); }
 
-/* Two rows. Anything from four items reads as a block, not a row. */
+/*
+ * Five or more, at any role.
+ *
+ * The tracks are equal fractions of the cell and `contain` fits each
+ * product inside its own one, so a row's items get narrower the more
+ * of them there are: six bottles in a half-page cell printed at a
+ * third of the size the same six have on the page this layout was read
+ * off. Overlapping hard is how a leaflet fits six products in the
+ * space of one offer — the row is a group with a front, not six
+ * products standing in separate boxes.
+ *
+ * Keyed on the count rather than the role, unlike the two rules above,
+ * because the count is what causes it: a lead tile with three items has
+ * no such problem and a standard one with six does.
+ */
+.tile__pack[data-count='5'] > img,
+.tile__pack[data-count='6'] > img,
+.tile__pack[data-count='7'] > img,
+.tile__pack[data-count='8'] > img { margin-inline: -15%; }
+
+/*
+ * A block. Anything from four items reads as a block, not a row.
+ *
+ * The column count follows the item count rather than being two
+ * across, because the point of a block is to spend the cell's height
+ * as well as its width: six items two across is three rows of very
+ * wide, very short cells, and every product ends up sized by a height
+ * it does not have. Three across is two rows of roughly square ones.
+ */
 .tile__pack--grid {
   grid-auto-flow: row;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: minmax(0, 1fr);
 }
+.tile__pack--grid[data-count='5'],
+.tile__pack--grid[data-count='6'] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tile__pack--grid[data-count='7'],
+.tile__pack--grid[data-count='8'] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .tile__pack--grid > img { margin-inline: -2%; transform: scale(0.94); }
 
 /*
@@ -1129,7 +1208,19 @@
   column-gap: 0;
   align-items: stretch;
 }
-.slot[data-shape='panel'] .tile--feature .tile__media { grid-area: auto; }
+/*
+ * A band's words stand BESIDE its artwork, not under it — so the one
+ * direction that is free on every other tile is the one that is taken
+ * here. The artwork keeps its overrun towards the sheet and gives up
+ * the one towards the column it shares the cell with.
+ */
+.tile--feature .tile__media { margin-right: 0; }
+.slot[data-shape='panel'] .tile--feature .tile__media {
+  grid-area: auto;
+  /* Upright again: the words are back underneath, and the side the
+     band had to give up is free once more. */
+  margin-right: calc(var(--art-r, 1) * var(--art-x) * -50%);
+}
 .slot[data-shape='panel'] .tile--feature .tile__info {
   grid-area: auto;
   align-self: start;

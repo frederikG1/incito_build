@@ -110,6 +110,7 @@ export function composeCatalog(
         slotId: slot.id,
         overrides: {
           pinned: false,
+          arrangement: null,
           displayName: null,
           description: null,
           imageScale: 1,
@@ -122,6 +123,7 @@ export function composeCatalog(
 
     pages.push({
       id: pageId,
+      kind: 'offers',
       templateId: template.id,
       title: planned.title,
       subtitle: planned.subtitle,
@@ -137,6 +139,9 @@ export function composeCatalog(
       // A background is something an editor lays down by hand on one
       // page. Nothing composed from a feed has one.
       background: null,
+      // Same for the heading and the theme line: they are where the
+      // masthead puts them until somebody moves them.
+      texts: {},
     });
   });
 

@@ -1,6 +1,7 @@
 import type { Brand, CatalogDocument } from '@incitio/schema';
 import { resolveTemplate } from '@incitio/brands';
 import { PageView } from './PageView.js';
+import { ImagePage } from './ImagePage.js';
 
 export interface CatalogViewProps {
   document: CatalogDocument;
@@ -32,6 +33,17 @@ export function CatalogView({
   return (
     <div className="catalog">
       {document.pages.map((page, index) => {
+        if (page.kind === 'image') {
+          return (
+            <ImagePage
+              key={page.id}
+              page={page}
+              brand={brand}
+              pageIndex={index}
+              pageNumber={index + 1}
+            />
+          );
+        }
         /*
          * The chain's own layouts first, then any the document brought
          * with it — see `CatalogDocument.templates`. A page rebuilt

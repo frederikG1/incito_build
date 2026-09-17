@@ -258,8 +258,37 @@ export const PART_DEFAULTS: PartOverride = Object.freeze(PartOverride.parse({}))
  * mechanism by which an editor's finesse is not thrown away the next
  * time the curator runs.
  */
+/**
+ * How several products share one cell.
+ *
+ * The shapes a printed leaflet actually uses when one price covers more
+ * than one product, and the only four the stylesheet draws:
+ *
+ *   row      an overlapping line, the plainest of them
+ *   stagger  neighbours ride lower and smaller, one item forward
+ *   grid     a block, which is what four or more read as
+ *   fan      spread like a hand of cards, for tall upright packs
+ *
+ * Document data rather than a rendering detail, because it is now a
+ * decision somebody — or something — makes about a particular tile.
+ * See `PlacementOverrides.arrangement`.
+ */
+export const TILE_ARRANGEMENTS = ['row', 'stagger', 'grid', 'fan'] as const;
+export type TileArrangement = (typeof TILE_ARRANGEMENTS)[number];
+
 export const PlacementOverrides = z.object({
   pinned: z.boolean().default(false),
+  /**
+   * How this tile's products are grouped, when somebody decided.
+   *
+   * `null` leaves it to the stylesheet, which picks from the offer's own
+   * id — stable between renders, varied across a page, and knowing
+   * nothing about what the products are. That is the right default and a
+   * poor answer for a tile an editor has just assembled by hand: six
+   * upright bottles want a fan and six flat trays want a block, and the
+   * difference is in the photographs, not in the id.
+   */
+  arrangement: z.enum(TILE_ARRANGEMENTS).nullable().default(null),
   /** Editor's own wording for the tile, replacing the feed's. */
   displayName: z.string().nullable().default(null),
   /**
@@ -373,10 +402,43 @@ export const Placement = z.object({
 });
 export type Placement = z.infer<typeof Placement>;
 
+/**
+ * What a page IS.
+ *
+ * `offers` is the ordinary page this whole repo is about: a grid, a
+ * template, products in cells. `image` is one picture filling the sheet
+ * — the Røde Kors spread, the membership ad, the recipe page — which a
+ * printed avis is full of and which has no grid, no offers and nothing
+ * to cast.
+ *
+ * A kind rather than a convention, because every stage has to be able
+ * to ask. The composer must not lay out a page that holds no offers,
+ * the editor must not offer a layout picker for one, and `benched`
+ * must not report the products of a page that has none. All three
+ * would otherwise have to infer it from an empty `placements` array,
+ * which is also what a page whose offers were all taken off looks
+ * like.
+ */
+export const PAGE_KINDS = ['offers', 'image'] as const;
+export type PageKind = (typeof PAGE_KINDS)[number];
+
 export const CatalogPage = z.object({
   id: z.string().min(1),
-  /** Must name a template belonging to the catalog's own brand. */
-  templateId: z.string().min(1),
+  /**
+   * An ordinary page, or a whole-sheet picture.
+   *
+   * Defaulted, so every catalogue saved before ads existed still parses
+   * as what it is.
+   */
+  kind: z.enum(PAGE_KINDS).default('offers'),
+  /**
+   * Must name a template belonging to the catalog's own brand.
+   *
+   * Empty on an `image` page, which has no grid to name: the sheet is
+   * the picture. Kept as a plain string rather than made nullable so
+   * the field has one type everywhere it is read.
+   */
+  templateId: z.string().default(''),
   /** Section heading, written by the curator, editable by hand. */
   title: z.string().default(''),
   subtitle: z.string().default(''),
@@ -428,6 +490,11 @@ export const CatalogPage = z.object({
   texts: z.record(z.string(), PageTextOverride).default({}),
 });
 export type CatalogPage = z.infer<typeof CatalogPage>;
+
+/** A page that is one picture rather than a grid of offers. */
+export function isImagePage(page: CatalogPage): boolean {
+  return page.kind === 'image';
+}
 
 /** Where one of a page's lines has been put. */
 export function pageTextOverride(page: CatalogPage, part: PagePart): PageTextOverride {

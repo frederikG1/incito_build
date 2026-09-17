@@ -9,13 +9,16 @@
  * which is why its pages still do not look much like the chain's. Here
  * the reference IS the design brief: the model sees the page and the
  * offers together, and says which offer belongs in which cell and why.
- * Everything that can be measured rather than asked for — the page's
- * ground colour — is measured.
+ * Everything that can be measured rather than asked for is measured. The
+ * page's ground colour always; its GRID whenever the reference is a
+ * vector PDF, in which case the model is handed the lattice instead of
+ * being asked to count columns off a picture — see `measured-grid`.
  *
- * The three stages are the three imports below, in order:
+ * The four stages are the four imports below, in order:
  *   1. the reference becomes an image and a measured ground  (page-image)
- *   2. the feed becomes Offers through the chain's own reader (@incitio/ingest)
- *   3. the model casts those offers into the page's grid      (prompt)
+ *   2. its grid is read out of the file, when it has one      (measured-grid)
+ *   3. the feed becomes Offers through the chain's own reader (@incitio/ingest)
+ *   4. the model casts those offers into the page's grid      (prompt)
  * and what comes out is an ordinary `CatalogDocument`, which the
  * existing renderer, editor and PDF path already know how to handle.
  *
@@ -42,9 +45,11 @@ import {
 import { ingestCsv, ingestJson, type LabelDictionary } from '@incitio/ingest';
 import { matchSystemPrompt, MATCH_SCHEMA, type MatchPlan } from './prompt.js';
 import { pageImage, sampleGround, type ImageMediaType } from './page-image.js';
+import { describeGrid, measureGrid, type MeasuredGrid } from './measured-grid.js';
 
 export * from './prompt.js';
 export * from './page-image.js';
+export * from './measured-grid.js';
 
 export interface MatchOptions {
   /** The reference: an image, or a PDF to take one page out of. */
@@ -95,6 +100,17 @@ export interface MatchResult {
   poolSize: number;
   /** Slots the model filled with an id the feed does not have. */
   rejected: number;
+  /**
+   * Where the page's grid came from.
+   *
+   * `pdf` means it was measured out of the file and the model was handed
+   * it; `model` means the model read it off the picture, which is what
+   * happens for an image, for a PDF pdf.js cannot parse, and for a page
+   * whose blocks sit on no lattice. Reported because the two are not
+   * equally trustworthy and the editor should be able to see which it
+   * got.
+   */
+  grid: { source: 'pdf' | 'model'; columns: number; rows: number; fit: number | null };
   usage: { inputTokens: number; outputTokens: number };
   elapsedMs: number;
 }
@@ -139,9 +155,19 @@ export async function matchPage(
   const browser = options.browser ?? (await chromium.launch());
   let reference: { image: Buffer; type: ImageMediaType };
   let ground: string;
+  /*
+   * The grid, before the model sees anything.
+   *
+   * Null for an image, for a file pdf.js cannot read, and for a page
+   * whose blocks sit on no common lattice — in every one of those the
+   * model reads the picture exactly as it did before. See `measureGrid`.
+   */
+  let measured: MeasuredGrid | null = null;
+
   try {
     reference = await pageImage(browser, options.file, options.pageNumber ?? 1);
     ground = await sampleGround(browser, reference.image, reference.type);
+    measured = await measureGrid(options.file, options.pageNumber ?? 1);
   } catch (error) {
     if (!options.browser) await browser.close();
     throw error instanceof MatchError
@@ -222,6 +248,10 @@ export async function matchPage(
               'Each line is: id | name | price | previous price | category | fine print | variants',
               '',
               pool.map(summarise).join('\n'),
+              // The measured grid goes AFTER the offers and last of all,
+              // because it is the instruction the rest of the message is
+              // read against: what remains to be decided is the casting.
+              ...(measured ? ['', describeGrid(measured)] : []),
               ...(options.note
                 ? ['', `Direction from the editor — follow it unless it breaks the page: ${options.note}`]
                 : []),
@@ -252,9 +282,14 @@ export async function matchPage(
      * than a rebuilt page, and the id is private to this template —
      * nothing outside it means anything by the name.
      */
+    const cells = new Set(measured?.cells.map((cell) => cell.id) ?? []);
     const renamed = new Map<string, string>();
     plan.slots.forEach((slot, index) => {
-      if (!renamed.has(slot.id)) renamed.set(slot.id, ident(slot.id, index));
+      if (renamed.has(slot.id)) return;
+      // A measured cell already has a name CSS can use, and it is the
+      // name the grid below is written in: renaming it would break the
+      // one link between the model's answer and the file's measurement.
+      renamed.set(slot.id, cells.has(slot.id) ? slot.id : ident(slot.id, index));
     });
 
     const byId = new Map(pool.map((o) => [o.id, o]));
@@ -263,6 +298,16 @@ export async function matchPage(
       // An invented or repeated id would render an empty cell, which
       // reads as a broken page rather than as a missing product.
       if (!byId.has(s.offerId) || used.has(s.offerId)) return false;
+      /*
+       * With a measured grid, a slot naming a cell the page does not
+       * have is dropped rather than added.
+       *
+       * The model was given the ids and told not to invent one; this is
+       * what makes that an instruction rather than a request. Without
+       * it a stray id would silently widen the grid the file was read
+       * from, which is the whole thing this path exists to stop.
+       */
+      if (measured && !cells.has(s.id)) return false;
       used.add(s.offerId);
       return true;
     });
@@ -277,9 +322,20 @@ export async function matchPage(
     const template = PageTemplate.parse({
       id: `${brandId}/match-${stamp}`,
       name: `Efter ${label}`,
-      // A dropped slot must leave the grid too, or `validateTemplate`
-      // sees a cell naming nothing and the whole page is refused.
-      areas: plan.areas.map((row) => row.trim().replace(/\s+/g, ' ').split(' ')
+      /*
+       * The measured grid wins over the model's copy of it.
+       *
+       * It was asked to return `areas` unchanged and it generally does,
+       * but "generally" is not a guarantee and the file is not an
+       * opinion: a transposed row or a dropped cell would put this
+       * week's products on a grid the printed page never had. The
+       * model's own reading is used only where there was nothing to
+       * measure.
+       *
+       * A dropped slot must leave the grid too, or `validateTemplate`
+       * sees a cell naming nothing and the whole page is refused.
+       */
+      areas: (measured?.areas ?? plan.areas).map((row) => row.trim().replace(/\s+/g, ' ').split(' ')
         .map((cell) => {
           const id = renamed.get(cell);
           return id && live.has(id) ? id : '.';
@@ -336,6 +392,14 @@ export async function matchPage(
     });
 
     return {
+      grid: measured
+        ? { source: 'pdf' as const, columns: measured.columns, rows: measured.rows, fit: measured.fit }
+        : {
+          source: 'model' as const,
+          columns: template.areas[0]?.split(' ').length ?? 0,
+          rows: template.areas.length,
+          fit: null,
+        },
       document,
       brand,
       template,
@@ -492,3 +556,12 @@ export async function matchPages(
     failures,
   };
 }
+
+/*
+ * The drawn-reference path, re-exported here rather than beside the
+ * others at the top: it imports `matchPage` from this very file, and
+ * putting the cycle at the bottom is what keeps the order of evaluation
+ * obvious to a reader — everything this file defines exists before the
+ * module that builds on it is pulled in.
+ */
+export * from './imagined.js';

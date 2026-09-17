@@ -25,6 +25,17 @@ export interface FeedSource {
   mapping: FieldMapping;
   /** A sample of this format shipped in the repo, under the static root. */
   path?: string;
+  /**
+   * The sample the editor opens with, when a chain ships more than one.
+   *
+   * "The first source" used to answer this, and the two questions are
+   * not the same one. The first source is the reader an unlabelled
+   * upload is most likely to be; the opening sample is whichever file
+   * shows the chain's products at their best — and for SuperBrugsen
+   * those are different files. See the note on its `tjek` source, whose
+   * photographs are crops of the printed page.
+   */
+  sample?: boolean;
 }
 
 /**

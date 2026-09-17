@@ -312,3 +312,11 @@ function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
 }
+
+/*
+ * The other editorial call this package makes, at the smallest scale it
+ * comes in: not which offers share a PAGE, but how several products
+ * share one CELL. Same contract — ids and enum values out, never
+ * geometry — and the same refusal to be load-bearing.
+ */
+export * from './arrange.js';

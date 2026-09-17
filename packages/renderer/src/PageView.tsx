@@ -3,7 +3,7 @@ import type {
   Brand, CatalogPage, Offer, PagePart, PageTemplate, PageTextOverride, TilePart,
 } from '@incitio/schema';
 import {
-  artworkOrigin, brandCssVars, pageTextOverride, pageTextsFreed,
+  artworkGrowth, brandCssVars, pageTextOverride, pageTextsFreed,
   slotCells, slotRoom, slotShape,
 } from '@incitio/schema';
 import { OfferTile } from './OfferTile.js';
@@ -355,14 +355,24 @@ export function PageView({
               className={`slot slot--${slot.role}${slot.bleed > 1 ? ' slot--bleed' : ''}`}
               style={{
                 gridArea: slot.id,
-                // Only read when the slot is allowed to overrun; see
-                // TemplateSlot.bleed. The artwork scales, the words do not.
-                ...(slot.bleed > 1 ? { '--bleed': String(slot.bleed) } : {}),
-                // Which way the artwork grows. Every slot needs it now,
-                // not just a bleeding one: the standing `--fill` means
-                // all artwork overruns, so a cell against the sheet's
-                // edge would push its product off the paper.
-                '--art-origin': artworkOrigin(cells.get(slot.id)),
+                /*
+                 * Only read when the slot is allowed to overrun; see
+                 * `TemplateSlot.bleed`. Stated as the SHARE it overruns
+                 * by rather than as the factor the template declares —
+                 * a slot at 1.15 grows by 0.15 — so it is the same kind
+                 * of number as `--fill` and the stylesheet can simply
+                 * take whichever is larger. The artwork grows, the
+                 * words do not.
+                 */
+                ...(slot.bleed > 1 ? { '--bleed': String(slot.bleed - 1) } : {}),
+                /*
+                 * Which way the artwork grows. Every slot needs it, not
+                 * just a bleeding one: the standing `--fill` means all
+                 * artwork overruns, so a cell against the sheet's edge
+                 * would push its product off the paper.
+                 */
+                '--art-l': String(artworkGrowth(cells.get(slot.id)).left),
+                '--art-r': String(artworkGrowth(cells.get(slot.id)).right),
                 /*
                  * How wide this cell is, as a share of the sheet.
                  *

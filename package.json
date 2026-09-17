@@ -13,16 +13,19 @@
     "dev:api": "npm run dev -w @incitio/server",
     "build": "npm run build -w @incitio/studio",
     "test": "vitest run",
-    "typecheck": "tsc -b packages/schema packages/ingest packages/brands packages/compose packages/curator packages/decor packages/match packages/pipeline packages/pdf packages/server && tsc --noEmit -p apps/studio",
+    "typecheck": "tsc -b packages/schema packages/ingest packages/brands packages/compose packages/curator packages/decor packages/reference packages/publication packages/match packages/pipeline packages/pdf packages/server && tsc --noEmit -p apps/studio",
     "sample-data": "node scripts/make-sample-data.mjs",
     "refs": "node ./node_modules/.bin/vite-node scripts/fetch-references.ts",
     "derive:templates": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/derive-templates.ts",
     "match": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/match-page.ts",
+    "publication": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/import-publication.ts",
+    "layout": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/draw-layout.ts",
     "build:catalogue": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/build-catalogue.ts",
     "render": "node ./node_modules/.bin/vite-node scripts/render-catalogue.ts",
     "decorate": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/decorate-catalogue.ts",
     "check": "node ./node_modules/.bin/vite-node scripts/check-render.ts",
-    "measure:ground": "node ./node_modules/.bin/vite-node scripts/measure-ground.ts"
+    "measure:ground": "node ./node_modules/.bin/vite-node scripts/measure-ground.ts",
+    "reference": "node ./node_modules/.bin/vite-node scripts/read-reference.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -24,12 +24,23 @@ Trin 5 er valgfrit og kører *efter* de andre, på et færdigt dokument —
 se [Stemningsbilleder](#stemningsbilleder).
 
 De fire trin er stadig vejen gennem `npm run build:catalogue`. **I
-studioet er de det ikke mere.** Sider laves nu ved at aflevere de sider,
-avisen skal ligne — se [Genskab trykte sider](#genskab-trykte-sider).
-Trin 2 planlagde en avis ud af ingenting, og resultatet var generisk
-rigtigt uden at ligne kæden: modellen blev bedt om at *opfinde* et
-design i stedet for at få vist et. Kuratering kan stadig køres fra
-terminalen, men studioets knap er væk.
+studioet er de det ikke mere.** Trin 2 planlagde en avis ud af
+ingenting, og resultatet var generisk rigtigt uden at ligne kæden:
+modellen blev bedt om at *opfinde* et design i stedet for at få vist et.
+Kuratering kan stadig køres fra terminalen, men studioets knap er væk.
+
+I stedet er der tre måder at få et layout på, og de koster vidt
+forskelligt:
+
+| Vej | Hvad du afleverer | Modelkald | Pris |
+|---|---|---|---|
+| [Hent en udgivelse](#hent-en-udgivelse-via-link) | et link til en trykt avis | ingen | 0 |
+| [Genskab trykte sider](#genskab-trykte-sider) | fotos, screenshots, PDF'er | ét pr. side | $0,03–0,05 pr. side |
+| [Tegn et layout](#tegn-et-layout) | ingenting — modellen tegner det | to pr. side | tegning + casting |
+
+Den første er den eksakte: en udgivelse **oplyser sit eget gitter**, så
+der er intet at gætte. De to andre får en model til at *læse* en side —
+den ene en trykt en, den anden en tegnet.
 
 Ingen billedgenkendelse. Layout er deterministisk: modellen bestemmer
 *hvad* der står sammen, skabelonen bestemmer *hvor* det står, og
@@ -84,10 +95,19 @@ npm run dev:api       # http://localhost:8787
 npm run dev:studio    # http://localhost:5173
 ```
 
-Vælg kæde, upload ugens feed, **aflevér de sider avisen skal ligne**, ret,
-hent PDF. Se [Genskab trykte sider](#genskab-trykte-sider) — det er vejen
-ind. **Hurtigt udkast** ved siden af er den modelløse genvej: kategorier
-i kædens egne layouts, til at se et feed på papir med det samme.
+Vælg kæde, upload ugens feed, hent eller aflevér et layout, ret, hent
+PDF. **Hurtigt udkast** er den modelløse genvej: kategorier i kædens egne
+layouts, til at se et feed på papir med det samme.
+
+Et upload af feedet **læses med det samme** — kædens egen læser, gratis,
+uden model — og varerne står i listen til venstre: billede, navn, pris,
+grupperet som feedet grupperer dem. Se [Varelisten](#varelisten).
+
+Editoren åbner med den fil kæden har markeret som sin prøve
+(`FeedSource.sample`) — for SuperBrugsen er det `SuperBrugsenW36.json`,
+hvis fotos er Republica-motiver: ét produkt, trimmet, på ingenting.
+Det er hvad en flise vil have, og det er hvad der får seks varer i én
+plads til at læse som seks varer.
 
 Retningen bagefter foregår på siden, ikke i en formular. Klik en vare og
 ret den som i et billedprogram:
@@ -131,6 +151,189 @@ så en rettelse overlever en ny generering — og en hel træk-bevægelse er
 ét tryk på ⌘Z, ikke halvtreds.
 
 **Husk at lukke begge servere ned igen** når du er færdig.
+
+## Varelisten
+
+Et upload plejede at være en streng: filen blev gemt, og det første syn
+af hvad der stod i den kom flere minutter og ét modelkald senere. Nu
+køres kædens egen læser med det samme, og panelet til venstre viser
+varerne.
+
+| | |
+|---|---|
+| Klik en vare | markér den (klik igen fjerner markeringen) |
+| `+` | læg netop den vare på den valgte side |
+| Klik en gruppeoverskrift | fold gruppen sammen eller ud |
+| Søgefeltet | søger i navn, mærke og brødtekst |
+| `s. 3` i højre kant | varen ligger allerede på side 3 |
+
+En søgning folder alt den finder ud igen — et hit gemt inde i en foldet
+gruppe er en søgning der siger "ingenting her" mens den har svaret.
+
+Grupperingen er feedets egen kategori. En udgivelse hentet via link har
+ingen kategorier — den har *sider*, og det er den eneste redaktionelle
+oplysning i filen, så varerne grupperes efter hvilken side de stod på.
+
+Nederst står to knapper, når noget er markeret. De svarer på to
+forskellige spørgsmål, og kun det ene lader et trykt layout stå:
+
+| | |
+|---|---|
+| **Nye pladser** | hver vare får sin egen celle — gitteret vokser om nødvendigt |
+| **Saml i pladsen** | alle de markerede varer deler ÉN celle, som ét tilbud |
+
+### Saml i pladsen
+
+Det er sådan man lægger nye varer ind på en side hvis layout allerede er
+bestemt: gitteret rører sig ikke, det er *indholdet* i cellen der
+skifter. Seks oste i den plads hvor avisen har seks sodavand — én pris,
+én overskrift, alle seks fotograferet sammen. Præcis det en trykt avis
+kalder "frit valg".
+
+Pladsen vælges i listen ved knappen, og den følger den flise du har
+klikket på. Der er altid **én gruppe pr. plads**: at samle i en plads,
+der allerede er fyldt, erstatter det der stod der — den gamle vare bliver
+i avisen og går i reserve.
+
+**Modellen sætter dem op.** Når to eller flere varer skal dele en plads,
+bliver de kørt forbi Claude først — og den **ser packshottene**. Det er
+hele grunden til at kaldet er værd at foretage: om seks pakker skal
+vifte eller stables er en kendsgerning om hvordan de ser ud, og den står
+ikke i feedet. Modellen svarer med
+
+| | |
+|---|---|
+| `order` | varerne fra venstre mod højre, som de trykkes |
+| `arrangement` | `row`, `stagger`, `grid` eller `fan` — de fire stylesheetet tegner |
+| `heading` + `support` | de to linjer dansk under flisen |
+
+— og **aldrig** en koordinat, en størrelse eller en farve. Cellen bliver
+hvor den er, og stylesheetet tegner stadig siden. Prompten står i
+`ARRANGE_SYSTEM` i `@incitio/curator`; den beskriver hvad en trykt gruppe
+er (overlap, én vare forrest), hvad hver af de fire former er til, og at
+en overskrift aldrig nævner en pris.
+
+Feltet under knappen er din egen retning til modellen — "osten forrest".
+Den når aldrig siden.
+
+Kaldet er **aldrig bærende**. Ingen nøgle, et afvist svar, et packshot
+der ikke kan hentes: så svarer serveren med stylesheetets eget valg og
+siger det med `model: null`. Båndet under værktøjslinjen skriver enten
+*sat op af claude-sonnet-5* eller *sat op uden model*. En flise der ikke
+kunne samles fordi et API var nede, ville være et dårligere produkt end
+slet intet API.
+
+Alt der kunne blive usandt, bliver afgjort nedad — se `groupOffers`:
+
+| | |
+|---|---|
+| Pris | den **laveste**, og mærket "fra" i samme øjeblik de er forskellige |
+| Enhedspris | den **højeste**, hvilket er præcis hvad kædernes eget "Kg-pris maks." betyder — og slet ingen, hvis varerne ikke er kvoteret i samme enhed |
+| Gyldighed | det vindue hvor de **alle** er på tilbud |
+| Mærker | kun dem **hver eneste** vare bærer. Et Ø-mærke på en flise hvor én af seks ikke er økologisk er en forkert påstand, ikke en afrunding |
+| Mængde | deres, hvis de er enige — ellers ingen |
+
+Overskriften er et udkast og er lavet til at blive skrevet om: to varer
+bliver "A eller B", flere tager de ord de alle begynder med. Ret den i
+panelet til højre.
+
+Hvad der sker med sidens layout, når du vælger **Nye pladser**, i den
+rækkefølge:
+
+1. **Er der tomme celler,** fyldes de — den mest fremtrædende først.
+2. **Har kæden et layout med det nye antal,** flytter siden dertil. Det
+   er altid den bedre side: en form nogen har tegnet.
+3. **Ellers vokser sidens eget gitter** med én celle ad gangen, og en ny
+   række først når der ikke er en tom celle tilbage. Det er det eneste
+   der kan gøres for et layout læst af ét trykt ark — kæden har ikke
+   noget andet med det antal. Skabelonen er dokumentets, aldrig kædens:
+   en side der vokser, tilføjer ikke et layout til kædens ordforråd.
+
+**Tag af siden** i panelet til højre er det modsatte, og det sletter
+ikke: varen går i reserve og kan lægges ud igen. Cellen bliver stående
+tom — en side man sidder og retter i, skal ikke ombryde sig selv under
+hænderne på en.
+
+## Hent en udgivelse via link
+
+Under værktøjslinjen, i striben **Hent eller tegn sider**: sæt et link
+til en trykt avis ind, og siderne kommer ned som redigerbare sider.
+
+```
+https://publication-viewer.tjek-staging.com/v1/previews/xW7ndOup?s=…
+```
+
+Det er den eneste vej ind her der **ikke koster noget og giver det samme
+svar to gange**. En udgivelse serveres som et *incito*-dokument: hver
+eneste vare er en kasse med koordinater, sammen med navn, pris,
+brødtekst og packshot. Gitteret bliver altså **læst**, ikke vurderet —
+samme gitterfitter som PDF-vejen bruger, bare med bedre bevismateriale.
+
+Hvad der kommer med:
+
+| Fra udgivelsen | Bliver til |
+|---|---|
+| varernes kasser | sidens `grid-template-areas` |
+| sidens `background-color` | `page.ground` — målt, ikke gættet |
+| arkets baggrundsbillede | `page.background`, med udgivelsens egen gennemsigtighed |
+| navn, pris, brødtekst, packshot | `Offer[]` i dokumentet |
+| "Kg-pris maks. 61,25" i brødteksten | `comparison` — enhedsprisen siden allerede trykker |
+
+Sider uden gitter — forsider, annoncer, opskriftsopslag — kommer med som
+**billedsider**, så sidetallene stemmer med den avis du sammenligner med.
+
+`Sider` tager `4`, `1-6` eller `2,5,9`. `varerne med` kan slås fra, hvis
+det er gitteret alene du vil have: varerne følger stadig med dokumentet
+og ligger i reserve.
+
+Fra terminalen:
+
+```bash
+npm run publication -- "<link>" --brand superbrugsen
+npm run publication -- "<link>" --pages 1-6 --no-offers
+```
+
+> **Om adgangen:** et preview-link bærer sin egen signatur i `?s=`, og
+> den signatur *er* adgangen. Uden den svarer viewer'en 401 med en note
+> om scraping, og det svar sendes uændret videre til redaktøren. Et link
+> der ikke er delt med os, er ikke vores at åbne.
+
+## Tegn et layout
+
+Ingen reference overhovedet: billedmodellen tegner en sideskitse, og
+casting-trinnet læser den skitse som var det en trykt side.
+
+**Tegningen trykkes aldrig.** Den er stillads — den bestemmer hvor
+cellerne er og hvor store de er, og bliver så smidt væk. Det der lander
+på arket, er kædens eget stylesheet der tegner kædens egne fliser. Det
+er forskellen på det her og at klistre et genereret billede på en side.
+Skitsen vises ved siden af den færdige side, præcis som en indscannet
+reference gør, og af samme grund: det er den eneste måde at se om den
+blev læst rigtigt.
+
+To modeller, to opgaver, og de kan ikke byttes om:
+
+| | model | bestemmer |
+|---|---|---|
+| tegningen | Gemini (billede) | **hvilken form** siden har |
+| castingen | Claude (vision) | **hvilken vare** der står hvor |
+
+`Pladser` er hvor mange celler der bedes om; feltet ved siden af er dine
+egne ord, der lægges *oven i* den faste prompt og aldrig i stedet for
+den. Den faste del slutter med at forbyde skrift i tegningen — en skitse
+med opdigtede varenavne giver casting-trinnet noget at matche imod, som
+ikke findes i feedet, og det matcher det pligtskyldigt.
+
+```bash
+npm run layout -- --brand superbrugsen --cells 6
+npm run layout -- --note "én stor vare øverst" --feed ~/uge38.json
+npm run layout -- --prompt-only        # se prompten, kald ingenting
+```
+
+> **Kræver fakturering hos Google**, ligesom `npm run decorate`: hver
+> eneste billedmodel på Gemini-API'et er faktureringsspærret, og en
+> gratis nøgle får `limit: 0` — ikke en mindre kvote. `--prompt-only`
+> virker uden nogen nøgle. Casting-trinnet kræver `ANTHROPIC_API_KEY`.
 
 ## Genskab trykte sider
 
@@ -268,10 +471,23 @@ låser skabelonen, så en kæde med ét layout pr. antal trykker den samme
 side igen og igen, uanset hvor klogt siderne blev planlagt.
 
 Lad hovedvaren bryde ud af sin celle med `['hero', 1.15]` i stedet for
-`'hero'`. Så vokser grafikken — og kun grafikken — ud over naboerne, som
-på en trykt side hvor bakken med pålæg tydeligt ligger foran pizzaen
-ovenover. Tekst og prismærker bliver i cellen; en overskrift oven i en
-anden overskrift er ikke design, det er en kollision.
+`'hero'`. Så vokser grafikken — og kun grafikken — ud over naboen ved
+siden af. Tekst og prismærker bliver i cellen.
+
+**Grafik vokser til siden og opad, aldrig nedad.** Under enhver
+packshot står dens egen varetekst, så et overløb nedad rammer typografi
+hver eneste gang. Opad er der sidens egen luftgade mellem rækkerne, og
+til siden står naboens packshot i samme bånd. Reglen er i
+`.tile__media`, og den er ikke til pynt: da overløbet var én ensartet
+`scale`, trykte alle ni varer på Nettos 3×3-side 8 px ind i deres egen
+overskrift, og samtlige seks på en importeret 2×3-side ramte både deres
+egen tekst og rækken ovenover. Teksten lå øverst i lagene og var derfor
+læsbar — en varetekst læst gennem et fotografi er bare værre end en der
+er væk, for den ser tilsigtet ud.
+
+En celle der er højere end én række, vokser slet ikke til siden: ved
+siden af den står en hel ekstra flise, og dens varenavn sidder midt i
+det bånd den høje celles grafik fylder.
 
 Skifter kæden baggrundsfarve gennem avisen, sæt `groundTints`. Mønsteret
 tegnes i en tone af den aktuelle baggrund, så det bliver ens på alle
@@ -291,6 +507,14 @@ npm run check -- .data/out/superbrugsen-baseline.json
 Den kører rigtige Chromium, måler mod den boks der faktisk klipper, og
 fortæller hvilket felt der fejler. Den rapporterer også variationen:
 antal skabeloner, tætheder, baggrunde og variantopstillinger.
+
+Den vigtigste regel den håndhæver: **ingen vare må trykkes oven i et
+ord.** Den måler det færdige blæk mod hver eneste varetekst på siden og
+siger hvilken vare der rammer hvilket navn, med hvor mange pixels. Den
+afløste et regnestykke over hvor langt grafikken var "bevilget" at nå ud
+over sin celle — det kunne en side med ulæselig typografi godt
+tilfredsstille, og en side der var helt i orden kunne falde i det, fordi
+det målte mekanismen i stedet for resultatet.
 
 ## Designreference
 
@@ -312,7 +536,7 @@ Gør det samme for en ny kæde.
 | `@incitio/ingest` | CSV/JSON → `Offer[]`, med danske pris- og datoformater |
 | `@incitio/brands` | Kæderegistret: skabeloner, tokens, feed-mapping, isolation |
 | `@incitio/compose` | Udvælgelse, deterministisk plan, plan → dokument |
-| `@incitio/curator` | Claude-kurateringen — *ikke længere en vej ind fra studioet* |
+| `@incitio/curator` | Claude som redaktør: sideplanen (*ikke længere en vej ind fra studioet*) og `arrangeGroup`, der sætter flere varer op i én plads |
 | `@incitio/decor` | Gemini: motivvalg, billedgenerering, baggrundsudklip, cache |
 | `@incitio/match` | Genskab trykte sider: rasterisering, målt bund, vision-casting |
 | `@incitio/renderer` | React-komponenter + stylesheet |
@@ -391,7 +615,7 @@ mandel og melet på et rundstykke skal blive. Motivet lander i
 ## Kommandoer
 
 ```bash
-npm test                  # 212 tests
+npm test                  # 353 tests
 npm run typecheck
 npm run build:catalogue   # feed → JSON + HTML + PDF
                           #   --feed <fil>  --offers N  --pages N  --source <id>
@@ -402,6 +626,10 @@ npm run decorate          # læg genererede stemningsbilleder på siderne
 npm run match             # genskab trykte sider med ugens varer
                           #   --ref <billede|pdf> (gentages)  --page 1-6
                           #   --feed <fil>  --note "…"
+npm run publication       # hent en udgivet avis fra dens eget link
+                          #   <link>  --brand <id>  --pages 1-6  --no-offers
+npm run layout            # lad billedmodellen tegne layoutet, og fyld det
+                          #   --cells N  --note "…"  --prompt-only
 npm run refs              # hent designreferencer
 npm run check             # rendér i Chromium og find afskæring
 ```

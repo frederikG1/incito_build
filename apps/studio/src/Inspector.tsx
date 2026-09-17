@@ -391,6 +391,7 @@ export function Inspector() {
   const {
     document, selectedOfferId, selectedPart, updateOverrides, updatePart,
     selectPart, resetPart, setPartHidden, resetTile, select, focusOffer,
+    removeOfferFromPage,
   } = useStudio();
 
   if (!document || !selectedOfferId) {
@@ -512,6 +513,26 @@ export function Inspector() {
             : 'Byt varen op i sidens hovedplads'}
         >
           {leads ? 'Fører siden' : 'Sæt i fokus'}
+        </button>
+      )}
+
+      {/*
+        * Take the product off the page.
+        *
+        * Not a deletion: it goes to the bench — every offer in the
+        * document that no page shows — so it can be dealt out again
+        * here or on another page, and the count in the toolbar says how
+        * many are waiting. The cell it leaves stays empty rather than
+        * the page reflowing, because a page somebody is editing should
+        * not rearrange itself under their hands.
+        */}
+      {onPage && (
+        <button
+          className="inspector__drop"
+          onClick={() => removeOfferFromPage(onPage.id, offer.id)}
+          title="Varen bliver i avisen og går i reserve"
+        >
+          Tag af siden
         </button>
       )}
 

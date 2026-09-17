@@ -270,6 +270,16 @@ export const SUPERBRUGSEN: BrandDefinition = {
     name: 'Coop tilbudsavis-eksport',
     format: 'json',
     path: '/feeds/SuperBrugsenW36.json',
+    /*
+     * The file the editor opens with.
+     *
+     * Its photographs are Republica motives — one product, trimmed,
+     * on nothing — which is what a tile wants and what makes a group
+     * of six read as six products. The `tjek` sample above is the same
+     * store's offers with CROPS OF THE PRINTED PAGE for photographs,
+     * so six of those in one cell read as six little leaflet pages.
+     */
+    sample: true,
     signature: { fields: ['Header', 'Motivid', 'Priority'], nested: true },
     mapping: {
       retailerId: 'superbrugsen',

@@ -232,38 +232,45 @@ const findings = await page.evaluate(() => {
         });
       }
 
-      /*
-       * How far this slot's artwork was licensed to reach.
-       *
-       * `scale: max(--fill, --bleed)` on the artwork, so the painted
-       * box on screen is already the grown one: divide it back out to
-       * get what it would have covered at rest, and the difference is
-       * the grant. Spent entirely on one side when the cell sits
-       * against the sheet's rim and `--art-origin` pins it there, so
-       * the whole grant is allowed per side rather than half of it —
-       * this is a guard against a layout that got away, not a ruler.
-       */
-      const styles = getComputedStyle(slot);
-      const number = (name: string, fallback: number) => {
-        const value = Number.parseFloat(styles.getPropertyValue(name));
-        return Number.isFinite(value) ? value : fallback;
-      };
-      const grant = Math.max(number('--fill', 1), number('--bleed', 1));
-      const cell = slot.getBoundingClientRect();
-      const spare = (size: number) => (size * (grant - 1)) / grant + 1;
+    }
 
-      const pastCell = Math.max(
-        (cell.left - a.left) - spare(a.right - a.left),
-        (a.right - cell.right) - spare(a.right - a.left),
-        (cell.top - a.top) - spare(a.bottom - a.top),
-        (a.bottom - cell.bottom) - spare(a.bottom - a.top),
-      );
-      if (pastCell > 1) {
-        problems.push({
-          page: n,
-          kind: 'artwork further past its cell than the page grants it',
-          detail: `${Math.round(pastCell)}px beyond a ${grant.toFixed(2)} grant, ${where(img)}`,
-        });
+    /*
+     * No product may be painted over any word on the page.
+     *
+     * The rule the artwork's overrun exists to respect, stated as the
+     * only thing that can be measured: a tile is a picture stacked on
+     * its own words, so there is type directly under every packshot and
+     * the previous row's type directly above it. The words are layered
+     * to print on top, so a collision is never a disappearance — it is
+     * a product name read through a photograph, which is worse, because
+     * it looks deliberate.
+     *
+     * This replaced an arithmetic guard on how far the artwork had been
+     * "licensed" to reach past its cell. That guard could be satisfied
+     * by a page whose type was unreadable and broken by one that was
+     * perfectly fine; it measured the mechanism rather than the result.
+     */
+    const WORDS = '.tile__name, .tile__description, .tile__quantity, .tile__meta, .tile__brand';
+    const type = [...el.querySelectorAll(WORDS)]
+      .map((word) => ({ word, box: word.getBoundingClientRect() }))
+      .filter((entry) => entry.box.width > 1 && entry.box.height > 1);
+
+    for (const img of el.querySelectorAll('.tile__media img')) {
+      if (!(img as HTMLImageElement).naturalWidth) continue;
+      const a = painted(img as HTMLImageElement);
+      for (const { word, box } of type) {
+        const over = Math.min(a.right, box.right) - Math.max(a.left, box.left);
+        const down = Math.min(a.bottom, box.bottom) - Math.max(a.top, box.top);
+        // A pixel of touching is rounding; a third of a line is ink.
+        if (over > 1 && down > Math.min(4, box.height / 3)) {
+          problems.push({
+            page: n,
+            kind: 'artwork painted over type',
+            detail: `${Math.round(over)}×${Math.round(down)}px on `
+              + `"${(word.textContent ?? '').slice(0, 28)}" — ${where(img)}`,
+          });
+          break;
+        }
       }
     }
 

@@ -102,7 +102,10 @@ export async function decorate(
   const errors: DecorateResult['errors'] = [];
   const store = decorStore(options.assetRoot);
 
-  const pages = document.pages.slice(0, options.maxPages ?? document.pages.length);
+  // An image page is finished artwork; there is nothing to decorate.
+  const pages = document.pages
+    .filter((page) => page.kind !== 'image')
+    .slice(0, options.maxPages ?? document.pages.length);
   const briefs: PageBrief[] = pages.map((page) => ({
     pageId: page.id,
     title: page.title,
