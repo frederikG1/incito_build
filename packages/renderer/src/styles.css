@@ -680,6 +680,34 @@
 }
 
 /*
+ * The composed picture, laid over the cluster it was read from.
+ *
+ * Editor only — nothing in the document carries it, so the print render
+ * has no rule to skip. Its rectangle comes from the same mapping the
+ * products got, which is what makes it a proof rather than a decoration:
+ * a product that landed where the picture put it disappears into its own
+ * photograph, and one that did not stands visibly beside it.
+ *
+ * `position: absolute` and explicit sides, against the rule above that
+ * makes every other picture in this box fill it.
+ */
+.tile__ghost {
+  position: absolute;
+  z-index: 9;
+  opacity: 0.45;
+  pointer-events: none;
+  object-fit: fill;
+  /* The white the composition was drawn on would otherwise cover the
+     chain's ground; multiplied, only its products darken what is under
+     them, which is exactly the comparison this is for. */
+  mix-blend-mode: multiply;
+  /* A frame, so the thing over the tile is legible AS an overlay even
+     when it lands perfectly and the two pictures coincide. */
+  outline: 2px dashed rgba(0, 0, 0, 0.45);
+  outline-offset: 2px;
+}
+
+/*
  * Room for a price mark with no field behind it. See `tile--clear-price`.
  *
  * Only where the mark still leans over the artwork, which since the

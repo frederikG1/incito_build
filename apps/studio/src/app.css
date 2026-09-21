@@ -31,17 +31,58 @@ body {
 .bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 14px;
+  padding: 12px 18px;
   background: var(--chrome);
   color: var(--chrome-ink);
   border-bottom: 1px solid var(--chrome-line);
   flex: 0 0 auto;
-  flex-wrap: wrap;
+  /*
+   * One line, always. Wrapped, the last group fell under the first and
+   * the order the groups are in — which is the only thing telling a
+   * newcomer what comes before what — stopped being an order at all.
+   * The chain picker gives up its width first; it is the one control
+   * here whose value is already visible everywhere else on screen.
+   */
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.bar .field select { min-width: 0; }
+.bar__group:first-of-type .field select { max-width: 190px; }
+@media (max-width: 1340px) {
+  .bar { gap: 10px; }
+  .bar__group { gap: 6px; }
+  .bar__group:first-of-type .field select { max-width: 130px; }
 }
 
-.bar__mark { font-size: 15px; letter-spacing: -0.01em; }
+.bar__mark { font-size: 15px; letter-spacing: -0.01em; margin-right: 4px; }
 .bar__gap { flex: 1 1 auto; }
+
+/*
+ * One stage of the work, as a group.
+ *
+ * The controls inside sit close together and the groups sit apart, so
+ * the eye reads three things instead of ten. It is the cheapest
+ * structure there is and it was the whole difference between a toolbar
+ * and a wall.
+ */
+.bar__group { display: flex; align-items: center; gap: 8px; }
+.bar__group--quiet button {
+  font-size: 15px;
+  line-height: 1;
+  padding: 5px 9px;
+  background: transparent;
+  border-color: transparent;
+}
+.bar__group--quiet button:hover:not(:disabled) { background: #2b3038; }
+
+/* The rule between stages. Dim: it separates, it does not decorate. */
+.bar__rule {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 0;
+  background: var(--chrome-line);
+}
 
 .field { display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.9; }
 .field select,
@@ -60,6 +101,10 @@ body {
 .bar button {
   font: inherit;
   font-size: 13px;
+  /* A label that breaks over two lines makes the whole bar taller and
+     reads as two controls. Narrow windows shrink the chain picker
+     instead — see `.bar`. */
+  white-space: nowrap;
   padding: 6px 12px;
   border-radius: 6px;
   border: 1px solid var(--chrome-line);
@@ -78,9 +123,110 @@ body {
  * that only reveals a form promises more than it does. It fills (via
  * `.primary`) while that panel is open.
  */
-.bar button.accent { border-color: var(--hot); color: #fff; }
-.bar button.accent:hover:not(:disabled) { background: var(--hot); }
+/*
+ * The one thing to press, and only ever one.
+ *
+ * Filled, not outlined: an outline reads as "also available", which is
+ * exactly what everything else already is. `App` decides which button
+ * wears it from the same function the step strip uses, so the lit step
+ * and the lit button cannot disagree.
+ */
+.bar button.accent {
+  background: var(--hot);
+  border-color: var(--hot);
+  color: #fff;
+  font-weight: 600;
+}
+.bar button.accent:hover:not(:disabled) { background: #6a48f0; border-color: #6a48f0; }
 
+
+/* ------------------------------------------------------------ trin */
+
+/*
+ * Where you are in the work, and what to do about it.
+ *
+ * Under the toolbar rather than in it, because it is not a control: it
+ * answers "what now", which the toolbar deliberately does not — every
+ * button there is always available, and that is what made it unreadable
+ * to somebody opening the studio for the first time.
+ */
+.steps {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 18px;
+  background: #fff;
+  border-bottom: 1px solid #e3e6ea;
+}
+
+.steps__list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 6px;
+  border-radius: 999px;
+  color: #8a8f98;
+  white-space: nowrap;
+}
+
+/* The number, as a coin. Filled once the step is behind you, outlined
+   while you are on it, faint before you get there. */
+.steps__no {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid #d3d7dd;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.steps__what { display: flex; align-items: baseline; gap: 7px; }
+.steps__what b { font-size: 13px; font-weight: 600; }
+.steps__what em { font-style: normal; font-size: 11px; opacity: 0.8; }
+
+.steps__step.is-done { color: #5b6069; }
+.steps__step.is-done .steps__no {
+  background: #d9dde3;
+  border-color: #d9dde3;
+  color: #33363d;
+}
+
+.steps__step.is-now {
+  background: rgb(122 90 248 / 0.1);
+  color: #33363d;
+}
+.steps__step.is-now .steps__no {
+  border-color: var(--hot);
+  color: var(--hot);
+  font-weight: 700;
+}
+
+/* The sentence. One, and about the step that is lit. */
+.steps__say {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #4b5563;
+}
+.steps__say b { color: #33363d; font-weight: 600; }
+
+@media (max-width: 1100px) {
+  /* The words go before the strip does: the numbers still say where
+     you are, and the sentence still says what to do. */
+  .steps__what em { display: none; }
+}
 
 /* ------------------------------------------------ stemningsbilleder */
 
@@ -92,16 +238,26 @@ body {
  * editor who cannot tell them apart will put "akvarel" in the left one
  * and get photographs. The labels ARE the feature.
  */
+/*
+ * Light, not chrome.
+ *
+ * These were the toolbar's own dark colours, on the reasoning that they
+ * are tools rather than paper. Folded — which is how they spend almost
+ * all their life — that put two black bars between the step strip and
+ * the page, and they read as dead weight: nothing about them said they
+ * opened. Pale, with a rule under, they read as what they are: two
+ * sections somebody can unfold when they need them.
+ */
 .decor {
   flex: 0 0 auto;
-  padding: 9px 14px 10px;
-  background: #1b1f25;
-  color: var(--chrome-ink);
-  border-bottom: 1px solid var(--chrome-line);
+  padding: 9px 18px 10px;
+  background: #f6f7f9;
+  color: #33363d;
+  border-bottom: 1px solid #e3e6ea;
 }
 
 /* Folded, the strip is one row and should read as a line, not a panel. */
-.decor--shut { padding: 6px 14px; }
+.decor--shut { padding: 5px 18px; }
 
 .decor__head { display: flex; align-items: center; gap: 10px; }
 .decor--shut .decor__head { min-height: 20px; }
@@ -115,7 +271,7 @@ body {
   padding: 2px 0;
   border: none;
   background: none;
-  color: var(--chrome-ink);
+  color: #33363d;
   cursor: pointer;
 }
 .decor__disclose:hover .decor__title { opacity: 1; }
@@ -145,15 +301,15 @@ body {
   font-size: 13px;
   padding: 6px 8px;
   border-radius: 6px;
-  border: 1px solid var(--chrome-line);
-  background: #21252c;
-  color: var(--chrome-ink);
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  color: #33363d;
 }
-.decor__field input::placeholder { color: var(--chrome-ink); opacity: 0.38; }
+.decor__field input::placeholder { color: #8a8f98; }
 .decor__field input:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .decor__hint { font-size: 11px; opacity: 0.5; line-height: 1.3; min-height: 14px; }
-.decor__hint--warn { opacity: 1; color: #f0b429; }
+.decor__hint--warn { opacity: 1; color: #a8600a; }
 
 /* Styled here, not inherited: `.bar button` is scoped to the toolbar. */
 .decor__go {
@@ -175,20 +331,20 @@ body {
   font-size: 12px;
   padding: 3px 8px;
   border-radius: 5px;
-  border: 1px solid var(--chrome-line);
-  background: transparent;
-  color: var(--chrome-ink);
-  opacity: 0.75;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  color: #4b5563;
   cursor: pointer;
 }
-.decor__toggle:hover { opacity: 1; background: #21252c; }
+.decor__toggle:hover { color: #33363d; background: #eef1f5; }
 
 /* Says the field is doing something, without unfolding the prompt. */
 .decor__badge {
   font-size: 11px;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.1);
+  background: #e6e9ee;
+  color: #4b5563;
 }
 
 .decor__model { font-size: 11px; opacity: 0.5; }
@@ -221,9 +377,18 @@ body {
 }
 
 .upload input { display: none; }
+.upload--accent span {
+  border-style: solid;
+  border-color: var(--hot);
+  background: var(--hot);
+  color: #fff;
+  font-weight: 600;
+}
+.upload--accent:hover span { background: #6a48f0; border-color: #6a48f0; }
 .upload span {
   display: inline-block;
   font-size: 13px;
+  white-space: nowrap;
   padding: 6px 12px;
   border-radius: 6px;
   border: 1px dashed var(--chrome-line);
@@ -258,19 +423,62 @@ body {
 
 .app__body { flex: 1 1 auto; display: flex; min-height: 0; }
 
+/*
+ * Room around the paper.
+ *
+ * The sheet ran edge to edge against the panels, so the studio's own
+ * chrome and the page being made were the same surface. A wide gutter
+ * and a shadow under the sheet say which one is the product.
+ */
 .canvas {
   flex: 1 1 auto;
   overflow: auto;
-  padding: 24px;
+  padding: 28px 40px 60px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 28px;
+  gap: 36px;
+  background: #eef0f3;
 }
 
 .empty { color: #6b7280; font-size: 14px; }
 
+/*
+ * A page-shaped hole where the pages will be.
+ *
+ * Better than a sentence: it says what the studio makes, and it makes
+ * the canvas read as a place things land rather than as a grey void
+ * with a line of text floating in it.
+ */
+.blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.blank__sheet {
+  width: 100%;
+  max-width: 720px;
+  aspect-ratio: 210 / 297;
+  max-height: 58vh;
+  border: 2px dashed #d3d7dd;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      transparent 0 14px,
+      rgb(255 255 255 / 0.55) 14px 28px
+    ),
+    #f4f5f7;
+}
+.blank__said { margin: 0; font-size: 13px; color: #6b7280; }
+
 .sheet { width: 100%; max-width: 720px; }
+.sheet .page {
+  box-shadow: 0 1px 2px rgb(16 20 26 / 0.06), 0 12px 32px rgb(16 20 26 / 0.1);
+  border-radius: 2px;
+}
 
 /*
  * Two deliberate rows, not one that breaks.
@@ -317,15 +525,56 @@ body {
 
 /* What the page is. The gap pushes the page arrows to the far edge, so
    they sit in the same place on every sheet whatever else is in the row. */
-.sheet__does { display: flex; align-items: center; gap: 8px; }
+/*
+ * The page's own row, grouped the way the toolbar is.
+ *
+ * Nine controls of five different shapes sat in one line here — a
+ * number field, two selects, a glyph, two dashed file labels, two
+ * buttons and two arrows — and nothing said which belonged with which.
+ * Grouped and ruled, it reads as four decisions: how the page is laid
+ * out, what is painted on it, what happens to its clusters, and where
+ * it sits in the avis.
+ */
+.sheet__does {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 1px solid #e3e6ea;
+  border-radius: 8px;
+  background: #fafbfc;
+}
 
-.sheet__tools {
+.sheet__tools,
+.sheet__group {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
+/* A hairline between groups, drawn by the group that follows one. */
+.sheet__group,
+.sheet__image { position: relative; }
+.sheet__group::before,
+.sheet__image::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: #e3e6ea;
+}
+
 .sheet__order { display: flex; gap: 4px; margin-left: auto; }
+
+/* One height for everything in the row, whatever shape it is. */
+.sheet__does button,
+.sheet__does select,
+.sheet__does input,
+.sheet__does .sheet__image span {
+  min-height: 26px;
+}
 
 /* Its own file input, styled like the toolbar's. */
 .sheet__image input { display: none; }
@@ -533,6 +782,53 @@ body {
   border-radius: 5px;
 }
 .inspector__field input[type='range'] { width: 100%; }
+
+/*
+ * Three states, one control.
+ *
+ * Front / auto / back is a choice among three, and three links in a row
+ * read as three unrelated commands — you cannot see which one is in
+ * force. A segmented control shows the answer as well as the options,
+ * which is the whole question here: an editor wants to know where this
+ * product stands, not to issue an instruction into the dark.
+ */
+.segment {
+  display: flex;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+.segment button {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 4px;
+  border: 0;
+  border-left: 1px solid #d3d7dd;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+}
+.segment button:first-child { border-left: 0; }
+.segment button:hover { background: #eef1f5; color: #33363d; }
+.segment button.is-on {
+  background: var(--hot);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* A label with its buttons on one line — the depth control, where the
+   answer is a choice and not a number on a track. */
+.inspector__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: #4b5563;
+}
+.inspector__row > span { margin-right: auto; }
 /* The one dropdown in this panel. Matched to the text field above it
    rather than to the toolbar's dark selects: this is the white panel. */
 .inspector__field select {
@@ -731,6 +1027,15 @@ body {
 /* A box hard against the top of the tile has nowhere above it to hang
    its label, so the label drops inside the box instead. */
 .handle__part--tight > b { bottom: auto; top: 2px; }
+
+/* One product of a cluster: a solid ring rather than the box's, because
+   both are in hand at once and two identical outlines one inside the
+   other say nothing about which is which. */
+.handle__part--item {
+  outline: 2px solid #7a5af8;
+  background: rgb(122 90 248 / 0.1);
+}
+.handle__part--item > b { background: #7a5af8; }
 
 /*
  * The handle on a page's own line — see `PageTextEditor`.
@@ -1251,14 +1556,15 @@ body {
  * both "a row of controls that folds away", and giving the second one a
  * look of its own would say the two are different kinds of thing.
  */
+/* Light, for the same reason `.decor` is — see the note there. */
 .ways {
   flex: 0 0 auto;
-  padding: 9px 14px 10px;
-  background: #1b1f25;
-  color: var(--chrome-ink);
-  border-bottom: 1px solid var(--chrome-line);
+  padding: 9px 18px 10px;
+  background: #f6f7f9;
+  color: #33363d;
+  border-bottom: 1px solid #e3e6ea;
 }
-.ways--shut { padding: 6px 14px; }
+.ways--shut { padding: 5px 18px; }
 
 .ways__head { display: flex; align-items: center; gap: 10px; }
 .ways--shut .ways__head { min-height: 20px; }
@@ -1271,7 +1577,7 @@ body {
   padding: 2px 0;
   border: none;
   background: none;
-  color: var(--chrome-ink);
+  color: #33363d;
   cursor: pointer;
 }
 .ways__caret { font-size: 10px; opacity: 0.55; width: 9px; }
@@ -1292,8 +1598,9 @@ body {
   gap: 12px;
   flex-wrap: wrap;
   padding: 8px 10px;
-  border: 1px solid var(--chrome-line);
+  border: 1px solid #e3e6ea;
   border-radius: 8px;
+  background: #fff;
 }
 
 .ways__field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 260px; }
@@ -1308,11 +1615,11 @@ body {
   font-size: 13px;
   padding: 6px 8px;
   border-radius: 6px;
-  border: 1px solid var(--chrome-line);
-  background: #21252c;
-  color: var(--chrome-ink);
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  color: #33363d;
 }
-.ways__field input::placeholder { color: var(--chrome-ink); opacity: 0.38; }
+.ways__field input::placeholder { color: #8a8f98; }
 .ways__field input:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .ways__hint { font-size: 11px; opacity: 0.5; line-height: 1.3; min-height: 14px; }
@@ -1526,6 +1833,24 @@ body {
   border: 1px solid #d3d7dd;
   border-radius: 6px;
 }
+
+/* The composed photograph is a different thing from the cutouts, not a
+   setting on them, so it gets its own button and its own colour — the
+   same violet everything the image model draws is marked in. */
+.library__compose {
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 9px;
+  border: 1px solid #7a5af8;
+  border-radius: 6px;
+  background: #7a5af8;
+  color: #fff;
+  cursor: pointer;
+}
+.library__compose:hover:not(:disabled) { filter: brightness(1.06); }
+.library__compose:disabled { opacity: 0.4; cursor: not-allowed; }
+.library__aside { margin: -2px 0 0; font-size: 11px; color: #8b919b; line-height: 1.3; }
 .library__act .field span { color: #6b7280; }
 .library__act select,
 .library__act button {
@@ -1562,3 +1887,262 @@ body {
   cursor: pointer;
 }
 .inspector__drop:hover { border-color: #c2483f; color: #c2483f; }
+
+/* ------------------------------------------- varerne inde i én flise */
+
+.inspector__count { font-weight: 400; color: #a2a8b2; font-size: 11px; }
+
+.inspector__pack {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+/* Says what the row is for. Without it the thumbnails read as a list of
+   what is in the tile, which is only half true: they are also the way
+   to take one in hand. */
+.inspector__packsay {
+  margin: 0 0 14px;
+  font-size: 11px;
+  color: #8a8f98;
+}
+
+.inspector__packitem { position: relative; }
+
+/*
+ * Bigger than a chip, because it is the first thing the panel asks.
+ *
+ * Clicking a tile that holds five products and then hunting for a 54px
+ * thumbnail is the difference between a panel somebody uses and one
+ * they scroll past — and at that size a bottle and a bag of the same
+ * colour are the same picture.
+ */
+.inspector__packshot {
+  display: block;
+  width: 68px;
+  height: 68px;
+  padding: 4px;
+  border: 1px solid #d3d7dd;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.inspector__packshot img { width: 100%; height: 100%; object-fit: contain; }
+.inspector__packshot:hover { border-color: var(--hot); }
+.inspector__packitem.is-held .inspector__packshot {
+  border-color: var(--hot);
+  box-shadow: 0 0 0 2px var(--hot);
+}
+/* Taken off the page, and still listed — otherwise there is no way to
+   put it back. The same bargain the box list above makes. */
+.inspector__packitem.is-hidden .inspector__packshot { opacity: 0.35; }
+
+/* The dot every touched thing in this panel carries. */
+.inspector__packshot > i {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1;
+  color: #7a5af8;
+}
+
+.inspector__packitem .inspector__part-eye {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  padding: 0 3px;
+}
+
+/* ------------------------------------------------- hjælpelinjer */
+
+/*
+ * Why a drag stopped where it did.
+ *
+ * A drag that lines itself up without saying so is indistinguishable
+ * from one that stuck: the line is not decoration, it is the feedback
+ * that makes the behaviour legible. Drawn in the overlay so nothing
+ * about an editor selection reaches the print components.
+ */
+.handle__guide {
+  position: absolute;
+  pointer-events: none;
+  background: #ff2d92;
+  z-index: 80;
+}
+.handle__guide--x { width: 1px; }
+.handle__guide--y { height: 1px; }
+
+/* A heading lines up with things outside its own box — the sheet's
+   margin, the tile below — so its lines are measured against the
+   viewport and positioned against it too. */
+.handle__guide--sheet { position: fixed; }
+
+/* --------------------------------------- kør kompositionen i hånden */
+
+.manual {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px;
+  border: 1px solid #e3e6ea;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.manual__steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #4b5160;
+}
+.manual__steps li + li { margin-top: 4px; }
+.manual__steps .inspector__link { margin-left: 4px; }
+
+/* Read-only and short: it is there to be copied, not to be edited —
+   the prompt is built from the products, and a hand-edited copy would
+   not be the one the automatic route sends. */
+.manual__prompt {
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  height: 90px;
+  padding: 7px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #4b5160;
+  resize: vertical;
+}
+
+.manual__files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.manual__files a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 5px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #33363d;
+  text-decoration: none;
+}
+.manual__files a:hover { background: #eef1f5; color: var(--hot); }
+.manual__files img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid #e3e6ea;
+  border-radius: 4px;
+}
+.manual__files span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.manual__drop {
+  font-size: 12px;
+  text-align: center;
+  padding: 8px;
+  border: 1px dashed #7a5af8;
+  border-radius: 6px;
+  color: #7a5af8;
+  cursor: pointer;
+}
+.manual__drop input { display: none; }
+.manual__drop:hover { background: rgb(122 90 248 / 0.07); }
+.manual__drop em {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+/* The one that keeps the chain's own pixels. Solid, because it is not a
+   trade-off the way the other one is. */
+.manual__drop--layout {
+  border-style: solid;
+  background: #7a5af8;
+  color: #fff;
+}
+.manual__drop--layout:hover { background: #6a48f0; }
+
+/*
+ * The sheet's own cluster panel.
+ *
+ * Between the page's bar and the page itself, so it reads as belonging
+ * to this sheet and not to the toolbar: what it holds is one errand for
+ * THESE tiles — every prompt, every cutout, and one place to put the
+ * pictures back.
+ */
+.clusters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #e3e6ea;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.clusters__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.clusters__list > li {
+  display: grid;
+  gap: 5px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eceff3;
+}
+.clusters__list > li:last-child { border-bottom: 0; padding-bottom: 0; }
+
+.clusters__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+  color: #33363d;
+}
+.clusters__head b { margin-right: auto; font-weight: 600; }
+
+/* The cutouts, numbered by their filename — the number is what keeps
+   the prompt's own order when they are uploaded. */
+.clusters__files { list-style: none; margin: 0; padding: 0; display: flex; gap: 5px; flex-wrap: wrap; }
+.clusters__files img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid #e3e6ea;
+  border-radius: 4px;
+}
+.clusters__files a:hover img { border-color: var(--hot); }
+
+.clusters__drop {
+  font-size: 12px;
+  text-align: center;
+  padding: 10px;
+  border-radius: 6px;
+  background: #7a5af8;
+  color: #fff;
+  cursor: pointer;
+}
+.clusters__drop input { display: none; }
+.clusters__drop:hover { background: #6a48f0; }
+.clusters__drop em {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+/* In the sheet's bar, beside the layout pickers. */
+.sheet__clusters { white-space: nowrap; }

@@ -1,8 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { TilePart } from '@incitio/schema';
-import { TILE_PART_NAMES, TILE_PARTS, partLimits, partOverride } from '@incitio/schema';
+import {
+  TILE_PART_NAMES, TILE_PARTS, packLimits, packOverride, partLimits, partOverride,
+} from '@incitio/schema';
 import { useStudio } from './state.js';
+import { shifted, snap, targetsFrom, type Guide } from './snap.js';
 
 /**
  * The editing overlay on one slot.
@@ -79,8 +82,15 @@ interface Editing {
 
 interface Box { left: number; top: number; width: number; height: number }
 
-/** One box of the tile, found under the pointer and measured. */
-interface Found { part: TilePart; box: Box }
+/**
+ * One box of the tile, found under the pointer and measured — and, when
+ * the pointer was on a cluster, WHICH of its products.
+ *
+ * `pack` is null for everything that is not one photograph among
+ * several. It is always accompanied by `part: 'media'`: a variant is a
+ * variant of the artwork box, never a box of its own.
+ */
+interface Found { part: TilePart; box: Box; pack: number | null }
 
 /**
  * The label hangs above its box, unless the box is already at the top
@@ -172,6 +182,9 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
   const endGesture = useStudio((s) => s.endGesture);
   const select = useStudio((s) => s.select);
   const selectPart = useStudio((s) => s.selectPart);
+  const selectPackItem = useStudio((s) => s.selectPackItem);
+  const updatePackItem = useStudio((s) => s.updatePackItem);
+  const selectedPack = useStudio((s) => s.selectedPack);
   const selected = useStudio((s) => s.selectedOfferId === offerId && offerId !== undefined);
   const selectedPart = useStudio((s) => s.selectedPart);
   const overrides = useStudio((s) => s.document?.pages
@@ -190,6 +203,13 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
   const [marked, setMarked] = useState<Box | null>(null);
   /** Live readout during a move or a resize. Null when the tile is at rest. */
   const [hud, setHud] = useState<string | null>(null);
+  /**
+   * The alignment lines, while a drag is holding one.
+   *
+   * Drawn rather than merely obeyed: a drag that stops somewhere on its
+   * own is a bug until it says why it stopped there.
+   */
+  const [guides, setGuides] = useState<Guide[]>([]);
 
   /** The box this tile's gestures act on. The artwork, unless told otherwise. */
   const inHand: TilePart = selected ? selectedPart ?? 'media' : 'media';
@@ -216,10 +236,19 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
     const name = hit.dataset['part'];
     if (name === undefined || !isPart(name)) return null;
 
+    /*
+     * Innermost first, so one product of a cluster wins over the
+     * artwork box it sits in — and the gap between two products falls
+     * through to the box, which is what "move the whole thing" means.
+     */
+    const at = hit.dataset['pack'];
+    const index = at === undefined ? null : Number(at);
+
     const here = element.getBoundingClientRect();
     const there = hit.getBoundingClientRect();
     return {
       part: name,
+      pack: index !== null && Number.isInteger(index) ? index : null,
       box: {
         left: there.left - here.left,
         top: there.top - here.top,
@@ -230,9 +259,11 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
   }
 
   /** Measure the box in hand where it is now. */
-  function measure(part: TilePart): Box | null {
+  function measure(part: TilePart, pack: number | null = null): Box | null {
     const element = root.current;
-    const target = element?.parentElement?.querySelector(`[data-part="${part}"]`);
+    const target = element?.parentElement?.querySelector(
+      pack === null ? `[data-part="${part}"]` : `[data-pack="${pack}"]`,
+    );
     if (!element || !(target instanceof HTMLElement)) return null;
     const here = element.getBoundingClientRect();
     const there = target.getBoundingClientRect();
@@ -254,8 +285,8 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
    */
   useLayoutEffect(() => {
     if (!selected || !selectedPart) { setMarked(null); return; }
-    setMarked(measure(selectedPart));
-  }, [selected, selectedPart, overrides]);
+    setMarked(measure(selectedPart, selectedPack));
+  }, [selected, selectedPart, selectedPack, overrides]);
 
   /*
    * Zoom is a modified wheel, and it has to be a native listener.
@@ -274,6 +305,16 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
+      // A variant in hand resizes instead of the box around it: the
+      // thing being pinched is the thing that was picked up.
+      if (selectedPack !== null) {
+        const { minScale, maxScale } = packLimits();
+        const now = packOverride(overrides, selectedPack).scale;
+        const next = clamp(now * Math.exp(-event.deltaY * 0.0015), minScale, maxScale);
+        updatePackItem(offerId, selectedPack, { scale: next }, `scale:${offerId}:pack${selectedPack}`);
+        setHud(`Vare ${selectedPack + 1}  ${next.toFixed(2)}×`);
+        return;
+      }
       const { minScale, maxScale } = partLimits(inHand);
       const now = partOverride(overrides, inHand).scale;
       const next = clamp(now * Math.exp(-event.deltaY * 0.0015), minScale, maxScale);
@@ -283,7 +324,7 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
 
     element.addEventListener('wheel', onWheel, { passive: false });
     return () => element.removeEventListener('wheel', onWheel);
-  }, [selected, offerId, overrides, inHand, updatePart]);
+  }, [selected, offerId, overrides, inHand, selectedPack, updatePart, updatePackItem]);
 
   /* The readout fades on its own; a zoom has no pointer-up to hang it on. */
   useEffect(() => {
@@ -359,6 +400,86 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
   }
 
   /**
+   * Move one product of a cluster.
+   *
+   * Page percent, like every box but the artwork — one percent of the
+   * page is one `cqw`, so a drag moves what the pointer covered and the
+   * PDF lands it where the screen did. Not fenced to the cell either:
+   * a variant pulled out of the pile and over the neighbouring tile is
+   * a thing printed leaflets do, and the reach in `packLimits` is the
+   * only stop.
+   */
+  function dragPackItem(event: React.PointerEvent<HTMLDivElement>, index: number): void {
+    const element = root.current;
+    if (!element || !offerId || !overrides) return;
+
+    const page = element.closest('.page')?.getBoundingClientRect();
+    if (!page || page.width === 0 || page.height === 0) return;
+
+    const { reach } = packLimits();
+    const start = packOverride(overrides, index);
+    const perX = 100 / page.width;
+    const perY = 100 / page.height;
+    const from = { x: event.clientX, y: event.clientY };
+
+    /*
+     * What this product may line up with: its siblings in the cluster,
+     * and the artwork box they all sit in. Measured once — they do not
+     * move while this one is being dragged, and re-reading the DOM on
+     * every pointer move is how a drag starts to stutter.
+     */
+    const frame = element.getBoundingClientRect();
+    const tile = element.parentElement;
+    const moving = (() => {
+      const box = element.parentElement
+        ?.querySelector(`[data-pack="${index}"]`)?.getBoundingClientRect();
+      return box
+        ? { left: box.left - frame.left, top: box.top - frame.top, width: box.width, height: box.height }
+        : null;
+    })();
+    const targets = tile && moving
+      ? [
+        ...targetsFrom(tile, '[data-pack]', tile.querySelector(`[data-pack="${index}"]`), frame),
+        ...targetsFrom(tile, '.tile__media', null, frame),
+      ]
+      : [];
+
+    try { element.setPointerCapture(event.pointerId); } catch { /* uncapturable */ }
+
+    const onMove = (move: PointerEvent) => {
+      const px = move.clientX - from.x;
+      const py = move.clientY - from.y;
+      // Alt suspends it, which is the escape hatch every tool of this
+      // kind has: the one time somebody wants 3px off centre, they want
+      // it badly.
+      const pull = moving && !move.altKey
+        ? snap(shifted(moving, px, py), targets)
+        : { dx: 0, dy: 0, guides: [] };
+      setGuides(pull.guides);
+
+      const x = clamp(start.offsetX + (px + pull.dx) * perX, -reach, reach);
+      const y = clamp(start.offsetY + (py + pull.dy) * perY, -reach, reach);
+      updatePackItem(offerId, index, { offsetX: x, offsetY: y }, `move:${offerId}:pack${index}`);
+      setHud(`Vare ${index + 1}  ${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}`
+        + `  ${y >= 0 ? '+' : '−'}${Math.abs(y).toFixed(1)}`);
+    };
+
+    const onUp = () => {
+      try { element.releasePointerCapture(event.pointerId); } catch { /* never captured */ }
+      element.removeEventListener('pointermove', onMove);
+      element.removeEventListener('pointerup', onUp);
+      element.removeEventListener('pointercancel', onUp);
+      endGesture();
+      setHud(null);
+      setGuides([]);
+    };
+
+    element.addEventListener('pointermove', onMove);
+    element.addEventListener('pointerup', onUp);
+    element.addEventListener('pointercancel', onUp);
+  }
+
+  /**
    * Move the box in hand. One history entry for the whole drag.
    *
    * Two currencies, because the two kinds of box mean different things
@@ -385,7 +506,20 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
      */
     const found = findPart(event.clientX, event.clientY);
     const part: TilePart = found?.part ?? inHand;
+    /*
+     * One product of a cluster, when the pointer was on one. Taken in
+     * hand and moved in the same gesture, exactly like a box — and put
+     * DOWN by pressing on the artwork somewhere no product is, which is
+     * how you get back to moving the whole cluster.
+     */
+    const item = found?.pack ?? null;
     if (part !== selectedPart) selectPart(part === 'media' ? null : part);
+    if (item !== selectedPack) selectPackItem(item);
+
+    if (item !== null && part === 'media') {
+      dragPackItem(event, item);
+      return;
+    }
 
     const { reach } = partLimits(part);
     const start = partOverride(overrides, part);
@@ -416,18 +550,41 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
     const from = { x: event.clientX, y: event.clientY };
     let moved = false;
 
+    /*
+     * What this box may line up with: every other box of the tile, and
+     * the tile itself — its edges are the cell's margins and its centre
+     * is where a headline is centred. The artwork is left out of it:
+     * panning a packshot is cropping it, and a crop that jumps to an
+     * edge every few pixels cannot be framed.
+     */
+    const frame = element.getBoundingClientRect();
+    const tile = element.parentElement;
+    const own = measure(part);
+    const targets = part === 'media' || !tile || !own ? [] : [
+      ...targetsFrom(tile, '[data-part]', tile.querySelector(`[data-part="${part}"]`), frame),
+      ...targetsFrom(tile, '.tile', null, frame),
+    ];
+
     // Capture keeps the drag alive when the pointer leaves the tile —
     // moving to the edge of a frame means leaving it. Not every
     // pointer can be captured, and failing to is not worth a dead drag.
     try { element.setPointerCapture(event.pointerId); } catch { /* uncapturable */ }
 
     const onMove = (move: PointerEvent) => {
-      const dx = (move.clientX - from.x) * perX;
-      const dy = (move.clientY - from.y) * perY;
-      if (!moved && Math.abs(move.clientX - from.x) + Math.abs(move.clientY - from.y) < 2) return;
+      const px = move.clientX - from.x;
+      const py = move.clientY - from.y;
+      if (!moved && Math.abs(px) + Math.abs(py) < 2) return;
       moved = true;
-      const x = clamp(start.offsetX + dx, bounds.minX, bounds.maxX);
-      const y = clamp(start.offsetY + dy, bounds.minY, bounds.maxY);
+      // Alt suspends the alignment, the way it does in every tool of
+      // this kind: exact is the default, and 3px off centre is a thing
+      // somebody occasionally means.
+      const pull = own && !move.altKey
+        ? snap(shifted(own, px, py), targets)
+        : { dx: 0, dy: 0, guides: [] };
+      setGuides(pull.guides);
+
+      const x = clamp(start.offsetX + (px + pull.dx) * perX, bounds.minX, bounds.maxX);
+      const y = clamp(start.offsetY + (py + pull.dy) * perY, bounds.minY, bounds.maxY);
       updatePart(offerId, part, { offsetX: x, offsetY: y }, `move:${offerId}:${part}`);
       const round = (value: number) => (part === 'media' ? value.toFixed(2) : value.toFixed(1));
       setHud(`${TILE_PART_NAMES[part]}  ${x >= 0 ? '+' : '−'}${round(Math.abs(x))}  ${y >= 0 ? '+' : '−'}${round(Math.abs(y))}`);
@@ -440,6 +597,7 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
       element.removeEventListener('pointercancel', onUp);
       endGesture();
       setHud(null);
+      setGuides([]);
     };
 
     element.addEventListener('pointermove', onMove);
@@ -521,16 +679,40 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
           in the overlay rather than as an outline on the tile itself,
           because the tile is the print component and must not learn
           what an editor selection is. */}
-      {selected && !editing && hover && hover.part !== selectedPart && (
+      {selected && !editing && hover
+        && (hover.part !== selectedPart || hover.pack !== selectedPack) && (
         <span className={outline(hover.box)} style={hover.box}>
-          <b>{TILE_PART_NAMES[hover.part]}</b>
+          <b>{hover.pack === null ? TILE_PART_NAMES[hover.part] : `Vare ${hover.pack + 1}`}</b>
         </span>
       )}
       {selected && !editing && selectedPart && marked && (
-        <span className={`${outline(marked)} handle__part--held`} style={marked}>
-          <b>{TILE_PART_NAMES[selectedPart]}</b>
+        <span
+          className={[
+            outline(marked),
+            'handle__part--held',
+            // A variant is marked differently from the box around it:
+            // both are "in hand" at once, and two identical outlines
+            // one inside the other say nothing about which is which.
+            selectedPack !== null && 'handle__part--item',
+          ].filter(Boolean).join(' ')}
+          style={marked}
+        >
+          <b>{selectedPack === null ? TILE_PART_NAMES[selectedPart] : `Vare ${selectedPack + 1}`}</b>
         </span>
       )}
+
+      {/* Why the drag stopped where it did. Drawn in the overlay, so
+          nothing about an editor selection reaches the print
+          component. */}
+      {guides.map((guide, index) => (
+        <span
+          key={`${guide.axis}-${guide.at}-${index}`}
+          className={`handle__guide handle__guide--${guide.axis}`}
+          style={guide.axis === 'x'
+            ? { left: guide.at, top: guide.from, height: guide.to - guide.from }
+            : { top: guide.at, left: guide.from, width: guide.to - guide.from }}
+        />
+      ))}
 
       {hud && <span className="handle__hud">{hud}</span>}
 

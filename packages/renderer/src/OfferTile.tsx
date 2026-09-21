@@ -4,7 +4,9 @@ import type {
   Offer, OfferLabel, PlacementOverrides, PriceShape, SlotRole, TilePart,
   TileArrangement,
 } from '@incitio/schema';
-import { partOverride, tileArranged, PlacementOverrides as Overrides } from '@incitio/schema';
+import {
+  packOverride, packStack, partOverride, tileArranged, PlacementOverrides as Overrides,
+} from '@incitio/schema';
 import { formatPrice, formatQuantity, splitPrice } from './format.js';
 
 /**
@@ -42,6 +44,33 @@ export interface OfferTileProps {
    * component to draw a selection on.
    */
   selectedPart?: TilePart | null;
+  /**
+   * Which product of a cluster is in hand, by its place in the pack.
+   *
+   * Beside `selectedPart` rather than folded into it, because the two
+   * are not alternatives: a variant that is in hand is always a variant
+   * of the artwork box, and both markers are wanted on the page at once
+   * — the box outlined, the product inside it outlined harder.
+   */
+  selectedPack?: number | null;
+  /**
+   * The composed picture this cluster was stood up from, drawn over it.
+   *
+   * Editor only, like `selectedPack`, and for the same kind of reason:
+   * the print render never passes it. What it answers is the question
+   * the feature could not answer before — whether the tile actually
+   * matches the picture it was given. The rectangle is in fractions of
+   * the artwork box and comes from the same mapping the products got,
+   * so a product that landed correctly lies exactly on its own
+   * photograph in the ghost, and one that did not is visibly beside it.
+   */
+  reference?: {
+    url: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null;
   onSelect?: (offerId: string) => void;
 }
 
@@ -210,7 +239,8 @@ const LIFTED = 35;
  * half-page hero down to a ninth-page filler.
  */
 export function OfferTile({
-  offer, role, priceShape, overrides, selected, selectedPart, onSelect,
+  offer, role, priceShape, overrides, selected, selectedPart, selectedPack, reference,
+  onSelect,
 }: OfferTileProps) {
   const corrections = overrides ?? UNTOUCHED;
 
@@ -413,24 +443,70 @@ export function OfferTile({
                `.tile__pack[data-count]`. */
             data-count={pack.length}
           >
-            {pack.map((url, index) => (
-              /*
-               * The middle item paints on top, not the last one.
-               *
-               * A group of products has a front — published tiles put
-               * the lead variant nearest the reader with the others
-               * behind it on each side. Stacking strictly by DOM order
-               * makes the rightmost item the front, which reads as a
-               * pile that fell over.
-               */
-              <img
-                key={url}
-                src={url}
-                alt=""
-                loading="lazy"
-                style={{ zIndex: pack.length - Math.abs(index - (pack.length - 1) / 2) * 2 }}
-              />
-            ))}
+            {pack.map((url, index) => {
+              const item = packOverride(corrections, index);
+              if (item.hidden) return null;
+              const moved = item.offsetX !== 0 || item.offsetY !== 0
+                || item.scale !== 1 || item.rotate !== 0;
+              return (
+                /*
+                 * The middle item paints on top, not the last one.
+                 *
+                 * A group of products has a front — published tiles put
+                 * the lead variant nearest the reader with the others
+                 * behind it on each side. Stacking strictly by DOM order
+                 * makes the rightmost item the front, which reads as a
+                 * pile that fell over. One somebody has MOVED comes
+                 * further forward still: a product dragged out of the
+                 * pile was dragged out to be seen.
+                 */
+                <img
+                  key={`${index}-${url}`}
+                  src={url}
+                  alt=""
+                  loading="lazy"
+                  /* Addressed like every other box, with its position in
+                     the pack alongside — the editor hit-tests for both.
+                     See `PlacementOverrides.pack`. */
+                  data-part="media"
+                  data-pack={index}
+                  {...(selectedPack === index ? { 'data-pack-selected': 'true' } : {})}
+                  style={{
+                    /*
+                     * The stylesheet's own order, with the editor's word
+                     * over it — see `packStack`.
+                     *
+                     * A product that has been MOVED used to be lifted
+                     * over the rest, on the reasoning that one dragged
+                     * out of the pile was dragged out to be seen. That
+                     * stopped meaning anything the moment a composition
+                     * could move all of them at once: every product sat
+                     * on the same lift and the stack fell back to
+                     * document order, so the rightmost one ended up in
+                     * front of a group it was never meant to lead. What
+                     * replaced the guess is somebody saying which.
+                     */
+                    zIndex: packStack(pack.length, index, item.depth),
+                    /*
+                     * `translate`/`scale`/`rotate`, NOT `transform`.
+                     *
+                     * The arrangement writes `transform` on these very
+                     * images — a stagger scales its odd children, a fan
+                     * turns its outer ones — and an inline `transform`
+                     * would replace it, so the first nudge of one
+                     * variant would flatten the shape the cluster was
+                     * arranged into. The individual properties apply
+                     * BEFORE `transform` and compose with it.
+                     */
+                    ...(moved ? {
+                      translate: `${item.offsetX}cqw ${item.offsetY}cqh`,
+                      scale: String(item.scale),
+                      rotate: `${item.rotate}deg`,
+                    } : {}),
+                  }}
+                />
+              );
+            })}
           </div>
         ) : offer.imageUrl ? (
           <img src={offer.imageUrl} alt="" loading="lazy" style={mediaStyle} />
@@ -438,6 +514,30 @@ export function OfferTile({
           <div className="tile__placeholder" aria-hidden="true">
             <span>{name.slice(0, 1).toUpperCase()}</span>
           </div>
+        )}
+
+        {/*
+          * The picture the cluster was stood up from, laid over it.
+          *
+          * Drawn last so it is over the products, faint so they are
+          * still readable through it, and unclickable so it cannot come
+          * between a person and the thing they are dragging. It is a
+          * proof, not a layer of the page: nothing in the document
+          * carries it and the print render never receives one.
+          */}
+        {reference && (
+          <img
+            className="tile__ghost"
+            src={reference.url}
+            alt=""
+            aria-hidden="true"
+            style={{
+              left: `${reference.left * 100}%`,
+              top: `${reference.top * 100}%`,
+              width: `${reference.width * 100}%`,
+              height: `${reference.height * 100}%`,
+            }}
+          />
         )}
       </div>
 

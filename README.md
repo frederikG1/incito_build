@@ -119,6 +119,8 @@ ret den som i et billedprogram:
 | Klik igen | tag fat i det element du peger på |
 | Træk på et valgt element | flyt det |
 | ⌘/ctrl + scroll, eller knib | ændr størrelsen på det |
+| alt mens du trækker | slå hjælpelinjerne fra |
+| Klik en vare i en klynge | tag netop den vare i hånden — se [Ret hver enkelt vare](#ret-hver-enkelt-vare-i-flisen) |
 | Dobbeltklik på en tekst | ret den dér hvor den står |
 | Piletaster | flyt elementet — med shift længere |
 | `+` `−` `0` | større, mindre, nulstil |
@@ -215,6 +217,186 @@ en overskrift aldrig nævner en pris.
 
 Feltet under knappen er din egen retning til modellen — "osten forrest".
 Den når aldrig siden.
+
+### Ret hver enkelt vare i flisen
+
+En flise med flere varer tegner flere fotografier, og **hver af dem kan
+tages i hånden for sig**. Klik flisen, klik varen — eller dens miniature
+i panelet under **Varer i flisen** — og så svarer den de samme greb som
+enhver anden kasse:
+
+| | |
+|---|---|
+| Træk | flyt varen |
+| ⌘/ctrl + scroll | størrelse |
+| Piletaster | flyt — med shift længere |
+| `[` `]` | drej den |
+| `0` | tilbage hvor opstillingen satte den |
+| ⌫ | tag varen ud af flisen (den kan hentes tilbage i panelet) |
+
+En vare der er flyttet, trækkes **forrest** i stakken: den blev trukket
+ud for at blive set.
+
+**Alt hvad der trækkes, retter sig ind undervejs.** Kommer det i hånden
+inden for seks pixels af at flugte med noget andet — en nabos kant, dens
+midte, dens bundlinje, cellens margin, sidens midte — tager det den
+nøjagtige værdi i stedet for den omtrentlige, og der tegnes en pink
+linje der siger *hvorfor* det stoppede dér. Uden det er hver placering
+øjemål, og en trykt side er fuld af nøjagtige forhold: fælles bundlinje,
+delt midte, ens margener. Ingen af dem overlever at blive skønnet.
+
+Hold **alt** nede for at slå det fra. Den ene gang man vil have noget
+3 px ude af centrum, vil man det til gengæld gerne.
+
+Reglen er ren geometri i `apps/studio/src/snap.ts` og den samme funktion
+for alle tre slags træk — en vare i en klynge, en kasse i en flise, en
+overskrift på arket. Den kender hverken procenter, dokumentet eller
+hvad der trækkes; kalderen regner rettelsen om til sine egne enheder.
+Pakshottet selv er med vilje undtaget: at panorere et produktbillede er
+at beskære det, og en beskæring der hopper til en kant hver tredje pixel
+kan ikke sættes. Rettelserne skrives på placeringen som
+`overrides.pack`, nøglet på varens plads i klyngen — ikke på dens
+billed-URL, for det samme foto kan optræde to gange, og en vare der
+skiftes ud næste uge skal ikke efterlade en rettelse der peger på
+ingenting.
+
+De ligger som `translate`/`scale`/`rotate` og **ikke** som `transform`:
+opstillingen skriver selv `transform` på de billeder — en stagger
+skalerer sine ulige børn, en vifte drejer sine yderste — og en inline
+`transform` ville erstatte den, så det første nøk på én vare ville
+flade hele klyngen ud.
+
+### Saml som ét fotografi
+
+Den anden vej, og det er en anden ting — ikke en indstilling på den
+første. Billedmodellen får **udklippene** og bliver bedt om ét
+fotografi af varerne stående sammen: fælles gulv, én hero forrest,
+resten overlappende i kanterne. Det er hvad en trykt side har, og hvad
+intet stylesheet kan lave.
+
+Prisen er det den anden vej kan: resultatet er ét billede, så varerne i
+det kan ikke længere flyttes hver for sig. Det er hele byttehandlen, og
+derfor findes begge.
+
+Prompten er `clusterPrompt` i `@incitio/decor` og er **generel** — den
+bygges af de varer du har valgt: antallet, hvert billede navngivet efter
+sin vare og dens pakkestørrelse, og cellens eget billedformat. Alt det
+øvrige er regler om hvordan en dansk avis stiller en gruppe op, og hver
+linje er en fejl man ellers skulle finde i en korrektur:
+
+- **Opgaven hedder en collage, før der bliver bedt om noget andet.**
+  `CRITICAL: PIXEL-PERFECT COPYING ONLY` — ingen gentegning, ingen
+  hallucination, hvert bogstav og hver stregkode identisk med kilden,
+  ingen slør og ingen AI-opskalering af teksten. Det er hele feature'ens
+  forudsætning: en billedmodel *gentegner* pixels, den kopierer dem
+  ikke, og den er dårligst til lille skrift — et mærkenavn, en fed
+  procent. På en avis er det ikke en skønhedsfejl. Kæden har kontraheret
+  den grafik, og et gentegnet logo er kædens navn på et produkt den ikke
+  har godkendt.
+- **Kun opstillingen må ændres.** Form, farver, etikettekst, typografi,
+  logoer, låg og kameravinkel skal komme ud som i referencen —
+  *"treat every label as a logo that has to come out letter for letter"*.
+- **Naturlige størrelser.** Referencerne er ikke i samme målestok; en
+  roll-on er meget mindre end en 1000 ml shower gel. Pakkestørrelsen
+  sendes med fra feedet, så den ikke skal gættes ud af et foto.
+- **Ingen kontaktskygger** og hvid bund til kanten. Siderne her er
+  farvede, og et udklip med skygge kan ikke lægges på dem.
+- **Hver vare mindst to tredjedele synlig**, hver etiket læsbar.
+- En afdeling om hvordan hver slags emballage stilles op: multipacks
+  stables, flasker står på én bundlinje, poser i to forskudte rækker,
+  bakker vifter ud.
+
+Udklippene hentes som **bytes** på serveren, ikke som links — kædernes
+billedtjenester signerer deres URL'er til en browser, og hver eneste
+model-API dette repo har givet en af dem, har svaret at den ikke kunne
+hente filen. Mangler ét udklip, afvises kaldet med navnet på den vare
+det gælder: prompten navngiver *billede N* efter *vare N*, så en liste
+med hul i ville sætte alle etiketter på de forkerte varer.
+
+> Kræver `GEMINI_API_KEY` **og** fakturering på Google-projektet, som
+> `npm run decorate`.
+
+### Kør den i hånden
+
+Faktureringen er Googles side af sagen, og at vente på den er ingen
+grund til ikke at kunne se om prompten virker. Vælg flisen og tryk
+**Forbered til Gemini** i panelet til højre. Så står der:
+
+1. **prompten**, ord for ord som serveren ville have sendt den — med
+   Kopiér ved siden af
+2. **udklippene som filer**, nummereret `1-…`, `2-…`, `3-…` i præcis den
+   rækkefølge prompten kalder dem. Filerne serveres fra vores egen
+   server og ikke fra kædens billedtjeneste, fordi et link på tværs af
+   domæner ikke kan bære et filnavn — og navnet er hele pointen:
+   prompten siger *image 1: Klovborg skæreost*, så filen skal sige det
+   samme, ellers er upload-rækkefølgen gætteri og hver etiket lander på
+   den forkerte vare
+3. **Brug billedet som opstilling** — den vej du vil have
+
+Når billedet lægges på, ryddes klyngen: flisen er ét billede nu. Men
+`members` bliver stående, så dokumentet stadig kan sige hvad prisen
+dækker — og enhver rettelse man havde lavet vare for vare ryddes med,
+i stedet for at blive hængende på indekser der ikke findes mere.
+
+### Brug billedet som opstilling, ikke som billede
+
+Gemini komponerer smukt og kan ikke betros en etiket. Den *gentegner*
+pixels — den kopierer dem ikke — og det den er dårligst til er lige
+præcis det der betyder noget her: et mærkenavn, en fed procent, den lille
+skrift på et låg. Ingen prompt løser det; det er mekanismen.
+
+Så billedet bruges ikke som billede. Det bruges som **opstilling**:
+Claude får kompositionen at se og svarer med hvor hver vare endte og hvor
+stor den er — fire tal, alle brøkdele af billedet — og de tal lægges på
+de udklip kæden selv har leveret. Det der trykkes er den oprindelige
+grafik, pixel for pixel, stående hvor kompositionen satte den.
+
+Målt på en komposition af tre oste:
+
+| Vare | Ønsket i billedet | Landet i cellen |
+|---|---|---|
+| Thise vesterhavsost | cx 0,30 · cy 0,55 · bredde 0,42 | 0,30 · 0,56 · 0,43 |
+| Klovborg skæreost | 0,68 · 0,35 · 0,26 | 0,70 · 0,38 · 0,24 |
+| Mammen hytteost | 0,76 · 0,72 · 0,30 | 0,74 · 0,73 · 0,27 |
+
+— og flisens billeder peger stadig på `imageservice2.republica.dk`. Intet
+fra Gemini nåede siden.
+
+Tallene landes i `overrides.pack`, som er de samme felter din hånd
+skriver i: en opstilling kan altså rettes bagefter, vare for vare, og
+den samme flise kan stilles op igen uden at det hober sig op — den
+nuværende skala divideres ud, så to kørsler konvergerer i stedet for at
+gange sig selv.
+
+Knappen **Læg billedet på flisen som det er** findes stadig, hvis du
+vil have Geminis egne pixels. Den er ikke anbefalet, og teksten under
+den siger hvorfor.
+
+**Baggrunden skæres fra på vej ind.** Det er den ENESTE upload i
+studioet der gør det: billedet er tegnet til en prompt der forlanger
+hvidt helt ud til alle fire kanter, netop så det kan nøgles ud, og et
+hvidt rektangel på SuperBrugsens gule læses som en renderingsfejl. Hvert
+andet billede man lægger ind er fotografens eget og gemmes urørt — et
+flood fill på sådan et tager himlen med.
+
+Fyldet er `cutout` i `@incitio/decor`: flood fill **fra kanterne**, ikke
+"hvid bliver gennemsigtig", så det hvide i en halveret æg og glansen på
+en mandel bliver. Fandt det ingenting — `kept` tæt på 1, hvilket er hvad
+en model der har tegnet et bord i stedet for et felt giver — lægges
+billedet på alligevel, men du får det at vide:
+
+> *med-baggrund.png har ingen hvid baggrund at skære fra — den lagt på
+> som den er. Bed modellen om ren hvid bund helt ud til kanten.*
+
+Prompten er strammet tilsvarende. Den bad tidligere om *"one shared
+floor"*, og modellen tegnede et gulv — med skygge. Nu beder den om én
+fælles **bundlinje**, *"as if standing on the same invisible line"*, og
+forbyder gulv, bord, hylde, underlag, gradient, vignette, horisont,
+spejling og kontaktskygge hver for sig — og siger hvad det hvide er
+**til**: at varerne skal kunne skæres ud og trykkes på en farvet side.
+
+Det samme felt virker på et fotografi du selv har lavet. Det behøver
+ikke komme fra en model.
 
 Kaldet er **aldrig bærende**. Ingen nøgle, et afvist svar, et packshot
 der ikke kan hentes: så svarer serveren med stylesheetets eget valg og
@@ -615,7 +797,7 @@ mandel og melet på et rundstykke skal blive. Motivet lander i
 ## Kommandoer
 
 ```bash
-npm test                  # 353 tests
+npm test                  # 388 tests
 npm run typecheck
 npm run build:catalogue   # feed → JSON + HTML + PDF
                           #   --feed <fil>  --offers N  --pages N  --source <id>

@@ -117,6 +117,7 @@ export function composeCatalog(
           imageOffsetX: 0,
           imageOffsetY: 0,
           parts: {},
+          pack: {},
         },
       });
     });

@@ -5,8 +5,9 @@ import {
   resolveTemplate,
   templatesForCount,
 } from "@incitio/brands";
-import { pageTextLimits, partLimits } from "@incitio/schema";
+import { packLimits, pageTextLimits, partLimits } from "@incitio/schema";
 import { useStudio } from "./state.js";
+import { Steps, stepOf } from "./Steps.js";
 import { Inspector } from "./Inspector.js";
 import { TileEditor } from "./TileEditor.js";
 import { PageTextEditor } from "./PageTextEditor.js";
@@ -59,6 +60,25 @@ export function App() {
    */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      /*
+       * Read at the moment the key is pressed, not when the listener
+       * was bound.
+       *
+       * This effect used to close over the rendered `s` and list what
+       * it read in its dependencies, which works right up until
+       * somebody reads one thing and forgets to list it. That happened:
+       * `selectedPack` was read and not listed, so picking a second
+       * product of a cluster left the listener holding the first, and
+       * + and − went on resizing the product you had just stopped
+       * pointing at. Clicking out of the tile and back in fixed it,
+       * because THAT changed something the list did contain.
+       *
+       * A dependency list is the wrong tool for this: the handler reads
+       * a dozen things and the store is the one place that always has
+       * them current. So it asks. The listener binds once and nothing
+       * it reads can go stale.
+       */
+      const s = useStudio.getState();
       const target = event.target as HTMLElement | null;
       const typing =
         target instanceof HTMLInputElement ||
@@ -137,13 +157,70 @@ export function App() {
        * while making all nine boxes reachable with the same four keys.
        */
       const part = s.selectedPart ?? "media";
+      /*
+       * One product of a cluster, when one is in hand. It answers the
+       * same keys as every box — move, resize, reset, take off the page
+       * — plus two of its own for turning it, because a pasted-on
+       * product is the one thing on a printed page that may sit
+       * off-square.
+       */
+      const item = s.selectedPack;
 
       if (event.key === "Escape") {
         event.preventDefault();
-        // Out of the box first, then out of the tile. Escape from a
-        // headline should not also cost you the tile you were on.
-        if (s.selectedPart) s.selectPart(null);
+        // Out of the variant, then out of the box, then out of the
+        // tile. Each Escape gives back exactly one thing.
+        if (item !== null) s.selectPackItem(null);
+        else if (s.selectedPart) s.selectPart(null);
         else s.select(null);
+        return;
+      }
+
+      if (item !== null) {
+        const { step, coarse } = packLimits();
+        const far = event.shiftKey ? coarse : step;
+        const moves: Record<string, [number, number]> = {
+          ArrowLeft: [-far, 0],
+          ArrowRight: [far, 0],
+          ArrowUp: [0, -far],
+          ArrowDown: [0, far],
+        };
+        const step2 = moves[event.key];
+        if (step2) {
+          event.preventDefault();
+          s.nudgePackItem(offerId, item, step2[0], step2[1]);
+          return;
+        }
+        if (event.key === "+" || event.key === "=") {
+          event.preventDefault();
+          s.scalePackItem(offerId, item, 0.05);
+          return;
+        }
+        if (event.key === "-") {
+          event.preventDefault();
+          s.scalePackItem(offerId, item, -0.05);
+          return;
+        }
+        // The one gesture no other box has. `[` and `]` because they
+        // are where a designer's hand already is for rotation.
+        if (event.key === "[" || event.key === "]") {
+          event.preventDefault();
+          s.turnPackItem(offerId, item, event.key === "]" ? 2 : -2);
+          return;
+        }
+        if (event.key === "0") {
+          event.preventDefault();
+          s.resetPackItem(offerId, item);
+          return;
+        }
+        if (event.key === "Backspace" || event.key === "Delete") {
+          event.preventDefault();
+          s.setPackItemHidden(offerId, item, true);
+          s.selectPackItem(null);
+          return;
+        }
+        // Everything else belongs to the tile; with a variant in hand
+        // nothing else is.
         return;
       }
 
@@ -194,24 +271,8 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [
-    s.undo,
-    s.redo,
-    s.selectedOfferId,
-    s.selectedPart,
-    s.nudgePart,
-    s.scalePart,
-    s.resetPart,
-    s.setPartHidden,
-    s.select,
-    s.selectPart,
-    s.selectedText,
-    s.nudgePageText,
-    s.scalePageText,
-    s.resetPageText,
-    s.setPageTextHidden,
-    s.selectPageText,
-  ]);
+    // Nothing: the handler reads the store itself — see the note above.
+  }, []);
 
   const offers = new Map(
     (s.document?.offers ?? []).map((offer) => [offer.id, offer]),
@@ -226,148 +287,190 @@ export function App() {
    */
   const bench = s.benched();
 
+  /*
+   * Which step the toolbar should be shouting about.
+   *
+   * Read from the same function the step strip uses — see `stepOf`. Two
+   * places working it out separately is two places that can disagree,
+   * and the whole point of one highlighted button is that it agrees
+   * with the lit step.
+   */
+  const step = stepOf({
+    feed: s.feed,
+    pages: s.document?.pages.length ?? 0,
+    touched: s.past.length > 0,
+  });
+
   return (
     <div className="app">
       <header className="bar">
         <strong className="bar__mark">Incitio</strong>
 
-        {/* Stands in for signing in. Everything below is scoped to it. */}
-        <label className="field">
-          <span>Kæde</span>
-          <select
-            value={s.brandId ?? ""}
-            onChange={(e) => void s.signInAs(e.target.value)}
-            disabled={Boolean(s.busy)}
-          >
-            {s.brands.map((brand) => (
-              <option key={brand.id} value={brand.id}>
-                {brand.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Sider</span>
-          <input
-            type="number"
-            min={1}
-            max={60}
-            value={s.maxPages}
-            onChange={(e) => s.setMaxPages(Number(e.target.value))}
-          />
-        </label>
-
-        {/* Said once, where the count is set, rather than on every page
-            bar: it is one fact about the document, not six. */}
-        {bench.length > 0 && (
-          <span
-            className="bar__note"
-            title={bench.map((o) => o.name).join("\n")}
-          >
-            {bench.length} i reserve
-          </span>
-        )}
-
         {/*
-         * Yesterday's work, reopened for nothing.
-         *
-         * Every rebuilt page cost a model call and every run is saved
-         * the moment it finishes, so this is the difference between
-         * checking what a change did to last week's avis and paying to
-         * find out. It is a picker rather than a button because the
-         * question is always "which one".
-         */}
-        {s.catalogues.length > 0 && (
-          <label className="field" title="Åbn en gemt avis — koster ingenting">
-            <span>Åbn</span>
+          * Grouped in the order the work happens.
+          *
+          * Ten controls on one line is a wall: nothing in it said that
+          * the feed comes before the pages, or that undo belongs to
+          * neither. Three groups with a rule between them say it
+          * without a word of explanation — the avis you are in, what
+          * goes on its pages, and the way out. Exactly one button is
+          * lit at a time, and it is the one the step strip below is
+          * talking about.
+          */}
+        <div className="bar__group" role="group" aria-label="Avisen">
+          {/* Stands in for signing in. Everything below is scoped to it. */}
+          <label className="field">
+            <span>Kæde</span>
             <select
-              value=""
+              value={s.brandId ?? ""}
+              onChange={(e) => void s.signInAs(e.target.value)}
               disabled={Boolean(s.busy)}
-              onChange={(e) => {
-                void s.openCatalogue(e.target.value);
-              }}
             >
-              <option value="">{s.catalogues.length} gemte…</option>
-              {s.catalogues.map((saved) => (
-                <option key={saved.id} value={saved.id}>
-                  {saved.name}
+              {s.brands.map((brand) => (
+                <option key={brand.id} value={brand.id}>
+                  {brand.name}
                 </option>
               ))}
             </select>
           </label>
-        )}
 
-        <label className="upload" title="Upload denne uges feed">
-          <input
-            type="file"
-            accept=".csv,.json,.txt"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (file) await s.uploadFeed(file.name, await file.text());
-            }}
-          />
-          <span>Upload feed</span>
-        </label>
+          {/*
+           * Yesterday's work, reopened for nothing.
+           *
+           * Every rebuilt page cost a model call and every run is saved
+           * the moment it finishes, so this is the difference between
+           * checking what a change did to last week's avis and paying to
+           * find out. It is a picker rather than a button because the
+           * question is always "which one".
+           */}
+          {s.catalogues.length > 0 && (
+            <label className="field" title="Åbn en gemt avis — koster ingenting">
+              <span>Åbn</span>
+              <select
+                value=""
+                disabled={Boolean(s.busy)}
+                onChange={(e) => {
+                  void s.openCatalogue(e.target.value);
+                }}
+              >
+                <option value="">{s.catalogues.length} gemte…</option>
+                {s.catalogues.map((saved) => (
+                  <option key={saved.id} value={saved.id}>
+                    {saved.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
-        {/* The way a catalogue is made: hand in the pages you want.
-            Kept beside the feed upload because it takes the same feed,
-            and marked as the primary action because it is the one. */}
-        <button
-          className={s.reproduceOpen ? "primary" : "accent"}
-          onClick={() => s.setReproduceOpen(!s.reproduceOpen)}
-          title="Genskab trykte sider med denne uges varer"
-        >
-          Genskab sider
-        </button>
+          <button
+            onClick={() => void s.save()}
+            disabled={!s.document || Boolean(s.busy)}
+          >
+            Gem
+          </button>
+        </div>
+
+        <div className="bar__rule" aria-hidden="true" />
+
+        <div className="bar__group" role="group" aria-label="Indhold">
+          <label
+            className={`upload${step === "varer" ? " upload--accent" : ""}`}
+            title="Upload denne uges feed"
+          >
+            <input
+              type="file"
+              accept=".csv,.json,.txt"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) await s.uploadFeed(file.name, await file.text());
+              }}
+            />
+            <span>Upload feed</span>
+          </label>
+
+          {/* The way a catalogue is made: hand in the pages you want.
+              Kept beside the feed upload because it takes the same feed. */}
+          <button
+            className={
+              s.reproduceOpen ? "primary" : step === "sider" ? "accent" : ""
+            }
+            onClick={() => s.setReproduceOpen(!s.reproduceOpen)}
+            title="Genskab trykte sider med denne uges varer"
+          >
+            Genskab sider
+          </button>
+
+          {/*
+           * "Generér med AI" used to stand here: a brief in, a whole
+           * book out, planned by the model from nothing but the feed.
+           * It is gone. Pages made that way were generically correct
+           * and never looked like the chain, because the model was
+           * asked to invent a design instead of being shown one —
+           * which is exactly what `Genskab sider` does instead.
+           *
+           * What is left is the plain draft: category order into the
+           * chain's own layouts, no model, no key, instant. It is the
+           * fast look at a feed, not the way to a page worth printing.
+           */}
+          <button
+            onClick={() => void s.build({ fresh: true })}
+            disabled={Boolean(s.busy) || !s.feed}
+            title="Hurtigt udkast direkte fra feedet — kategorisortering, ingen model"
+          >
+            Hurtigt udkast
+          </button>
+
+          <label className="field" title="Hvor mange sider avisen må fylde">
+            <span>Sider</span>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={s.maxPages}
+              onChange={(e) => s.setMaxPages(Number(e.target.value))}
+            />
+          </label>
+
+          {/* Said once, where the count is set, rather than on every page
+              bar: it is one fact about the document, not six. */}
+          {bench.length > 0 && (
+            <span
+              className="bar__note"
+              title={bench.map((o) => o.name).join("\n")}
+            >
+              {bench.length} i reserve
+            </span>
+          )}
+        </div>
 
         <div className="bar__gap" />
 
-        <button onClick={s.undo} disabled={s.past.length === 0}>
-          Fortryd
-        </button>
-        <button onClick={s.redo} disabled={s.future.length === 0}>
-          Gentag
-        </button>
-        {/*
-         * "Generér med AI" used to stand here: a brief in, a whole
-         * book out, planned by the model from nothing but the feed.
-         * It is gone. Pages made that way were generically correct
-         * and never looked like the chain, because the model was
-         * asked to invent a design instead of being shown one —
-         * which is exactly what `Genskab sider` does instead.
-         *
-         * What is left is the plain draft: category order into the
-         * chain's own layouts, no model, no key, instant. It is the
-         * fast look at a feed, not the way to a page worth printing.
-         */}
+        {/* Neither a step nor a stage: the two that undo one. Drawn as
+            marks rather than words so they stop competing with the
+            things a person is meant to press. */}
+        <div className="bar__group bar__group--quiet">
+          <button onClick={s.undo} disabled={s.past.length === 0} title="Fortryd (⌘Z)">
+            ↶
+          </button>
+          <button onClick={s.redo} disabled={s.future.length === 0} title="Gentag (⇧⌘Z)">
+            ↷
+          </button>
+        </div>
+
+        <div className="bar__rule" aria-hidden="true" />
+
         <button
-          onClick={() => void s.build({ fresh: true })}
-          disabled={Boolean(s.busy) || !s.feed}
-          title="Hurtigt udkast direkte fra feedet — kategorisortering, ingen model"
-        >
-          Hurtigt udkast
-        </button>
-        {/*
-         * Mood artwork used to live here as one nameless field and a
-         * button. It moved to `DecorBar` below the toolbar when it
-         * gained a second field: they steer two different models, and
-         * that only reads if each one is labelled.
-         */}
-        <button
-          onClick={() => void s.save()}
-          disabled={!s.document || Boolean(s.busy)}
-        >
-          Gem
-        </button>
-        <button
+          className={step === "pdf" ? "accent" : ""}
           onClick={() => void s.downloadPdf()}
           disabled={!s.document || Boolean(s.busy)}
         >
-          PDF
+          Hent PDF
         </button>
       </header>
+
+      <Steps />
 
       <DecorBar />
       <Ways />
@@ -418,19 +521,24 @@ export function App() {
             s.selectDecor(null);
           }}
         >
+          {/*
+            * The empty page, as a page.
+            *
+            * What to do next is said once, in the step strip — see
+            * `Steps`. This used to say it again, in different words,
+            * two inches lower; two sentences telling somebody to press
+            * the same button is how a screen stops being read at all.
+            * What is left is the shape of what they are about to get.
+            */}
           {!s.document && s.brand && (
-            <p className="empty">
-              {s.feed ? (
-                <>
-                  Feed klar: <code>{s.feed.source}</code>. Tryk{" "}
-                  <strong>Genskab sider</strong> og aflevér de trykte sider,
-                  avisen skal ligne — én fil pr. side, eller et sideinterval af
-                  en PDF.
-                </>
-              ) : (
-                "Upload denne uges feed for at komme i gang."
-              )}
-            </p>
+            <div className="blank">
+              <div className="blank__sheet" aria-hidden="true" />
+              <p className="blank__said">
+                {s.feed
+                  ? `Ingen sider endnu — feedet er klar (${s.feed.source}).`
+                  : "Ingen sider endnu."}
+              </p>
+            </div>
           )}
 
           {s.document &&
@@ -717,6 +825,50 @@ export function App() {
                         </span>
                       </label>
 
+                      {/*
+                        * Every cluster on the sheet, in one errand.
+                        *
+                        * Here rather than in the tile panel because
+                        * that is the whole point: standing six clusters
+                        * up one at a time means picking a tile, waiting
+                        * for its cutouts, going to Gemini and coming
+                        * back — six times. Prepared together, an editor
+                        * makes all the pictures in one sitting and
+                        * drops the lot back at once.
+                        */}
+                      {page.placements.some((placement) => (
+                        (s.document?.offers.find((o) => o.id === placement.offerId)
+                          ?.members.length ?? 0) > 1
+                      )) && (
+                        <div className="sheet__group">
+                          {/* The whole job, with no trip to Gemini's own
+                              app: the model composes each cluster here,
+                              the composition is read as a layout, and
+                              the chain's own cutouts move to match. */}
+                          <button
+                            className="sheet__clusters"
+                            title={s.decorReady
+                              ? 'Lad billedmodellen stille alle sidens klynger op'
+                              : 'Kræver GEMINI_API_KEY på serveren'}
+                            disabled={Boolean(s.busy) || !s.decorReady}
+                            onClick={() => void s.standUpClusters(page.id)}
+                          >
+                            Stil klynger op
+                          </button>
+                          {/* The way round a missing key, and the way to
+                              compose by hand when the model's own
+                              arrangement is not good enough. */}
+                          <button
+                            className="sheet__clusters"
+                            title="Hent prompt og udklip til alle sammensatte fliser, til Gemini i hånden"
+                            disabled={Boolean(s.busy)}
+                            onClick={() => void s.prepareClusters(page.id)}
+                          >
+                            Til Gemini
+                          </button>
+                        </div>
+                      )}
+
                       <div className="sheet__order">
                         <button
                           title="Tidligere i avisen"
@@ -735,6 +887,70 @@ export function App() {
                       </div>
                     </div>
                   </div>
+
+                  {/*
+                    * The whole sheet's clusters, prepared together.
+                    *
+                    * One list and ONE drop zone, because the matching
+                    * is done by reading: every picture is read against
+                    * the page's own products, and the ones it holds say
+                    * which tile it belongs to. Nobody pairs a file with
+                    * a tile by hand.
+                    */}
+                  {s.manualPage?.pageId === page.id && (
+                    <div className="clusters">
+                      <ol className="clusters__list">
+                        {s.manualPage.tiles.map((tile) => (
+                          <li key={tile.offerId}>
+                            <div className="clusters__head">
+                              <b>{tile.name}</b>
+                              <button
+                                className="inspector__link"
+                                onClick={() => {
+                                  void navigator.clipboard?.writeText(tile.prompt);
+                                }}
+                              >Kopiér prompt</button>
+                            </div>
+                            <ul className="clusters__files">
+                              {tile.files.map((cut) => (
+                                <li key={cut.url}>
+                                  {/* Same-origin, so the filename
+                                      survives the save — the number in
+                                      it is what keeps the order. */}
+                                  <a href={cut.url} download={cut.name} title={cut.name}>
+                                    <img src={cut.url} alt="" />
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </li>
+                        ))}
+                      </ol>
+
+                      <label className="clusters__drop">
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={async (e) => {
+                            const picked = [...(e.target.files ?? [])];
+                            e.target.value = "";
+                            if (picked.length > 0) {
+                              await s.applyClusterLayouts(page.id, picked);
+                            }
+                          }}
+                        />
+                        <span>
+                          Læg billederne ind — alle på én gang
+                          <em>hvert billede finder selv sin flise</em>
+                        </span>
+                      </label>
+
+                      <button className="inspector__link" onClick={s.closeClusters}>
+                        Luk
+                      </button>
+                    </div>
+                  )}
 
                   {/*
                    * The pictures on this page, only when there are any.
@@ -850,6 +1066,11 @@ export function App() {
                     selectedOfferId={s.selectedOfferId}
                     selectedPart={s.selectedPart}
                     onSelectOffer={s.select}
+                    /* The composed pictures the page's clusters were
+                     stood up from, each laid over its own tile — see
+                     `Ghost`. The answer to "did it use my picture?",
+                     drawn rather than described. */
+                    ghosts={s.ghosts.filter((entry) => entry.shown)}
                     /* The chain's own pictures are dragged like anything
                      else on the page; the sliders beside them stay for
                      the two things a drag cannot say. */

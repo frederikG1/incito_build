@@ -63,6 +63,8 @@ export interface PageViewProps {
   selectedOfferId?: string | null;
   /** Which box of the selected tile is in hand. Editor only. */
   selectedPart?: TilePart | null;
+  /** Which product of a cluster is in hand — see `OfferTileProps`. */
+  selectedPack?: number | null;
   onSelectOffer?: (offerId: string) => void;
   /** Editor overlay (drop targets, handles). Kept out of the print view. */
   slotDecorator?: (slotId: string) => ReactNode;
@@ -89,6 +91,19 @@ export interface PageViewProps {
   selectedDecorId?: string | null;
   /** Called when a drag ends, so history can coalesce it into one step. */
   onDecorMoveEnd?: () => void;
+  /**
+   * Composed pictures drawn over the tiles they were read from, so the
+   * editor can SEE whether each cluster matches its own. Editor only,
+   * and a list: a whole sheet is stood up in one go.
+   */
+  ghosts?: {
+    offerId: string;
+    url: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }[];
   /**
    * Editor overlay on the page's own lines. Kept out of the print view,
    * exactly like `slotDecorator` — same contract, one level up.
@@ -121,12 +136,14 @@ export function PageView({
   pageNumber,
   selectedOfferId,
   selectedPart,
+  selectedPack,
   onSelectOffer,
   slotDecorator,
   onMoveDecor,
   onDecorMoveEnd,
   selectedDecorId,
   textDecorator,
+  ghosts,
 }: PageViewProps) {
   const style: CSSProperties = {
     ...brandCssVars(brand, pageIndex),
@@ -410,6 +427,8 @@ export function PageView({
                   overrides={placement.overrides}
                   selected={selectedOfferId === offer.id}
                   selectedPart={selectedOfferId === offer.id ? selectedPart : null}
+                  selectedPack={selectedOfferId === offer.id ? selectedPack ?? null : null}
+                  reference={ghosts?.find((ghost) => ghost.offerId === offer.id) ?? null}
                   {...(onSelectOffer ? { onSelect: onSelectOffer } : {})}
                 />
               ) : (

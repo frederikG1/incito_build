@@ -293,3 +293,100 @@ export const OfferFeed = z.object({
   offers: z.array(Offer),
 });
 export type OfferFeed = z.infer<typeof OfferFeed>;
+
+/**
+ * How big the product actually is, read out of the chain's own prose.
+ *
+ * A composition stands or falls on relative size — a roll-on deodorant
+ * drawn as tall as a shower gel is the single thing that makes a
+ * cluster look wrong at a glance — and the structured field that should
+ * carry it is empty. Every offer in the SuperBrugsen feed says
+ * `quantity.size: null` and `"1 stk."`, whatever it is. The number is
+ * there; it is just in the sentence: "Min. 225 g", "200-240 g",
+ * "100-150 cl", "465 ml".
+ *
+ * So it is read from the sentence. Two rules make that safe:
+ *
+ *  - PRICE CLAUSES ARE STRIPPED FIRST. "Kg-pris maks. 200,00" and
+ *    "Literpris 96,77" are the same shape as a size and mean the
+ *    opposite; read naively, a bag of coffee becomes 125 kg.
+ *  - A RANGE TAKES ITS LOWER BOUND, the way every other range in this
+ *    repo does — see the note on Tjek ranges in `ingest`.
+ *
+ * Grams and millilitres are not reduced to each other anywhere else,
+ * and are here: for deciding which of two products is drawn bigger, a
+ * millilitre of soda and a gram of cheese are near enough the same
+ * lump. The unit is kept so a caller that needs the distinction has it.
+ */
+export interface PackSize {
+  /** In grams or millilitres — see the note above. */
+  value: number;
+  unit: 'g' | 'ml';
+  /** The words it was read from, for saying so on screen. */
+  said: string;
+}
+
+/** Units the chains write, and what one of them is worth. */
+const UNITS: Record<string, { unit: 'g' | 'ml'; factor: number }> = {
+  g: { unit: 'g', factor: 1 },
+  gram: { unit: 'g', factor: 1 },
+  kg: { unit: 'g', factor: 1000 },
+  ml: { unit: 'ml', factor: 1 },
+  cl: { unit: 'ml', factor: 10 },
+  dl: { unit: 'ml', factor: 100 },
+  l: { unit: 'ml', factor: 1000 },
+  liter: { unit: 'ml', factor: 1000 },
+};
+
+/**
+ * The size in one piece of text, or `null`.
+ *
+ * Exported and tested on the chains' own sentences, because everything
+ * that reads it treats the answer as a fact about the product.
+ */
+export function readPackSize(text: string): PackSize | null {
+  if (!text) return null;
+
+  /*
+   * Price clauses out first, by the word that gives them away. Split on
+   * sentence boundaries so "Kg-pris maks. 200,00" goes and the "225 g"
+   * in the clause before it stays.
+   */
+  const prose = text
+    .split(/[.;·]\s+|\n/)
+    .filter((part) => !/pris/i.test(part))
+    .join('. ');
+
+  const match = /(\d+(?:[.,]\d+)?)(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?\s*(kg|g|gram|ml|cl|dl|liter|l)\b/i
+    .exec(prose);
+  if (!match) return null;
+
+  const low = Number.parseFloat(match[1]!.replace(',', '.'));
+  const unit = UNITS[match[2]!.toLowerCase()];
+  if (!unit || !Number.isFinite(low) || low <= 0) return null;
+
+  return {
+    value: low * unit.factor,
+    unit: unit.unit,
+    said: match[0].trim(),
+  };
+}
+
+/**
+ * What to tell a model this product weighs or holds.
+ *
+ * The feed's own field when it has one, the prose when it does not, and
+ * nothing rather than "1 stk." — which is what the pack field says for
+ * a 15-pack of beer and for a single lemon alike, and which tells a
+ * composition nothing at all.
+ */
+export function packSizeOf(offer: {
+  quantity?: { size: number | null; unit: string } | null;
+  description?: string | null;
+  name?: string | null;
+}): string | null {
+  const stated = offer.quantity?.size;
+  if (stated) return `${stated} ${offer.quantity!.unit}`;
+  const read = readPackSize(offer.description ?? '') ?? readPackSize(offer.name ?? '');
+  return read ? read.said : null;
+}

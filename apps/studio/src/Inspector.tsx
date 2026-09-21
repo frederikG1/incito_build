@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import {
   PAGE_PARTS, PAGE_PART_NAMES, TILE_PARTS, TILE_PART_NAMES,
+  packLimits, packOverride, packTouched,
   pageGround, pageTextLimits, pageTextOverride, pageTextTouched,
   partLimits, partOverride, partTouched,
 } from '@incitio/schema';
-import type { CatalogPage, PagePart, TilePart } from '@incitio/schema';
+import type { CatalogPage, PagePart, PlacementOverrides, TilePart } from '@incitio/schema';
 import { useStudio } from './state.js';
 
 /**
@@ -387,11 +388,25 @@ const REWRITABLE: readonly TilePart[] = [
  * (see TileEditor): drag to pan, ⌘-wheel to zoom, double-click to
  * rewrite. Both write the same overrides, so neither is the "real" one.
  */
+/**
+ * Every product's depth in one cluster, so "in front" means in front of
+ * THESE. A pack nobody has ordered reads as a row of zeros, which is
+ * what makes the first press land on 1 rather than on nothing.
+ */
+function packDepths(overrides: PlacementOverrides, count: number): number[] {
+  return Array.from({ length: Math.max(count, 1) }, (_, index) => (
+    packOverride(overrides, index).depth
+  ));
+}
+
 export function Inspector() {
   const {
     document, selectedOfferId, selectedPart, updateOverrides, updatePart,
     selectPart, resetPart, setPartHidden, resetTile, select, focusOffer,
     removeOfferFromPage,
+    selectedPack, selectPackItem, updatePackItem, resetPackItem, setPackItemHidden,
+    endGesture, manual, prepareCluster, closeManual, setTileImage, applyClusterLayout,
+    ghosts, toggleGhost,
   } = useStudio();
 
   if (!document || !selectedOfferId) {
@@ -458,7 +473,164 @@ export function Inspector() {
         <dt>Varenr.</dt><dd>{offer.id}</dd>
       </dl>
 
-      <PageGround />
+      {/*
+        * The products in the tile, and then the one in hand — first,
+        * before anything else the panel can do.
+        *
+        * They used to sit two thirds of the way down, under the page's
+        * texts, the page's ground and the page's background picture. A
+        * person clicks a VARE and the panel answered with questions
+        * about the sheet: everything about the thing they had just
+        * pointed at was below the fold. Now the panel opens with what
+        * is in the tile, which of them is in hand, and what can be done
+        * to it — and the page's own settings wait at the bottom, where
+        * something you change once per sheet belongs.
+        */}
+      {offer.imagePack.length > 1 && (
+        <>
+          <h3 className="inspector__group">
+            Varer i flisen
+            <span className="inspector__count">{offer.imagePack.length}</span>
+          </h3>
+          <ul className="inspector__pack">
+            {offer.imagePack.map((url, index) => {
+              const state = packOverride(overrides, index);
+              const member = offer.members[index];
+              return (
+                <li
+                  key={`${index}-${url}`}
+                  className={[
+                    'inspector__packitem',
+                    selectedPack === index && 'is-held',
+                    state.hidden && 'is-hidden',
+                  ].filter(Boolean).join(' ')}
+                >
+                  <button
+                    className="inspector__packshot"
+                    title={member ? `Vare ${index + 1} · ${member}` : `Vare ${index + 1}`}
+                    onClick={() => selectPackItem(selectedPack === index ? null : index)}
+                  >
+                    <img src={url} alt="" />
+                    {packTouched(overrides, index) && <i aria-hidden="true">•</i>}
+                  </button>
+                  <button
+                    className="inspector__part-eye"
+                    title={state.hidden ? 'Vis igen' : 'Tag af siden'}
+                    aria-label={state.hidden ? 'Vis igen' : 'Tag af siden'}
+                    onClick={() => setPackItemHidden(offer.id, index, !state.hidden)}
+                  >{state.hidden ? '◌' : '●'}</button>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="inspector__packsay">
+            {selectedPack === null
+              ? 'Klik en vare for at flytte, skalere eller lægge den forrest.'
+              : `Vare ${selectedPack + 1} er i hånden — rettelserne står herunder.`}
+          </p>
+        </>
+      )}
+
+      {selectedPack !== null && offer.imagePack[selectedPack] !== undefined && (
+        <>
+          <h3 className="inspector__group">
+            Vare {selectedPack + 1}
+            {packTouched(overrides, selectedPack) && (
+              <button
+                className="inspector__link"
+                onClick={() => resetPackItem(offer.id, selectedPack)}
+              >Nulstil</button>
+            )}
+          </h3>
+          {(() => {
+            const state = packOverride(overrides, selectedPack);
+            const limit = packLimits();
+            const set = (patch: Partial<typeof state>) =>
+              updatePackItem(offer.id, selectedPack, patch);
+            return (
+              <>
+                {/*
+                  * Which product stands in front.
+                  *
+                  * Buttons and not a slider: nobody thinks "layer
+                  * three", they think "the pears in front of the kale".
+                  * Each press moves this product one step past the
+                  * product that is currently nearest the front, or
+                  * behind the one furthest back — see
+                  * `PackOverride.depth`.
+                  */}
+                <div className="inspector__field">
+                  <span>Foran eller bag de andre</span>
+                  <div className="segment" role="group" aria-label="Dybde">
+                    <button
+                      className={state.depth > 0 ? 'is-on' : ''}
+                      title="Stil varen foran de andre"
+                      onClick={() => set({ depth: Math.min(
+                        limit.depth,
+                        Math.max(...packDepths(overrides, offer.imagePack.length)) + 1,
+                      ) })}
+                    >Forrest</button>
+                    <button
+                      className={state.depth === 0 ? 'is-on' : ''}
+                      title="Lad stilarket bestemme — den midterste vare står forrest"
+                      onClick={() => set({ depth: 0 })}
+                    >Auto</button>
+                    <button
+                      className={state.depth < 0 ? 'is-on' : ''}
+                      title="Stil varen bag de andre"
+                      onClick={() => set({ depth: Math.max(
+                        -limit.depth,
+                        Math.min(...packDepths(overrides, offer.imagePack.length)) - 1,
+                      ) })}
+                    >Bagest</button>
+                  </div>
+                </div>
+
+                <label className="inspector__field">
+                  <span>Størrelse <b>{state.scale.toFixed(2)}×</b></span>
+                  <input
+                    type="range" min={limit.minScale} max={limit.maxScale} step={0.01}
+                    value={state.scale}
+                    onChange={(e) => set({ scale: Number(e.target.value) })}
+                    onPointerUp={endGesture}
+                  />
+                </label>
+                <label className="inspector__field">
+                  <span>Vandret <b>{state.offsetX.toFixed(1)}</b></span>
+                  <input
+                    type="range" min={-limit.reach} max={limit.reach} step={limit.step}
+                    value={state.offsetX}
+                    onChange={(e) => set({ offsetX: Number(e.target.value) })}
+                    onPointerUp={endGesture}
+                  />
+                </label>
+                <label className="inspector__field">
+                  <span>Lodret <b>{state.offsetY.toFixed(1)}</b></span>
+                  <input
+                    type="range" min={-limit.reach} max={limit.reach} step={limit.step}
+                    value={state.offsetY}
+                    onChange={(e) => set({ offsetY: Number(e.target.value) })}
+                    onPointerUp={endGesture}
+                  />
+                </label>
+                {/* The one box besides a decoration that may sit
+                    off-square: a product pasted onto a page is what a
+                    printed leaflet tilts, and nothing else. */}
+                <label className="inspector__field">
+                  <span>Drejning <b>{state.rotate.toFixed(0)}°</b></span>
+                  <input
+                    type="range" min={-limit.turn} max={limit.turn} step={1}
+                    value={state.rotate}
+                    onChange={(e) => set({ rotate: Number(e.target.value) })}
+                    onPointerUp={endGesture}
+                  />
+                </label>
+              </>
+            );
+          })()}
+        </>
+      )}
+
 
       <h3 className="inspector__group">Tekst</h3>
 
@@ -586,6 +758,166 @@ export function Inspector() {
         })}
       </ul>
 
+      {/*
+        * The products inside a cluster, when the tile draws one.
+        *
+        * Listed for the same reason the boxes above are: a variant
+        * taken off the page cannot be clicked to get it back. It is
+        * also the only place the pack's order is visible, which is what
+        * decides who stands at the front — see the stacking note in
+        * `OfferTile`.
+        */}
+      {/*
+        * Running the composition by hand.
+        *
+        * The image model is billing-gated on Google's side, and waiting
+        * for a billing account is not a reason to be unable to see
+        * whether the prompt works. Everything here exists so the same
+        * job can be done in Gemini's own app: the prompt as the server
+        * would have sent it, the cutouts numbered in the order the
+        * prompt names them, and a way back in for the result.
+        */}
+      {offer.members.length > 1 && (
+        <>
+          <h3 className="inspector__group">Ét fotografi</h3>
+
+          {/*
+            * The picture the tile was last stood up from, as a switch.
+            *
+            * The one control here that answers a question rather than
+            * asking one: laid over the tile, a product that landed
+            * where the composition put it lies inside its own
+            * photograph, and one that did not stands beside it. Nothing
+            * else in this panel can tell the two apart.
+            */}
+          {(() => {
+            const ghost = ghosts.find((entry) => entry.offerId === offer.id);
+            return ghost && (
+            <div className="manual">
+              <button
+                className="inspector__link"
+                title="Læg det uploadede billede over flisen, så du kan se om varerne står som på det"
+                onClick={() => toggleGhost(offer.id)}
+              >
+                {ghost.shown ? 'Skjul referencen' : 'Vis referencen'}
+              </button>
+              {/* What the arithmetic did, for the tile that comes out
+                  wrong — see `reference.report`. */}
+              <textarea
+                className="manual__prompt"
+                readOnly
+                value={ghost.report.join('\n')}
+              />
+              <button
+                className="inspector__link"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(ghost.report.join('\n'));
+                }}
+              >Kopiér tallene</button>
+            </div>
+            );
+          })()}
+
+          {manual?.offerId !== offer.id ? (
+            <button
+              className="inspector__promote"
+              title="Hent prompten og udklippene, så du selv kan køre den i Gemini"
+              onClick={() => void prepareCluster(offer.id)}
+            >
+              Forbered til Gemini
+            </button>
+          ) : (
+            <div className="manual">
+              <ol className="manual__steps">
+                <li>
+                  Kopiér prompten og sæt den ind i Gemini.
+                  <button
+                    className="inspector__link"
+                    onClick={() => { void navigator.clipboard?.writeText(manual.prompt); }}
+                  >Kopiér</button>
+                </li>
+                <li>
+                  Upload de {manual.files.length} udklip <b>i rækkefølge</b> — filnavnene
+                  er nummereret, fordi prompten kalder dem billede 1, 2, 3.
+                </li>
+                <li>
+                  Gem billedet Gemini giver, og læg det ind herunder — som
+                  <b> opstilling</b>, så dine egne udklip flytter sig.
+                </li>
+              </ol>
+
+              <textarea className="manual__prompt" readOnly value={manual.prompt} />
+
+              <ul className="manual__files">
+                {manual.files.map((item) => (
+                  <li key={item.url}>
+                    {/* Same-origin, so the filename survives the save —
+                        a link to the chain's own image host cannot carry
+                        one, and the name is what keeps the order. */}
+                    <a href={item.url} download={item.name}>
+                      <img src={item.url} alt="" />
+                      <span>{item.name}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+
+              {/*
+                * The way in that keeps the chain's own pixels.
+                *
+                * Listed first and marked as the recommended one,
+                * because the other is a trade and this is not: the
+                * picture is read for WHERE each product ended up, and
+                * those numbers are applied to the cutouts the chain
+                * supplied. Nothing Gemini drew reaches the page, so
+                * nothing it got wrong about a label can.
+                */}
+              <label className="manual__drop manual__drop--layout">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) await applyClusterLayout(offer.id, file);
+                  }}
+                />
+                <span>
+                  Brug billedet som opstilling
+                  <em>dine egne udklip flytter sig — intet gentegnet</em>
+                </span>
+              </label>
+
+              <label className="manual__drop">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) await setTileImage(offer.id, file);
+                  }}
+                />
+                <span>
+                  Læg billedet på flisen som det er
+                  <em>Geminis egne pixels, etiketter og alt</em>
+                </span>
+              </label>
+
+              <button className="inspector__link" onClick={closeManual}>Luk</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/*
+        * The four sliders for the variant in hand.
+        *
+        * Drawn instead of the box's own, not beside them: with a
+        * product picked up, "size" means that product, and two panels
+        * both called Størrelse is the ambiguity this panel exists to
+        * remove.
+        */}
       <h3 className="inspector__group">
         {TILE_PART_NAMES[held]}
         {partTouched(overrides, held) && (
@@ -654,6 +986,11 @@ export function Inspector() {
         />
         <span>Fastlås — må ikke flyttes ved næste generering</span>
       </label>
+
+      {/* The SHEET's own settings, at the foot of a panel about a vare.
+          They are reachable from here because a page has no other panel
+          — but they are set once per sheet and asked about last. */}
+      <PageGround />
 
       {/* Written out because the tile is where the work happens, and a
           shortcut nobody is told about is a shortcut nobody uses. */}

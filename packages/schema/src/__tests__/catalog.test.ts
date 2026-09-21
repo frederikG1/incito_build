@@ -4,7 +4,7 @@ import {
   PART_DEFAULTS, PlacementOverrides, TILE_PARTS, TILE_PART_NAMES,
   isImagePage,
   mergeCatalogDocuments, pageTextOverride, pageTextPatch, pageTextTouched, pageTextsFreed,
-  partLimits, partOverride, partPatch, partTouched, tileArranged,
+  packStack, partLimits, partOverride, partPatch, partTouched, tileArranged,
 } from '../catalog.js';
 
 const fresh = () => PlacementOverrides.parse({});
@@ -248,5 +248,38 @@ describe('image pages', () => {
     expect(page.templateId).toBe('');
     expect(isImagePage(page)).toBe(true);
     expect(page.background?.fit).toBe('cover');
+  });
+});
+
+describe('which product of a cluster paints over which', () => {
+  it('puts the middle one in front when nobody has said', () => {
+    // Three products: the middle leads, as a printed group does.
+    const auto = [0, 1, 2].map((i) => packStack(3, i, 0));
+    expect(auto[1]).toBeGreaterThan(auto[0]!);
+    expect(auto[1]).toBeGreaterThan(auto[2]!);
+    // Four: the two in the middle share the front.
+    expect(packStack(4, 1, 0)).toBe(packStack(4, 2, 0));
+    expect(packStack(4, 1, 0)).toBeGreaterThan(packStack(4, 0, 0));
+  });
+
+  it('lets the editor override it in either direction', () => {
+    const auto = [0, 1, 2, 3, 4].map((i) => packStack(5, i, 0));
+    const highest = Math.max(...auto);
+    const lowest = Math.min(...auto);
+    // An outer product brought forward beats the middle one.
+    expect(packStack(5, 0, 1)).toBeGreaterThan(highest);
+    // The middle one sent back goes under every other.
+    expect(packStack(5, 2, -1)).toBeLessThan(lowest);
+    // Two brought forward keep the order they were asked in.
+    expect(packStack(5, 0, 2)).toBeGreaterThan(packStack(5, 4, 1));
+  });
+
+  it('never reaches the words or the price, which print above artwork', () => {
+    const all = [-4, -3, -2, -1, 0, 1, 2, 3, 4].flatMap(
+      (depth) => [0, 1, 2, 3, 4, 5, 6, 7].map((i) => packStack(8, i, depth)),
+    );
+    expect(Math.min(...all)).toBeGreaterThanOrEqual(0);
+    // `.tile__info` sits at 20 and the price mark at 30.
+    expect(Math.max(...all)).toBeLessThan(20);
   });
 });

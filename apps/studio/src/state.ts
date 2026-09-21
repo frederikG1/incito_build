@@ -2,17 +2,23 @@ import { create } from 'zustand';
 import type {
   Brand, CatalogDocument, DecorAnchor, Offer, PageBackground, PageDecoration,
   PagePart, PageTemplate, PageTextOverride,
-  Placement, PartOverride, PlacementOverrides, TileArrangement, TilePart,
+  PackOverride, Placement, PartOverride, PlacementOverrides, TileArrangement, TilePart,
 } from '@incitio/schema';
 import {
   CatalogPage, mergeCatalogDocuments, pageTextLimits, pageTextOverride, pageTextPatch,
+  packLimits, packOverride, packPatch,
   partLimits, partOverride, partPatch, slotAssignmentOrder, slotCells,
 } from '@incitio/schema';
-import { groupOffers } from '@incitio/schema';
+import { groupOffers, notOnePhotograph, readPackSize } from '@incitio/schema';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
 import { freeSlots, growTemplate, grownId } from './grid.js';
 import * as api from './api.js';
 import { countPages } from './pdf.js';
+import {
+  PACK_LIMITS, planCluster,
+  type Complaint, type GhostFrame, type MeasuredProduct, type PackPatch, type PlacedProduct,
+} from './cluster-layout.js';
+import { inkOf, onWhite, WHOLE, type InkBox } from './ink.js';
 
 /**
  * Which chain the user works for.
@@ -326,6 +332,58 @@ export interface StudioState {
    */
   selectedPart: TilePart | null;
   /**
+   * Which product of a cluster is in hand, by its place in the pack.
+   *
+   * A tile whose offer covers three variants draws three photographs,
+   * and this is how one of them is addressed. Always a variant OF the
+   * artwork box, so it is set alongside `selectedPart: 'media'` rather
+   * than instead of it — the box is outlined and the product inside it
+   * is outlined harder.
+   */
+  selectedPack: number | null;
+  /**
+   * What is needed to compose a cluster BY HAND, when there is one.
+   *
+   * The image model is billing-gated on Google's side. This is the way
+   * round it that does not involve waiting: the prompt and the cutouts,
+   * to be pasted and uploaded into Gemini's own app, and a file input to
+   * bring the result back. Null until somebody asks for it.
+   */
+  manual: {
+    offerId: string;
+    prompt: string;
+    files: { index: number; name: string; url: string; bytes: number }[];
+  } | null;
+  /**
+   * The composed pictures the page's clusters were stood up from, each
+   * drawn over its own tile — see `Reference`.
+   *
+   * A list, because a whole sheet is stood up in one go: six clusters
+   * means six proofs, and an editor comparing the page with what they
+   * asked for wants them all at once. Named for what it draws rather
+   * than for the word on the button, because `references` in this store
+   * is already the chain's own printed pages.
+   */
+  ghosts: Ghost[];
+  /**
+   * The prompts and cutouts for every cluster on one sheet.
+   *
+   * The page-sized version of `manual`, and the reason it exists: doing
+   * this a tile at a time means selecting a tile, waiting, copying,
+   * going to Gemini, coming back, dropping — six times over for a
+   * sheet. Prepared together, an editor takes the whole page into
+   * Gemini in one sitting and drops the results back in one go.
+   */
+  manualPage: {
+    pageId: string;
+    tiles: {
+      offerId: string;
+      name: string;
+      prompt: string;
+      files: { index: number; name: string; url: string; bytes: number }[];
+    }[];
+  } | null;
+  /**
    * Which of a page's own lines is in hand, and whose page it is.
    *
    * Carries the page id because a heading is addressed by PAGE — unlike
@@ -434,7 +492,23 @@ export interface StudioState {
    *
    * Whatever was in the cell goes to the bench, not to the bin.
    */
-  fillSlot: (pageId: string, slotId: string, offerIds: string[]) => Promise<void>;
+  fillSlot: (
+    pageId: string,
+    slotId: string,
+    offerIds: string[],
+    options?: {
+      /**
+       * Ask the image model for ONE photograph of the products standing
+       * together, instead of laying the cutouts out side by side.
+       *
+       * The trade, stated once: a composed photograph looks like a
+       * printed page and cannot be edited product by product; the
+       * cutouts can be moved one at a time and look like cutouts. Both
+       * are right, for different cells.
+       */
+      compose?: boolean;
+    },
+  ) => Promise<void>;
   /** The editor's own steer for how the products should sit together. */
   arrangeNote: string;
   setArrangeNote: (note: string) => void;
@@ -474,6 +548,82 @@ export interface StudioState {
   /** Arm a picture for dragging, or put it back down. */
   selectDecor: (decorId: string | null) => void;
   selectPart: (part: TilePart | null) => void;
+  /** Fetch the prompt and the cutouts for a grouped tile, to run by hand. */
+  prepareCluster: (offerId: string) => Promise<void>;
+  /**
+   * Stand the tile's own cutouts up the way a composed picture stands.
+   *
+   * The picture is read and thrown away. An image model redraws pixels,
+   * and what it redraws worst is small type — a brand name, a fat
+   * percentage, the print on a lid — so its LAYOUT is worth having and
+   * its pixels are not. What prints is the artwork the chain supplied,
+   * standing where the composition put it.
+   */
+  applyClusterLayout: (offerId: string, file: File) => Promise<void>;
+  /** Put the panel away. */
+  closeManual: () => void;
+  /** Draw one cluster's composed picture over it, or take it back off. */
+  toggleGhost: (offerId: string) => void;
+  /**
+   * Fetch the prompt and the cutouts for EVERY cluster on one sheet.
+   *
+   * The page-sized `prepareCluster` — see `manualPage`.
+   */
+  prepareClusters: (pageId: string) => Promise<void>;
+  /**
+   * Stand every cluster on a sheet up, from a handful of pictures.
+   *
+   * Each picture is read against the whole page's products, which is
+   * what says WHICH cluster it is a picture of — so an editor drops the
+   * lot in at once and never picks a tile. One write, one undo step.
+   */
+  applyClusterLayouts: (pageId: string, files: File[]) => Promise<void>;
+  /**
+   * Stand every cluster on a sheet up without leaving the studio.
+   *
+   * The same job `applyClusterLayouts` does, with the trip to Gemini's
+   * own app folded in: the image model composes each cluster here, the
+   * composition is read as a layout, and the chain's own cutouts are
+   * moved to match. Nothing the model drew reaches the page.
+   */
+  standUpClusters: (pageId: string) => Promise<void>;
+  /** Put the page's cluster panel away. */
+  closeClusters: () => void;
+  /**
+   * Put one picture on a tile as its whole artwork.
+   *
+   * What the manual route needs to finish, and useful on its own: a
+   * designer with a composed photograph of their own has nowhere to put
+   * it otherwise. The pack is cleared, because the tile is now one
+   * picture — `members` stays, so the document still says what the
+   * price covers.
+   */
+  setTileImage: (offerId: string, file: File) => Promise<void>;
+  /** Take one product of a cluster in hand, or put it down. */
+  selectPackItem: (index: number | null) => void;
+  /**
+   * Move, resize, turn or hide one product of a cluster.
+   *
+   * The same four gestures every other box answers to, applied to one
+   * photograph among several — which is the half of a printed page that
+   * is genuinely done by hand. `gesture` coalesces a drag into one undo
+   * step, exactly as `updatePart` does.
+   */
+  updatePackItem: (
+    offerId: string,
+    index: number,
+    patch: Partial<PackOverride>,
+    gesture?: string,
+  ) => void;
+  /** Move one product of a cluster, in page percent. */
+  nudgePackItem: (offerId: string, index: number, dx: number, dy: number) => void;
+  scalePackItem: (offerId: string, index: number, delta: number) => void;
+  /** Turn it a few degrees — the one box besides a decoration that may. */
+  turnPackItem: (offerId: string, index: number, delta: number) => void;
+  /** Back where the arrangement put it, and back on the page. */
+  resetPackItem: (offerId: string, index: number) => void;
+  /** Take one product of a cluster off the page, or put it back. */
+  setPackItemHidden: (offerId: string, index: number, hidden: boolean) => void;
   /** Take one of a page's own lines in hand, or put it down. */
   selectPageText: (pageId: string, part: PagePart | null) => void;
   swapPlacements: (
@@ -712,6 +862,391 @@ async function reachable(url: string): Promise<boolean> {
   return false;
 }
 
+/** The degrees in a CSS `rotate` property — "6deg", or "none". */
+function spin(value: string): number {
+  const match = /(-?[\d.]+)deg/.exec(value);
+  return match ? Number.parseFloat(match[1]!) : 0;
+}
+
+/**
+ * One product of a cluster as it is actually DRAWN, not as its box.
+ *
+ * The distinction is the whole point. Every product in a cluster is an
+ * `img` filling its own track with `object-fit: contain`, so its
+ * element is as wide as the track and the artwork inside it is
+ * letterboxed — a tall bottle in a wide track draws at a fraction of
+ * its element's width. Measuring the element and calling that the
+ * product is how a composition read off a picture came back with the
+ * tall things tiny.
+ *
+ * The centre needs no such care: the axis-aligned box the browser
+ * reports for a transformed rectangle is centred on that rectangle's
+ * own centre, whatever turned it and around which point — and `contain`
+ * centres the artwork in the element.
+ */
+function measurePack(
+  node: Element | null,
+  already: PackOverride,
+  /** Where the product sits inside its own picture — see `inkOf`. */
+  ink: InkBox,
+): MeasuredProduct | null {
+  if (!(node instanceof HTMLImageElement)) return null;
+  if (node.naturalWidth === 0 || node.naturalHeight === 0) return null;
+  const aspect = node.naturalWidth / node.naturalHeight;
+
+  const rect = node.getBoundingClientRect();
+  if (rect.width === 0 || node.offsetWidth === 0) return null;
+
+  /*
+   * The arrangement's own transform AND the corrections, which are
+   * written as the individual `scale`/`rotate` properties precisely so
+   * they compose with it — see `OfferTile`. Both have to be read, and
+   * the layout size has to come from `offsetWidth`, because a rotated
+   * element's reported box is bigger than the element.
+   */
+  const style = window.getComputedStyle(node);
+  const matrix = new DOMMatrixReadOnly(style.transform === 'none' ? '' : style.transform);
+  const own = style.scale === 'none' ? 1 : (Number.parseFloat(style.scale) || 1);
+  const drawn = Math.min(
+    node.offsetWidth * Math.hypot(matrix.a, matrix.b) * own,
+    node.offsetHeight * Math.hypot(matrix.c, matrix.d) * own * aspect,
+  );
+  if (drawn <= 0 || ink.width <= 0 || ink.height <= 0) return null;
+
+  /*
+   * The PRODUCT, not the picture it came in.
+   *
+   * The model measures the pack; this has to measure the same thing or
+   * the two are not comparable — see `ink.ts`. Both the size and the
+   * centre move: a product sitting off-centre in its own file is off
+   * its element's centre by the same fraction, at whatever size the
+   * page happens to draw it.
+   */
+  const height = drawn / aspect;
+  const driftX = (ink.left + ink.width / 2 - 0.5) * drawn;
+  const driftY = (ink.top + ink.height / 2 - 0.5) * height;
+  return {
+    cx: rect.left + rect.width / 2 + driftX,
+    cy: rect.top + rect.height / 2 + driftY,
+    width: drawn * ink.width,
+    driftX,
+    driftY,
+    rotate: (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI + spin(style.rotate),
+    // The product's own proportions, which is what decides how tall a
+    // box the composition needs for it.
+    aspect: (aspect * ink.width) / ink.height,
+    already,
+  };
+}
+
+/**
+ * The uploaded picture's proportions.
+ *
+ * Read from the file, never assumed: the composition prompt ASKS for
+ * the cell's aspect ratio and the image model answers with whatever it
+ * renders. 1 on anything unreadable, which is the shape it usually is.
+ */
+async function pictureAspect(file: File): Promise<number> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const aspect = bitmap.width / bitmap.height;
+    bitmap.close();
+    return Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * The products behind a cluster's pictures, in the pack's own order.
+ *
+ * The pack is not the member list. `groupOffers` deduplicates the
+ * pictures — two variants of one product very often carry the same
+ * photograph — and drops members that have none, so `imagePack[2]` is
+ * not reliably `members[2]`. Everything that reads a composition
+ * addresses products by their place in the PACK (`data-pack="2"` is a
+ * picture, not a member), so the list handed to a model has to be the
+ * pack's, or product three's position gets applied to product four's
+ * cutout and the tile comes out scrambled with no error anywhere.
+ */
+function packMembers(offer: Offer, document: CatalogDocument): Offer[] {
+  const members = offer.members
+    .map((id) => document.offers.find((entry) => entry.id === id))
+    .filter((entry): entry is Offer => Boolean(entry));
+  if (offer.imagePack.length === 0) return members;
+  return offer.imagePack.map((url, index) => (
+    members.find((member) => member.imageUrl === url) ?? members[index] ?? members[0]!
+  ));
+}
+
+/**
+ * A composed picture, laid over the cluster it was read from.
+ *
+ * Here and not in the document, deliberately. It is a PROOF, not a
+ * layer of the page: it must never print, never be saved and never
+ * survive a reload — and a person looking at it has to be able to
+ * answer "did it use my picture?" without reading a number.
+ */
+export interface Ghost {
+  offerId: string;
+  url: string;
+  /** The picture's rectangle, in fractions of the artwork box. */
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** Whether it is being drawn. Kept when hidden, so it can come back. */
+  shown: boolean;
+  /** What the arithmetic did, line by line — see `standUpCluster`. */
+  report: string[];
+}
+
+/** What one picture does to one tile, before anything is written down. */
+interface StoodUp {
+  offerId: string;
+  patches: Map<number, PackPatch>;
+  frame: GhostFrame | null;
+  report: string[];
+  /** Products of this tile the picture did not hold. */
+  missing: number;
+  /** What is wrong with the arrangement — see `reviewCluster`. */
+  complaints: Complaint[];
+}
+
+/**
+ * One composition, applied to one cluster — as arithmetic.
+ *
+ * Everything from the page's own geometry to the corrections, and
+ * nothing written anywhere: the store decides what to do with it. That
+ * separation is what lets a whole page be stood up in one go — the same
+ * routine runs per tile and the results are written together, so a
+ * sheet of six clusters is one undo step and not six.
+ */
+async function standUpCluster(args: {
+  offerId: string;
+  members: Offer[];
+  overrides: PlacementOverrides;
+  /** The same-origin copies of the cutouts, by their 1-based place. */
+  copies: { index: number; url: string }[];
+  /** What the model read, numbered within THIS tile's pack. */
+  placed: PlacedProduct[];
+  /** The picture's own proportions, width over height. */
+  picture: number;
+}): Promise<StoodUp | { error: string }> {
+  const { offerId, members, overrides, placed } = args;
+
+  /*
+   * First the cutouts' own margins.
+   *
+   * Read from the copies `prepareCluster` put on this server rather
+   * than from the chain's image host, because a canvas may not read
+   * another origin's pixels — see `inkOf`. Awaited before the page is
+   * measured, not after: everything below has to describe one layout.
+   */
+  const inks = await Promise.all(members.map((_, index) => {
+    const copy = args.copies.find((entry) => entry.index === index + 1);
+    return copy ? inkOf(copy.url) : Promise.resolve(WHOLE);
+  }));
+
+  /*
+   * Measured on the PAGE.
+   *
+   * The composition comes back as fractions of a picture, and to turn
+   * those into a move for a real cutout we need to know where that
+   * cutout is now — which only the browser knows, because it is the
+   * browser that laid the cluster out.
+   */
+  const tile = window.document.querySelector(`[data-offer-id="${CSS.escape(offerId)}"]`);
+  const media = tile?.querySelector('.tile__media')?.getBoundingClientRect();
+  const page = tile?.closest('.page')?.getBoundingClientRect();
+  if (!media || !page || media.width === 0 || page.width === 0) {
+    return { error: `${tileName(members)}: flisen skal være synlig på siden` };
+  }
+
+  const now = members.map((_, index) => measurePack(
+    tile?.querySelector(`[data-pack="${index}"]`) ?? null,
+    packOverride(overrides, index),
+    inks[index] ?? WHOLE,
+  ));
+
+  /*
+   * What each pack says it holds, for the review below — never for the
+   * placement. See `readPackSize`: the feed's own field is empty in
+   * every SuperBrugsen offer, and the sentence carries the number.
+   */
+  const sizes = members.map((member) => {
+    const said = readPackSize(member.description ?? '') ?? readPackSize(member.name ?? '');
+    return said ? said.value : null;
+  });
+
+  const { patches, frame, complaints } = planCluster({
+    media, page, picture: args.picture, placed, measured: now, sizes,
+  });
+
+  /*
+   * The whole calculation, in words.
+   *
+   * Cheap to build and the only thing that can settle a tile that comes
+   * out wrong: the numbers are the difference between "it ignored my
+   * picture" and "product three was measured in the wrong place".
+   */
+  const report = [
+    `felt ${media.width.toFixed(0)}×${media.height.toFixed(0)}`
+    + ` · side ${page.width.toFixed(0)}×${page.height.toFixed(0)}`
+    + ` · billede ${args.picture.toFixed(2)}:1`
+    + ` · ${members.length} varer, ${now.filter(Boolean).length} målt`
+    + `${frame ? '' : ' · ingen ramme'}`,
+    ...members.map((member, index) => {
+      const stands = now[index];
+      const read = placed.find((product) => product.index - 1 === index);
+      const patch = patches.get(index);
+      const name = `${index}. ${(member.brand ? `${member.brand} ` : '') + member.name}`
+        .slice(0, 44);
+      if (!stands) return `${name}: ingen billedkasse på siden — sprunget over`;
+      const margin = inks[index] ?? WHOLE;
+      const at = `står ${((stands.cx - media.left) / media.width).toFixed(2)}`
+        + `/${((stands.cy - media.top) / media.height).toFixed(2)}`
+        + ` b${(stands.width / media.width).toFixed(2)}`
+        + (margin.width < 0.97 || margin.height < 0.97
+          ? ` (udklip ${Math.round(margin.width * 100)}% fyldt)` : '');
+      if (!read) return `${name}: ${at} · ikke fundet i billedet`;
+      if (!patch) return `${name}: ${at} · læst ${read.cx.toFixed(2)} men ingen rettelse`;
+      const limit = [
+        Math.abs(patch.offsetX) >= PACK_LIMITS.offset
+          || Math.abs(patch.offsetY) >= PACK_LIMITS.offset ? 'FLYT-GRÆNSE' : '',
+        patch.scale <= PACK_LIMITS.minScale
+          || patch.scale >= PACK_LIMITS.maxScale ? 'SKALA-GRÆNSE' : '',
+      ].filter(Boolean).join(' ');
+      return `${name}: ${at} · læst ${read.cx.toFixed(2)}/${read.cy.toFixed(2)}`
+        + ` b${read.width.toFixed(2)} ↓${(read.bottom ?? 0).toFixed(3)}`
+        + ` · retter ${patch.offsetX.toFixed(1)}`
+        + `/${patch.offsetY.toFixed(1)}% ×${patch.scale.toFixed(2)}${limit ? ` · ${limit}` : ''}`;
+    }),
+  ];
+
+  /*
+   * The review, in the same words the panel shows. It corrects nothing
+   * — a composition an editor asked for is theirs — but a tool that
+   * cannot say "this one covers half of that one" is a tool nobody can
+   * trust to run unattended.
+   */
+  if (complaints.length > 0) {
+    report.push(...complaints.map((entry) => (entry.index === null
+      ? `⚠ ${entry.said}`
+      : `⚠ ${entry.index}. ${(members[entry.index]?.name ?? '').slice(0, 30)}: ${entry.said}`)));
+  }
+
+  return {
+    offerId,
+    patches,
+    frame,
+    report,
+    missing: members.length - patches.size,
+    complaints,
+  };
+}
+
+/** What to call a cluster on screen: its products, not its id. */
+function tileName(members: Offer[]): string {
+  return members.map((member) => member.name.split(/[,(]/)[0]!.trim()).join(' · ').slice(0, 60);
+}
+
+/** Write one tile's corrections into the document. */
+function withPatches(
+  document: CatalogDocument,
+  stood: StoodUp[],
+): CatalogDocument {
+  const byOffer = new Map(stood.map((entry) => [entry.offerId, entry.patches]));
+  return {
+    ...document,
+    pages: document.pages.map((page) => ({
+      ...page,
+      placements: page.placements.map((placement) => {
+        const patches = byOffer.get(placement.offerId);
+        if (!patches) return placement;
+        return {
+          ...placement,
+          overrides: {
+            ...placement.overrides,
+            pack: [...patches.entries()].reduce(
+              (all, [index, patch]) => ({
+                ...all,
+                [String(index)]: { ...packOverride(placement.overrides, index), ...patch },
+              }),
+              placement.overrides.pack,
+            ),
+          },
+        };
+      }),
+    })),
+  };
+}
+
+/**
+ * The picture itself, kept where it can be SEEN.
+ *
+ * Stored on the server only so the tile has a URL to draw — it never
+ * enters the document, so it cannot print and cannot be saved. Uncut:
+ * the white field is what `mix-blend-mode: multiply` disappears, and a
+ * keyed-out one would hide the very edges being compared. A failed
+ * upload costs the proof and not the placement, which has already
+ * happened.
+ */
+async function keepGhost(
+  brandId: string,
+  stood: StoodUp,
+  bytes: Uint8Array,
+  name: string,
+): Promise<Ghost | null> {
+  if (!stood.frame) return null;
+  try {
+    const { url } = await api.uploadImage(brandId, toBase64(bytes), name);
+    return {
+      offerId: stood.offerId,
+      url,
+      ...stood.frame,
+      shown: true,
+      report: stood.report,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** One ghost per tile: a second picture of the same cluster replaces it. */
+function withGhost(list: Ghost[], ghost: Ghost | null): Ghost[] {
+  if (!ghost) return list;
+  return [...list.filter((entry) => entry.offerId !== ghost.offerId), ghost];
+}
+
+/**
+ * The tiles on one sheet that can be ONE photograph each, and why the
+ * others cannot.
+ *
+ * Asked before anything is fetched or paid for. A tile holding washing
+ * powder, frozen croquettes and rye bread is three offers that share a
+ * price, and handing that list to an image model buys a picture of a
+ * scene nobody would print — see `notOnePhotograph`. The skipped ones
+ * are named, with their reason, because "del flisen op" is something an
+ * editor can act on and "skipped" is not.
+ */
+function pagePhotographs(
+  page: CatalogPage,
+  document: CatalogDocument,
+): { clusters: { offer: Offer; members: Offer[] }[]; skipped: string[] } {
+  const clusters: { offer: Offer; members: Offer[] }[] = [];
+  const skipped: string[] = [];
+  for (const placement of page.placements) {
+    const offer = document.offers.find((entry) => entry.id === placement.offerId);
+    if (!offer || offer.members.length < 2) continue;
+    const members = packMembers(offer, document);
+    const why = notOnePhotograph(members);
+    if (why) skipped.push(`${tileName(members)}: ${why}`);
+    else clusters.push({ offer, members });
+  }
+  return { clusters, skipped };
+}
+
 /** A placement nobody has corrected yet. */
 const FRESH: PlacementOverrides = {
   pinned: false,
@@ -722,6 +1257,7 @@ const FRESH: PlacementOverrides = {
   imageOffsetX: 0,
   imageOffsetY: 0,
   parts: {},
+  pack: {},
 };
 
 /**
@@ -905,6 +1441,10 @@ export const useStudio = create<StudioState>((set, get) => {
     selectedOfferId: null,
     selectedDecorId: null,
     selectedPart: null,
+    selectedPack: null,
+    manual: null,
+    ghosts: [],
+    manualPage: null,
     selectedText: null,
     maxPages: 6,
     past: [],
@@ -1055,6 +1595,7 @@ export const useStudio = create<StudioState>((set, get) => {
           activePageId: reply.document.pages[0]?.id ?? null,
           selectedOfferId: null,
           selectedPart: null,
+          selectedPack: null,
           selectedText: null,
           busy: null,
           // The canvas now shows a plain draft, not rebuilt pages, so
@@ -1110,6 +1651,7 @@ export const useStudio = create<StudioState>((set, get) => {
           activePageId: document.pages[0]?.id ?? null,
           selectedOfferId: null,
           selectedPart: null,
+          selectedPack: null,
           selectedText: null,
           /*
            * The comparison strips do not come back, and cannot: what the
@@ -1371,6 +1913,7 @@ export const useStudio = create<StudioState>((set, get) => {
             activePageId: document.pages[document.pages.length - 1]?.id ?? null,
             selectedOfferId: null,
             selectedPart: null,
+            selectedPack: null,
             selectedText: null,
           });
         } catch (error) {
@@ -1498,6 +2041,8 @@ export const useStudio = create<StudioState>((set, get) => {
         : {
           selectedOfferId: offerId,
           selectedPart: null,
+          // Another tile's variant index means nothing on this one.
+          selectedPack: null,
           selectedDecorId: null,
           selectedText: null,
         },
@@ -1505,10 +2050,18 @@ export const useStudio = create<StudioState>((set, get) => {
 
     selectDecor: (decorId) => set({
       selectedDecorId: decorId,
-      ...(decorId ? { selectedOfferId: null, selectedPart: null, selectedText: null } : {}),
+      ...(decorId
+        ? { selectedOfferId: null, selectedPart: null, selectedPack: null, selectedText: null }
+        : {}),
     }),
 
-    selectPart: (part) => set({ selectedPart: part }),
+    selectPart: (part) => set({
+      selectedPart: part,
+      // Leaving the artwork box leaves whatever variant of it was in
+      // hand: a nudge with a stale index would move a product nobody is
+      // looking at.
+      ...(part === 'media' ? {} : { selectedPack: null }),
+    }),
 
     selectPageText: (pageId, part) => set(
       part === null
@@ -1520,6 +2073,7 @@ export const useStudio = create<StudioState>((set, get) => {
           selectedText: { pageId, part },
           selectedOfferId: null,
           selectedPart: null,
+          selectedPack: null,
           selectedDecorId: null,
         },
     ),
@@ -1583,6 +2137,560 @@ export const useStudio = create<StudioState>((set, get) => {
 
     endGesture() { gesture = null; },
 
+    async prepareCluster(offerId) {
+      const { brandId, document, brand } = get();
+      if (!brandId || !document || !brand) return;
+
+      const offer = document.offers.find((entry) => entry.id === offerId);
+      if (!offer) return;
+      /*
+       * The MEMBERS, not the pack's image URLs: the prompt names image
+       * N after product N, so it needs the products — their names and
+       * their pack sizes — and not merely a list of pictures.
+       */
+      const members = packMembers(offer, document);
+      if (members.length < 2) {
+        set({ error: 'flisen er ikke sat sammen af flere varer' });
+        return;
+      }
+
+      // The cell's own proportions, so the picture comes back the shape
+      // it has to fill — the same number the automatic route sends.
+      const seat = document.pages
+        .flatMap((page) => page.placements.map((placement) => ({ page, placement })))
+        .find((entry) => entry.placement.offerId === offerId);
+      const template = seat
+        ? resolveTemplate(brand, seat.page.templateId)
+          ?? document.templates.find((t) => t.id === seat.page.templateId)
+        : undefined;
+      const cell = template && seat
+        ? slotCells(template, brand.pageAspect).get(seat.placement.slotId)
+        : undefined;
+
+      set({ busy: 'Henter prompt og udklip…', error: null, note: null });
+      try {
+        const ready = await api.prepareCluster(brandId, {
+          offers: members,
+          ...(cell?.aspect ? { aspect: cell.aspect } : {}),
+          ...(get().arrangeNote.trim() ? { note: get().arrangeNote.trim() } : {}),
+        });
+        /*
+         * Said, not enforced.
+         *
+         * The page-wide buttons refuse a tile that is three offers
+         * sharing a price — see `pagePhotographs`. This one was pressed
+         * at a named tile by somebody who meant it, so it runs, and the
+         * warning goes where it can still change their mind.
+         */
+        const doubt = notOnePhotograph(members);
+        set({
+          manual: { offerId, prompt: ready.prompt, files: ready.files },
+          busy: null,
+          note: [`${count(ready.files.length, 'udklip', 'udklip')} klar`, doubt]
+            .filter(Boolean).join(' · '),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    async applyClusterLayout(offerId, file) {
+      const { brandId, document } = get();
+      if (!brandId || !document) return;
+
+      const offer = document.offers.find((entry) => entry.id === offerId);
+      const members = offer ? packMembers(offer, document) : [];
+      if (!offer || members.length < 2) {
+        set({ error: 'flisen er ikke sat sammen af flere varer' });
+        return;
+      }
+
+      set({ busy: 'Læser opstillingen…', error: null, note: null });
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const reading = await api.readClusterLayout(brandId, {
+          file: toBase64(bytes),
+          offers: members,
+        });
+
+        const stood = await standUpCluster({
+          offerId,
+          members,
+          overrides: document.pages.flatMap((entry) => entry.placements)
+            .find((entry) => entry.offerId === offerId)?.overrides ?? { ...FRESH },
+          copies: get().manual?.offerId === offerId ? get().manual?.files ?? [] : [],
+          placed: reading.products,
+          /*
+           * The picture's own proportions, read from the file rather
+           * than assumed from the prompt: the cell's aspect ratio is
+           * ASKED for and the image model answers with whatever it
+           * renders, usually a square.
+           */
+          picture: await pictureAspect(file),
+        });
+        if ('error' in stood) {
+          set({ busy: null, error: stood.error });
+          return;
+        }
+        if (stood.patches.size === 0) {
+          set({ busy: null, error: 'ingen af varerne kunne genfindes i billedet' });
+          return;
+        }
+
+        gesture = null;
+        mutate((doc) => withPatches(doc, [stood]));
+
+        const ghost = await keepGhost(brandId, stood, bytes, file.name);
+        set({
+          busy: null,
+          manual: null,
+          ghosts: withGhost(get().ghosts, ghost),
+          note: [
+            `${count(stood.patches.size, 'vare', 'varer')} stillet op efter billedet`,
+            reading.missing.length > 0
+              ? `${reading.missing.length} kunne ikke genfindes og står som før`
+              : '',
+            stood.complaints.length > 0
+              ? `${count(stood.complaints.length, 'advarsel', 'advarsler')} — se tallene i panelet`
+              : '',
+            ghost ? 'referencen ligger over flisen' : '',
+          ].filter(Boolean).join(' · '),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    async prepareClusters(pageId: string) {
+      const { brandId, document, brand } = get();
+      if (!brandId || !document || !brand) return;
+      const page = document.pages.find((entry) => entry.id === pageId);
+      if (!page) return;
+
+      /*
+       * Every cluster on the sheet, in the order they are read.
+       *
+       * The point of doing them together: the prompts and the cutouts
+       * for a whole page are one errand, so an editor takes the lot
+       * into Gemini in one sitting instead of coming back to the studio
+       * between every tile.
+       */
+      const { clusters, skipped } = pagePhotographs(page, document);
+      if (clusters.length === 0) {
+        set({
+          error: skipped.length > 0
+            ? skipped.join(' · ')
+            : 'der er ingen sammensatte fliser på siden',
+        });
+        return;
+      }
+
+      const template = resolveTemplate(brand, page.templateId)
+        ?? document.templates.find((entry) => entry.id === page.templateId);
+      const cells = template ? slotCells(template, brand.pageAspect) : undefined;
+
+      set({ busy: `Henter prompter og udklip til ${clusters.length} klynger…`, error: null, note: null });
+      try {
+        const ready = [];
+        for (const { offer, members } of clusters) {
+          const slot = page.placements.find((entry) => entry.offerId === offer.id)?.slotId;
+          const aspect = slot ? cells?.get(slot)?.aspect : undefined;
+          // One at a time: each fetches every cutout in the cluster from
+          // the chain's image host, and a page of six would otherwise
+          // open forty connections at once.
+          // eslint-disable-next-line no-await-in-loop
+          const made = await api.prepareCluster(brandId, {
+            offers: members,
+            ...(aspect ? { aspect } : {}),
+            ...(get().arrangeNote.trim() ? { note: get().arrangeNote.trim() } : {}),
+          });
+          ready.push({
+            offerId: offer.id,
+            name: tileName(members),
+            prompt: made.prompt,
+            files: made.files,
+          });
+        }
+        set({
+          manualPage: { pageId, tiles: ready },
+          manual: null,
+          busy: null,
+          note: [
+            `${count(ready.length, 'klynge', 'klynger')} klar`
+            + ' — kør dem i Gemini og læg billederne ind samlet',
+            ...skipped,
+          ].join(' · '),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    async applyClusterLayouts(pageId: string, files: File[]) {
+      const { brandId, document } = get();
+      if (!brandId || !document || files.length === 0) return;
+      const page = document.pages.find((entry) => entry.id === pageId);
+      if (!page) return;
+
+      const clusters = pagePhotographs(page, document).clusters
+        .map((entry) => ({ offerId: entry.offer.id, members: entry.members }));
+      if (clusters.length === 0) {
+        set({ error: 'der er ingen fliser på siden der kan være ét fotografi' });
+        return;
+      }
+
+      /*
+       * Every product on the sheet, named once, with a note of whose it
+       * is.
+       *
+       * This is what makes dropping a folder of compositions work: each
+       * picture is read against the WHOLE page rather than against a
+       * tile somebody had to pick first. The products it finds say
+       * which cluster it is a picture of, and the same answer carries
+       * the geometry — so matching the picture to the tile costs no
+       * extra call.
+       */
+      const roll = clusters.flatMap(({ offerId, members }) => members.map((member, index) => (
+        { offerId, packIndex: index, member }
+      )));
+
+      const stoodUp: StoodUp[] = [];
+      const ghosts: Ghost[] = [];
+      const notes: string[] = [];
+      const done = new Set<string>();
+
+      set({ busy: `Læser ${count(files.length, 'billede', 'billeder')}…`, error: null, note: null });
+      try {
+        for (const file of files) {
+          // eslint-disable-next-line no-await-in-loop
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          // eslint-disable-next-line no-await-in-loop
+          const reading = await api.readClusterLayout(brandId, {
+            file: toBase64(bytes),
+            offers: roll.map((entry) => entry.member),
+          });
+
+          // Whose picture is this? The cluster most of its products
+          // belong to — a picture of three cheeses names three members
+          // of one tile and nothing else.
+          const votes = new Map<string, typeof reading.products>();
+          for (const product of reading.products) {
+            const owner = roll[product.index - 1];
+            if (!owner) continue;
+            const list = votes.get(owner.offerId) ?? [];
+            list.push({ ...product, index: owner.packIndex + 1 });
+            votes.set(owner.offerId, list);
+          }
+          const winner = [...votes.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+          if (!winner || winner[1].length < 2) {
+            notes.push(`${file.name}: ingen af sidens klynger blev genkendt`);
+            continue;
+          }
+          const [offerId, placed] = winner;
+          if (done.has(offerId)) {
+            notes.push(`${file.name}: ${tileName(
+              clusters.find((entry) => entry.offerId === offerId)!.members,
+            )} var allerede stillet op`);
+            continue;
+          }
+
+          const cluster = clusters.find((entry) => entry.offerId === offerId)!;
+          // eslint-disable-next-line no-await-in-loop
+          const stood = await standUpCluster({
+            offerId,
+            members: cluster.members,
+            overrides: page.placements.find((entry) => entry.offerId === offerId)?.overrides
+              ?? { ...FRESH },
+            copies: get().manualPage?.tiles.find((entry) => entry.offerId === offerId)?.files ?? [],
+            placed,
+            // eslint-disable-next-line no-await-in-loop
+            picture: await pictureAspect(file),
+          });
+          if ('error' in stood) {
+            notes.push(stood.error);
+            continue;
+          }
+          if (stood.patches.size === 0) {
+            notes.push(`${file.name}: ingen af varerne kunne genfindes`);
+            continue;
+          }
+
+          done.add(offerId);
+          stoodUp.push(stood);
+          // eslint-disable-next-line no-await-in-loop
+          const ghost = await keepGhost(brandId, stood, bytes, file.name);
+          if (ghost) ghosts.push(ghost);
+          notes.push(`${tileName(cluster.members)}: ${
+            count(stood.patches.size, 'vare', 'varer')} stillet op${
+            stood.complaints.length > 0
+              ? `, ${count(stood.complaints.length, 'advarsel', 'advarsler')}` : ''}`);
+        }
+
+        if (stoodUp.length === 0) {
+          set({ busy: null, error: notes.join(' · ') || 'ingen af billederne kunne bruges' });
+          return;
+        }
+
+        /*
+         * One write for the whole sheet, so the page is one undo step.
+         * Six clusters stood up together were arranged together.
+         */
+        gesture = null;
+        mutate((doc) => withPatches(doc, stoodUp));
+
+        set({
+          busy: null,
+          manualPage: null,
+          ghosts: ghosts.reduce(withGhost, get().ghosts),
+          note: notes.join(' · '),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    closeManual: () => set({ manual: null }),
+
+    async standUpClusters(pageId: string) {
+      const { brandId, document, brand } = get();
+      if (!brandId || !document || !brand) return;
+      const page = document.pages.find((entry) => entry.id === pageId);
+      if (!page) return;
+
+      const { clusters, skipped } = pagePhotographs(page, document);
+      if (clusters.length === 0) {
+        set({
+          error: skipped.length > 0
+            ? skipped.join(' · ')
+            : 'der er ingen sammensatte fliser på siden',
+        });
+        return;
+      }
+
+      const template = resolveTemplate(brand, page.templateId)
+        ?? document.templates.find((entry) => entry.id === page.templateId);
+      const cells = template ? slotCells(template, brand.pageAspect) : undefined;
+      const note = get().arrangeNote.trim();
+
+      const stoodUp: StoodUp[] = [];
+      const ghosts: Ghost[] = [];
+      const notes: string[] = [...skipped];
+
+      try {
+        for (const { offer, members } of clusters) {
+          const name = tileName(members);
+          const slot = page.placements.find((entry) => entry.offerId === offer.id)?.slotId;
+          const aspect = slot ? cells?.get(slot)?.aspect : undefined;
+
+          /*
+           * The cutouts are copied onto this server first, and not only
+           * because the composition needs them: a canvas may not read
+           * another origin's pixels, so these copies are also the only
+           * way to measure how much of each file is product — see
+           * `inkOf`. No model is paid for this step.
+           */
+          set({ busy: `${name}: henter udklip…`, error: null, note: null });
+          // eslint-disable-next-line no-await-in-loop
+          const ready = await api.prepareCluster(brandId, {
+            offers: members,
+            ...(aspect ? { aspect } : {}),
+            ...(note ? { note } : {}),
+          });
+
+          set({ busy: `${name}: billedmodellen sætter varerne op…` });
+          // eslint-disable-next-line no-await-in-loop
+          const drawn = await api.composeCluster(brandId, {
+            offers: members,
+            ...(aspect ? { aspect } : {}),
+            ...(note ? { note } : {}),
+          });
+
+          set({ busy: `${name}: læser opstillingen…` });
+          // The composition arrives keyed out and trimmed; a reader
+          // needs it on white — see `onWhite`.
+          // eslint-disable-next-line no-await-in-loop
+          const bytes = await onWhite(drawn.url);
+          // eslint-disable-next-line no-await-in-loop
+          const reading = await api.readClusterLayout(brandId, {
+            file: toBase64(bytes), offers: members,
+          });
+
+          // eslint-disable-next-line no-await-in-loop
+          const stood = await standUpCluster({
+            offerId: offer.id,
+            members,
+            overrides: page.placements.find((entry) => entry.offerId === offer.id)?.overrides
+              ?? { ...FRESH },
+            copies: ready.files,
+            placed: reading.products,
+            // eslint-disable-next-line no-await-in-loop
+            picture: await pictureAspect(new File([bytes as BlobPart], 'composed.png')),
+          });
+          if ('error' in stood) { notes.push(stood.error); continue; }
+          if (stood.patches.size === 0) {
+            notes.push(`${name}: ingen af varerne kunne genfindes i kompositionen`);
+            continue;
+          }
+
+          stoodUp.push(stood);
+          // eslint-disable-next-line no-await-in-loop
+          const ghost = await keepGhost(brandId, stood, bytes, 'komposition.png');
+          if (ghost) ghosts.push(ghost);
+          notes.push(`${name}: ${count(stood.patches.size, 'vare', 'varer')} stillet op${
+            reading.missing.length > 0 ? `, ${reading.missing.length} ikke genfundet` : ''}${
+            stood.complaints.length > 0
+              ? `, ${count(stood.complaints.length, 'advarsel', 'advarsler')}` : ''}`);
+        }
+
+        if (stoodUp.length === 0) {
+          set({ busy: null, error: notes.join(' · ') || 'ingen af klyngerne kunne stilles op' });
+          return;
+        }
+
+        gesture = null;
+        mutate((doc) => withPatches(doc, stoodUp));
+        set({
+          busy: null,
+          manualPage: null,
+          ghosts: ghosts.reduce(withGhost, get().ghosts),
+          note: notes.join(' · '),
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    closeClusters: () => set({ manualPage: null }),
+
+    toggleGhost: (offerId) => set((state) => ({
+      ghosts: state.ghosts.map((entry) => (entry.offerId === offerId
+        ? { ...entry, shown: !entry.shown }
+        : entry)),
+    })),
+
+    async setTileImage(offerId, file) {
+      const { brandId } = get();
+      if (!brandId) return;
+      set({ busy: `Skærer baggrunden fra ${file.name}…`, error: null });
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        /*
+         * Cut on the way in, and this is the one upload in the studio
+         * that is.
+         *
+         * A composed cluster is drawn to a prompt that demands white to
+         * all four edges precisely so it can be keyed out, and a white
+         * rectangle on SuperBrugsen's yellow reads as a rendering bug.
+         * Every other upload here is a designer's own photograph and is
+         * stored untouched — a flood fill on one of those takes the sky.
+         */
+        const { url, cut } = await api.uploadImage(brandId, toBase64(bytes), file.name, true);
+        // The dev server's static tree needs a beat to notice a path it
+        // has never served — see `reachable`.
+        if (!await reachable(url)) throw new Error(`${url} kunne ikke hentes igen`);
+
+        gesture = null;
+        mutate((document) => ({
+          ...document,
+          offers: document.offers.map((offer) => (offer.id === offerId
+            /*
+             * One picture, so the pack goes. `members` stays: the
+             * document still has to be able to say what the price
+             * covers, even though the page no longer shows them apart.
+             */
+            ? { ...offer, imageUrl: url, imagePack: [] }
+            : offer)),
+          pages: document.pages.map((page) => ({
+            ...page,
+            // The per-variant corrections described products that are
+            // no longer drawn separately. Left behind they would be
+            // applied to whatever happened to land on those indices.
+            placements: page.placements.map((placement) => (placement.offerId === offerId
+              ? { ...placement, overrides: { ...placement.overrides, pack: {} } }
+              : placement)),
+          })),
+        }));
+        /*
+         * Said out loud when the fill found nothing.
+         *
+         * `kept` near 1 means the picture had no white field to remove —
+         * a model that drew a room, a table, a gradient. The file is on
+         * the tile either way, because it is the editor's file and
+         * refusing it would be worse; but they are told, because the
+         * alternative is discovering a white rectangle on a coloured
+         * page at the proof stage.
+         */
+        const uncut = cut !== undefined && cut.kept > 0.97;
+        set({
+          busy: null,
+          manual: null,
+          selectedPack: null,
+          note: uncut ? null : `${file.name} lagt på flisen · baggrunden skåret fra`,
+          error: uncut
+            ? `${file.name} har ingen hvid baggrund at skære fra — den lagt på som den er.`
+              + ' Bed modellen om ren hvid bund helt ud til kanten.'
+            : null,
+        });
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    selectPackItem(index) {
+      // Naming a variant names its box too: everything downstream asks
+      // "which box" first, and a cluster is always inside the artwork.
+      set({ selectedPack: index, ...(index === null ? {} : { selectedPart: 'media' as const }) });
+    },
+
+    updatePackItem(offerId, index, patch, name) {
+      const current = overridesOf(offerId);
+      if (!current) return;
+      get().updateOverrides(offerId, packPatch(current, index, patch), name);
+    },
+
+    nudgePackItem(offerId, index, dx, dy) {
+      const current = overridesOf(offerId);
+      if (!current) return;
+      const now = packOverride(current, index);
+      const { reach } = packLimits();
+      get().updatePackItem(offerId, index, {
+        offsetX: clamp(now.offsetX + dx, -reach, reach),
+        offsetY: clamp(now.offsetY + dy, -reach, reach),
+      }, repeating(`nudge:${offerId}:pack${index}`));
+    },
+
+    scalePackItem(offerId, index, delta) {
+      const current = overridesOf(offerId);
+      if (!current) return;
+      const now = packOverride(current, index);
+      const { minScale, maxScale } = packLimits();
+      get().updatePackItem(offerId, index, {
+        scale: clamp(now.scale + delta, minScale, maxScale),
+      }, repeating(`scale:${offerId}:pack${index}`));
+    },
+
+    turnPackItem(offerId, index, delta) {
+      const current = overridesOf(offerId);
+      if (!current) return;
+      const now = packOverride(current, index);
+      const { turn } = packLimits();
+      get().updatePackItem(offerId, index, {
+        rotate: clamp(now.rotate + delta, -turn, turn),
+      }, repeating(`turn:${offerId}:pack${index}`));
+    },
+
+    resetPackItem(offerId, index) {
+      gesture = null;
+      get().updatePackItem(offerId, index, {
+        offsetX: 0, offsetY: 0, scale: 1, rotate: 0, hidden: false,
+      });
+    },
+
+    setPackItemHidden(offerId, index, hidden) {
+      gesture = null;
+      get().updatePackItem(offerId, index, { hidden });
+    },
+
     updatePart(offerId, part, patch, name) {
       const current = overridesOf(offerId);
       if (!current) return;
@@ -1633,7 +2741,7 @@ export const useStudio = create<StudioState>((set, get) => {
     resetTile(offerId) {
       gesture = null;
       get().updateOverrides(offerId, {
-        imageScale: 1, imageOffsetX: 0, imageOffsetY: 0, parts: {},
+        imageScale: 1, imageOffsetX: 0, imageOffsetY: 0, parts: {}, pack: {},
       });
     },
 
@@ -2053,10 +3161,12 @@ export const useStudio = create<StudioState>((set, get) => {
           placements: page.placements.filter((placement) => placement.offerId !== offerId),
         } : page)),
       }));
-      if (get().selectedOfferId === offerId) set({ selectedOfferId: null, selectedPart: null });
+      if (get().selectedOfferId === offerId) {
+        set({ selectedOfferId: null, selectedPart: null, selectedPack: null });
+      }
     },
 
-    async fillSlot(pageId, slotId, offerIds) {
+    async fillSlot(pageId, slotId, offerIds, options = {}) {
       const { brand, document, feedOffers } = get();
       if (!brand || !document) return;
       const page = document.pages.find((p) => p.id === pageId);
@@ -2145,9 +3255,41 @@ export const useStudio = create<StudioState>((set, get) => {
        * steady between renders when no model chose one — `packStyle`
        * draws it from the id.
        */
-      const assembled = seated.length === 1
+      let assembled = seated.length === 1
         ? seated[0]!
         : groupOffers(seated, `group/${pageId}/${slotId}`);
+
+      /*
+       * One photograph instead of a row of cutouts.
+       *
+       * The image model is handed the cutouts and asked to photograph
+       * them standing together — shared floor, one hero in front, the
+       * rest overlapping at the edges. What comes back replaces the
+       * pack: the tile draws one picture, exactly as it does for a
+       * published "frit valg" tile, whose photograph is also one image
+       * of several products.
+       *
+       * `members` survives it, so the document still says what the
+       * price covers even though the page no longer shows them apart.
+       * The cost is stated where the button is: a composed tile cannot
+       * be edited product by product.
+       */
+      if (options.compose && seated.length > 1) {
+        set({ busy: 'Billedmodellen sætter varerne op…', error: null, note: null });
+        try {
+          const drawn = await api.composeCluster(get().brandId!, {
+            offers: seated,
+            ...(cell?.aspect ? { aspect: cell.aspect } : {}),
+            ...(get().arrangeNote.trim() ? { note: get().arrangeNote.trim() } : {}),
+          });
+          assembled = { ...assembled, imageUrl: drawn.url, imagePack: [] };
+          by = drawn.model;
+        } catch (error) {
+          set({ busy: null, error: message(error) });
+          return;
+        }
+        set({ busy: null });
+      }
 
       const overrides: PlacementOverrides = {
         ...FRESH,
@@ -2196,12 +3338,14 @@ export const useStudio = create<StudioState>((set, get) => {
         librarySelection: [],
         selectedOfferId: assembled.id,
         selectedPart: null,
+        selectedPack: null,
         note: seated.length === 1
           ? 'Varen lagt i pladsen'
           : [
             `${count(seated.length, 'vare', 'varer')} samlet i én plads`,
+            options.compose ? 'som ét fotografi' : '',
             by ? `sat op af ${by}` : 'sat op uden model',
-          ].join(' · '),
+          ].filter(Boolean).join(' · '),
       });
     },
 
@@ -2264,6 +3408,7 @@ export const useStudio = create<StudioState>((set, get) => {
           activePageId: document.pages[0]?.id ?? null,
           selectedOfferId: null,
           selectedPart: null,
+          selectedPack: null,
           selectedText: null,
           busy: null,
           note: [
@@ -2336,6 +3481,7 @@ export const useStudio = create<StudioState>((set, get) => {
           activePageId: landed?.id ?? null,
           selectedOfferId: null,
           selectedPart: null,
+          selectedPack: null,
           selectedText: null,
           layoutAppend: true,
           busy: null,

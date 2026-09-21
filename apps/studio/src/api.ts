@@ -346,17 +346,29 @@ export async function reproducePage(
  */
 export interface UploadedImage {
   url: string;
+  /**
+   * How the flood fill went, when one was asked for.
+   *
+   * `kept` is the share of the picture that survived. Near 1 means
+   * nothing was cut — which is exactly what an image drawn on a room
+   * instead of a white field looks like, and the difference between
+   * "the background is gone" and "there was nothing this could remove"
+   * is invisible from outside.
+   */
+  cut?: { kept: number; threshold: number };
 }
 
 export async function uploadImage(
   brandId: string,
   base64: string,
   name?: string,
+  /** Knock the white field out first. Only for a picture drawn to be cut. */
+  cut = false,
 ): Promise<UploadedImage> {
   const response = await fetch(`${BASE}/brand/uploads`, {
     method: 'POST',
     headers: headers(brandId, { 'content-type': 'application/json' }),
-    body: JSON.stringify({ file: base64, ...(name ? { name } : {}) }),
+    body: JSON.stringify({ file: base64, ...(name ? { name } : {}), ...(cut ? { cut } : {}) }),
   });
   if (!response.ok) await fail(response);
   return (await response.json()) as UploadedImage;
@@ -524,4 +536,109 @@ export async function arrangeGroup(
   });
   if (!response.ok) await fail(response);
   return (await response.json()) as ArrangeReply;
+}
+
+/* ------------------------------------- varerne som ét fotografi */
+
+export interface ClusterReply {
+  /** Where the composed photograph now lives, root-relative. */
+  url: string;
+  bytes: number;
+  /** Exactly what the image model was asked for. */
+  prompt: string;
+  model: string;
+}
+
+/**
+ * Compose several products into ONE leaflet photograph.
+ *
+ * The other way to fill a cell. `fillSlot` on its own lays the cutouts
+ * side by side and every one of them stays movable; this asks the image
+ * model for a photograph of them standing together — shared floor, one
+ * hero in front, the rest overlapping — which is what a printed page
+ * has and what no stylesheet produces. What it costs is that the
+ * products in the result can no longer be moved one by one.
+ *
+ * Throws rather than falling back: the editor already had a working
+ * tile and pressed this on purpose.
+ */
+export async function composeCluster(
+  brandId: string,
+  request: { offers: Offer[]; aspect?: number; note?: string },
+): Promise<ClusterReply> {
+  const response = await fetch(`${BASE}/brand/cluster`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as ClusterReply;
+}
+
+export interface PrepareReply {
+  /** The prompt exactly as the server would have sent it. */
+  prompt: string;
+  /** The cutouts, numbered in the order the prompt names them. */
+  files: { index: number; name: string; url: string; bytes: number }[];
+}
+
+/**
+ * Everything needed to run the composition by hand.
+ *
+ * The image model is billing-gated on Google's side, and waiting for a
+ * billing account is not a reason to be unable to see whether the
+ * prompt works. This returns the prompt and the cutouts as files —
+ * numbered in the prompt's own order, re-served from this server so
+ * they can be saved with those names.
+ */
+export async function prepareCluster(
+  brandId: string,
+  request: { offers: Offer[]; aspect?: number; note?: string },
+): Promise<PrepareReply> {
+  const response = await fetch(`${BASE}/brand/cluster/prepare`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as PrepareReply;
+}
+
+export interface LayoutReading {
+  products: {
+    index: number;
+    cx: number;
+    cy: number;
+    width: number;
+    /** The product's lowest edge, 0–1 down the picture — see `PlacedProduct`. */
+    bottom: number;
+    rotate: number;
+  }[];
+  /** Products the model could not find. Left where they were. */
+  missing: number[];
+  model: string;
+  usage: { inputTokens: number; outputTokens: number } | null;
+}
+
+/**
+ * Measure a composed picture, so the same composition can be rebuilt
+ * from the ORIGINAL cutouts.
+ *
+ * The picture is never printed. An image model redraws pixels, and what
+ * it redraws worst is small type — a brand name, a percentage, the
+ * print on a lid. So its geometry is taken and its pixels are thrown
+ * away, and the chain's own artwork ends up standing where the
+ * composition put it.
+ */
+export async function readClusterLayout(
+  brandId: string,
+  request: { file: string; offers: Offer[] },
+): Promise<LayoutReading> {
+  const response = await fetch(`${BASE}/brand/cluster/layout`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as LayoutReading;
 }

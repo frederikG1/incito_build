@@ -10,6 +10,7 @@ export * from './gemini.js';
 export * from './subject.js';
 export * from './prompt.js';
 export * from './cutout.js';
+export * from './cluster.js';
 export * from './store.js';
 
 /**

@@ -1,19 +1,22 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
-import { CatalogDocument, Offer } from '@incitio/schema';
+import { CatalogDocument, Offer, packSizeOf } from '@incitio/schema';
 import {
   findBrand, findSource, listBrands, resolveSource, type BrandDefinition,
 } from '@incitio/brands';
 import { buildCatalogue } from '@incitio/pipeline';
-import { arrangeGroup } from '@incitio/curator';
+import { arrangeGroup, readClusterLayout } from '@incitio/curator';
 import {
   EMPTY_LABEL_DICTIONARY, ingestCsv, ingestJson, type LabelDictionary,
 } from '@incitio/ingest';
 import { imaginePage, matchPage, MatchError, mediaType } from '@incitio/match';
 import { uploadStore } from './uploads.js';
 import { renderCataloguePdf } from '@incitio/pdf';
-import { decorate, DEFAULT_IMAGE_MODEL, GeminiError } from '@incitio/decor';
+import {
+  clusterPrompt, composeCluster, cutout, decorate, fetchImages,
+  DEFAULT_IMAGE_MODEL, GeminiError,
+} from '@incitio/decor';
 import { importPublication, PublicationError } from '@incitio/publication';
 import { Store } from './db.js';
 
@@ -350,6 +353,15 @@ export function createApp(store: Store, options: AppOptions = {}) {
     file: z.string().min(1).max(24_000_000),
     /** Shown back to the editor; never used as a path. */
     name: z.string().max(200).optional(),
+    /**
+     * Flood-fill the white field out of it before storing.
+     *
+     * Only for a picture that was DRAWN to be cut — one composed to
+     * `clusterPrompt`, which demands white reaching all four edges. A
+     * photograph from a designer's folder must never go through it: the
+     * fill would take the sky with it.
+     */
+    cut: z.boolean().optional(),
   });
 
   app.post('/api/brand/uploads', async (c) => {
@@ -391,21 +403,42 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
 
     /*
-     * Stored exactly as it arrived.
+     * Stored exactly as it arrived, unless the caller asks otherwise.
      *
-     * This route used to flood-fill the background out of every upload,
+     * This route used to flood-fill the background out of EVERY upload,
      * on the theory that a chain's packshots come off a white studio
      * sweep. In practice they do not arrive that way and do not need
      * to: a chain that prints a leaflet already keeps cut-out artwork,
      * and the fill was as likely to eat the sky out of a photograph as
-     * to help. Removing it also removes the question the editor could
-     * not answer — whether the picture on screen is the file they
-     * chose. It is.
-     *
-     * The generated artwork's own cut-out stays where it is, in
-     * `@incitio/decor`: that one keys out a white field the prompt
-     * DEMANDS, which is a contract this route never had.
+     * to help. So it is opt-in now, and the opt-in is the only case
+     * where the contract holds — a picture composed to `clusterPrompt`,
+     * which DEMANDS a white field reaching all four edges. Asking for
+     * the fill is the caller saying "this one was drawn to be cut".
      */
+    if (parsed.data.cut) {
+      try {
+        const cut = await cutout(bytes, mediaType(bytes), { trim: true });
+        /*
+         * `kept` is the honest half. A flood fill that finds nothing
+         * returns the picture essentially unchanged — which is what a
+         * model that drew a room instead of a white field produces —
+         * and the editor has to be told, because a white rectangle on
+         * SuperBrugsen's yellow looks like a rendering bug rather than
+         * like a prompt that was ignored.
+         */
+        const { ref } = uploads.put(cut.bytes, 'png');
+        return c.json({
+          url: ref,
+          bytes: cut.bytes.length,
+          cut: { kept: cut.kept, threshold: cut.threshold },
+        });
+      } catch (error) {
+        return c.json({
+          error: `baggrunden kunne ikke skæres fra: ${error instanceof Error ? error.message : 'ukendt fejl'}`,
+        }, 500);
+      }
+    }
+
     const { ref } = uploads.put(bytes, extension);
     return c.json({ url: ref, bytes: bytes.length });
   });
@@ -556,6 +589,268 @@ export function createApp(store: Store, options: AppOptions = {}) {
       ...(parsed.data.note ? { note: parsed.data.note } : {}),
     });
     return c.json(result);
+  });
+
+  const ClusterRequest = z.object({
+    /** The products that are to become one photograph. Two to eight. */
+    offers: z.array(Offer).min(2).max(8),
+    /** Width over height of the cell it will sit in. */
+    aspect: z.number().positive().max(20).optional(),
+    /** The editor's own words, added on top of the craft. */
+    note: z.string().max(500).optional(),
+  });
+
+  /**
+   * Several products as ONE leaflet photograph.
+   *
+   * The other way to fill a cell — see `PlacementOverrides.pack` for the
+   * way that keeps every product movable. This one hands the cutouts to
+   * the image model and asks for a photograph of them standing
+   * together: a shared floor, one hero in front, the rest overlapping,
+   * which is what a printed page has and what no stylesheet produces.
+   *
+   * It throws where `/arrange` falls back, and on purpose: the editor
+   * already has a working tile and pressed this button to get a
+   * different one, so a silent fallback would leave them wondering
+   * whether anything happened.
+   */
+  app.post('/api/brand/cluster', async (c) => {
+    if (!options.assetDir) {
+      return c.json({ error: 'serveren har ingen assetDir at gemme billeder i' }, 503);
+    }
+    if (!process.env['GEMINI_API_KEY']) {
+      return c.json({
+        error: 'ingen nøgle til billedmodellen',
+        detail: 'Sæt GEMINI_API_KEY i .env og genstart API-serveren. '
+          + 'Billedgenerering kræver desuden fakturering på Google-projektet.',
+      }, 503);
+    }
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = ClusterRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+
+    const offers = parsed.data.offers;
+    const fetched = await fetchImages(offers.map((offer) => offer.imageUrl));
+    const missing = offers.filter((_, index) => fetched[index] === null);
+    if (missing.length > 0) {
+      /*
+       * Named, not counted. The prompt calls image N by product N's
+       * name, so a list with a hole in it would put every label on the
+       * wrong product — and the editor can only fix it if they are told
+       * which photograph is the problem.
+       */
+      return c.json({
+        error: 'billedet kunne ikke hentes for '
+          + missing.map((offer) => offer.name).join(', '),
+      }, 422);
+    }
+
+    try {
+      const drawn = await composeCluster({
+        products: offers.map((offer) => ({
+          name: offer.brand ? `${offer.brand} ${offer.name}` : offer.name,
+          /*
+           * The real size, wherever it is written.
+           *
+           * It used to fall back to `offer.pack`, which says "1 stk."
+           * for a lemon and for a 15-pack of beer alike — so the prompt
+           * demanded natural relative sizes and then handed over
+           * nothing to judge them by. `packSizeOf` reads the chain's
+           * own sentence when the structured field is empty, which in
+           * this feed is always. See the note there.
+           */
+          ...(() => {
+            const size = packSizeOf(offer);
+            return size ? { size } : {};
+          })(),
+        })),
+        references: fetched.filter((image): image is NonNullable<typeof image> => image !== null),
+        ...(parsed.data.aspect ? { aspect: parsed.data.aspect } : {}),
+        ...(parsed.data.note ? { note: parsed.data.note } : {}),
+      });
+
+      /*
+       * Cut before it is stored.
+       *
+       * The prompt demands a white field reaching all four edges, and a
+       * white rectangle pasted onto SuperBrugsen's yellow reads as a
+       * rendering bug. `kept` says how much survived: near 1 means the
+       * fill found nothing, which is what a model that drew a room
+       * instead of a field produces — reported rather than discovered
+       * on a printed page.
+       */
+      const cut = await cutout(drawn.bytes, drawn.mimeType, { trim: true });
+      const stored = uploadStore(options.assetDir).put(cut.bytes, 'png');
+
+      return c.json({
+        url: stored.ref,
+        bytes: cut.bytes.length,
+        prompt: drawn.prompt,
+        model: drawn.model || DEFAULT_IMAGE_MODEL,
+        cut: { kept: cut.kept, threshold: cut.threshold },
+      });
+    } catch (error) {
+      if (error instanceof GeminiError) return c.json({ error: error.message }, 422);
+      return c.json({
+        error: error instanceof Error ? error.message : 'billedet kunne ikke laves',
+      }, 500);
+    }
+  });
+
+  const PrepareRequest = z.object({
+    offers: z.array(Offer).min(2).max(8),
+    aspect: z.number().positive().max(20).optional(),
+    note: z.string().max(500).optional(),
+  });
+
+  /**
+   * Everything needed to run the composition BY HAND.
+   *
+   * The image model is billing-gated on Google's side, and waiting for
+   * a billing account is not a reason to be unable to see whether the
+   * prompt works. This hands back the two things a person needs to do
+   * it themselves in Gemini's own app: the prompt exactly as the server
+   * would send it, and the cutouts as files, numbered in the order the
+   * prompt names them.
+   *
+   * The pictures are re-served from this server rather than linked to
+   * the chain's: a cross-origin link cannot carry a filename, and the
+   * filename is the whole point — the prompt says "image 1: Klovborg
+   * skæreost" and the file has to say so too, or the upload order is
+   * guesswork and every label lands on the wrong product.
+   */
+  app.post('/api/brand/cluster/prepare', async (c) => {
+    if (!options.assetDir) {
+      return c.json({ error: 'serveren har ingen assetDir at gemme billeder i' }, 503);
+    }
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = PrepareRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+
+    const offers = parsed.data.offers;
+    const fetched = await fetchImages(offers.map((offer) => offer.imageUrl));
+    const missing = offers.filter((_, index) => fetched[index] === null);
+    if (missing.length > 0) {
+      return c.json({
+        error: 'billedet kunne ikke hentes for '
+          + missing.map((offer) => offer.name).join(', '),
+      }, 422);
+    }
+
+    const store = uploadStore(options.assetDir);
+    const files = offers.map((offer, index) => {
+      const image = fetched[index]!;
+      const stored = store.put(image.bytes, image.mimeType.split('/')[1] ?? 'png');
+      return {
+        index: index + 1,
+        // What the file should be called when it is saved. Numbered
+        // first so a folder sorts into the prompt's own order.
+        name: `${index + 1}-${offer.name.replace(/[^\p{L}\p{N} .-]/gu, '').trim().slice(0, 50)}`
+          + `.${image.mimeType.split('/')[1] ?? 'png'}`,
+        url: stored.ref,
+        bytes: image.bytes.length,
+      };
+    });
+
+    return c.json({
+      prompt: clusterPrompt(
+        // The same sizes the automatic route sends — see the note there.
+        offers.map((offer) => ({
+          name: offer.brand ? `${offer.brand} ${offer.name}` : offer.name,
+          ...(() => {
+            const size = packSizeOf(offer);
+            return size ? { size } : {};
+          })(),
+        })),
+        {
+          ...(parsed.data.aspect ? { aspect: parsed.data.aspect } : {}),
+          ...(parsed.data.note ? { note: parsed.data.note } : {}),
+        },
+      ),
+      files,
+    });
+  });
+
+  const ClusterLayoutRequest = z.object({
+    /** The composed picture, base64. */
+    file: z.string().min(1).max(24_000_000),
+    /** The products, in the order the composition's prompt numbered them. */
+    offers: z.array(Offer).min(2).max(8),
+  });
+
+  /**
+   * Measure a composed picture so the same composition can be rebuilt
+   * from the ORIGINAL cutouts.
+   *
+   * The reason this route exists rather than the picture simply being
+   * printed: an image model redraws pixels, and what it redraws worst
+   * is small type. The composition it produces is good and its labels
+   * are not the chain's. So the picture is read for its geometry and
+   * then thrown away, and what prints is the artwork the chain
+   * supplied, standing where the composition put it.
+   */
+  app.post('/api/brand/cluster/layout', async (c) => {
+    if (!process.env['ANTHROPIC_API_KEY']) {
+      return c.json({
+        error: 'ingen API-nøgle',
+        detail: 'Sæt ANTHROPIC_API_KEY i .env og genstart API-serveren.',
+      }, 503);
+    }
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = ClusterLayoutRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+
+    const image = Buffer.from(parsed.data.file, 'base64');
+    if (image.length === 0) return c.json({ error: 'billedet kunne ikke afkodes' }, 400);
+
+    let type: string;
+    try {
+      type = mediaType(image);
+    } catch {
+      return c.json({ error: 'filen er ikke et billede (PNG, JPEG, WebP eller GIF)' }, 415);
+    }
+
+    try {
+      const reading = await readClusterLayout({
+        image,
+        mimeType: type,
+        products: parsed.data.offers.map((offer) => ({
+          name: offer.brand ? `${offer.brand} ${offer.name}` : offer.name,
+        })),
+      });
+      return c.json(reading);
+    } catch (error) {
+      return c.json({
+        error: error instanceof Error ? error.message : 'opstillingen kunne ikke læses',
+      }, 500);
+    }
   });
 
   const PublicationRequest = z.object({

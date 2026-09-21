@@ -276,6 +276,51 @@ export const PART_DEFAULTS: PartOverride = Object.freeze(PartOverride.parse({}))
 export const TILE_ARRANGEMENTS = ['row', 'stagger', 'grid', 'fan'] as const;
 export type TileArrangement = (typeof TILE_ARRANGEMENTS)[number];
 
+/**
+ * One product inside a cluster, moved by hand.
+ *
+ * A tile whose offer covers several products draws them together — a
+ * row, a stagger, a block, a fan — and the arrangement decides where
+ * each one sits. This is the override on top of that: the same four
+ * gestures every other box answers to, applied to one photograph among
+ * several.
+ *
+ * `rotate` exists here and on no other box for the same reason it
+ * exists on a decoration: a pasted-on product is the one thing on a
+ * printed page that may sit off-square, and a fanned cluster is already
+ * doing it by the stylesheet's own hand.
+ */
+export const PackOverride = z.object({
+  /** Page percent, like `PartOverride` — see `packLimits`. */
+  offsetX: z.number().min(-100).max(100).default(0),
+  offsetY: z.number().min(-100).max(100).default(0),
+  scale: z.number().min(0.2).max(3).default(1),
+  rotate: z.number().min(-45).max(45).default(0),
+  /**
+   * Forward or back among the products it shares a cell with.
+   *
+   * Zero leaves the stacking to the stylesheet, which puts the MIDDLE
+   * product in front — see `OfferTile` — because a printed group has a
+   * front and stacking by document order reads as a pile that fell
+   * over. That is a good default and it cannot know the answer: which
+   * product belongs in front is a fact about the offer, and once a
+   * composition has moved every product, the default has nothing left
+   * to go on at all.
+   *
+   * A step either way rather than an absolute layer, because the
+   * question a person asks is "this one in front of that one" and
+   * because the range has to stay inside the tile's own stack: the
+   * words and the price mark sit above the artwork on purpose, and a
+   * product that outran them would print over its own price.
+   */
+  depth: z.number().int().min(-4).max(4).default(0),
+  /** Taken off the page. The others close up around it. */
+  hidden: z.boolean().default(false),
+});
+export type PackOverride = z.infer<typeof PackOverride>;
+
+export const PACK_DEFAULTS: PackOverride = Object.freeze(PackOverride.parse({}));
+
 export const PlacementOverrides = z.object({
   pinned: z.boolean().default(false),
   /**
@@ -317,8 +362,172 @@ export const PlacementOverrides = z.object({
    * document saved before this field existed.
    */
   parts: z.record(z.string(), PartOverride).default({}),
+  /*
+   * Where each product INSIDE a cluster has been put, keyed by its
+   * position in the pack — "0", "1", "2".
+   *
+   * A tile that carries three variants draws three photographs, and
+   * until this existed they moved as one box: the arrangement decided
+   * where each sat and nothing could touch a single one of them. That
+   * is the difference between a cluster a person laid out and a cluster
+   * a stylesheet emitted, and it is exactly the half of a printed page
+   * that is done by hand.
+   *
+   * Keyed by INDEX rather than by image URL. The same photograph can
+   * legitimately appear twice in a pack, and an offer that swaps one
+   * variant for another next week should leave the corrections where
+   * they were on the page rather than orphaning them on a URL nobody
+   * uses any more.
+   *
+   * Sparse and defaulted, like `parts` and for the same two reasons.
+   */
+  pack: z.record(z.string(), PackOverride).default({}),
 });
 export type PlacementOverrides = z.infer<typeof PlacementOverrides>;
+
+/** One product of a cluster's corrections, with nothing left out. */
+export function packOverride(overrides: PlacementOverrides, index: number): PackOverride {
+  return overrides.pack[String(index)] ?? PACK_DEFAULTS;
+}
+
+/** The placement patch that writes one product of a cluster back. */
+export function packPatch(
+  overrides: PlacementOverrides,
+  index: number,
+  patch: Partial<PackOverride>,
+): Partial<PlacementOverrides> {
+  return {
+    pack: {
+      ...overrides.pack,
+      [String(index)]: { ...packOverride(overrides, index), ...patch },
+    },
+  };
+}
+
+/**
+ * How far one product of a cluster may be moved.
+ *
+ * Page percent, like every box but the artwork — see `partLimits` — so
+ * a drag moves what the pointer covered rather than a distance that
+ * depends on how big the photograph happens to be.
+ *
+ * The reach was 20, on the reasoning that a variant dragged a third of
+ * the way across the sheet has left the offer it is part of. That is
+ * true of a DRAG and false of a composition. Two things break it:
+ *
+ *  - A full-width lead tile is most of the sheet, so standing three
+ *    products up across it moves the outer ones some forty per cent.
+ *  - The stylesheet lays the products out in the pack's own order and
+ *    an image model composes them in whatever order it likes. A
+ *    composition that puts product three on the left and product one on
+ *    the right is a perfectly good composition, and rebuilding it means
+ *    the two SWAP ENDS — the full width of the cell, near sixty per
+ *    cent of the sheet.
+ *
+ * Cut to 20, or to 45, those corrections stopped half way and the
+ * products piled up in the middle: read correctly, applied correctly,
+ * and silently halved by a limit meant for a slip of the hand. The
+ * sheet is the only boundary that is true here, so that is the
+ * number. A slip of the hand is still bounded — by the slider and the
+ * drag, which is where a hand's reach belongs.
+ */
+export function packLimits(): {
+  reach: number; step: number; coarse: number; minScale: number; maxScale: number;
+  turn: number; depth: number;
+} {
+  return { reach: 100, step: 0.25, coarse: 1, minScale: 0.2, maxScale: 3, turn: 45, depth: 4 };
+}
+
+/**
+ * Which product of a cluster paints over which, as one number.
+ *
+ * Three bands, so the editor's word always wins and the stylesheet
+ * still has an opinion when nobody has said anything:
+ *
+ *   sent back    0–3   under every product the stylesheet placed
+ *   the default  5–12  the MIDDLE product in front, a printed group's
+ *                      own shape — stacking by document order reads as
+ *                      a pile that fell over
+ *   brought fore 13–16 over everything, in the order they were asked for
+ *
+ * All of it under the words and the price mark, which print above the
+ * artwork on purpose — see `.tile__info`.
+ *
+ * Here rather than in the stylesheet or the tile because two places
+ * need the same answer: the tile draws it, and the panel's "forrest"
+ * has to know what it is beating.
+ */
+export function packStack(count: number, index: number, depth: number): number {
+  if (depth > 0) return 12 + Math.min(depth, 4);
+  if (depth < 0) return 4 + Math.max(depth, -4);
+  return 4 + count - Math.abs(index - (count - 1) / 2) * 2;
+}
+
+/**
+ * How many cutouts one photograph can hold.
+ *
+ * Two is the fewest that is a group at all. Eight is the schema's own
+ * ceiling on a pack — see `Offer.imagePack` — and past it the rule this
+ * prompt insists on, that every label stays readable, stops being
+ * possible in one frame.
+ */
+export const MIN_CLUSTER = 2;
+export const MAX_CLUSTER = 8;
+
+/**
+ * The varegrupper a would-be cluster spans.
+ *
+ * One photograph is one family of products. Six bottles of sodavand
+ * compose into a group a leaflet would print; a box of detergent, a bag
+ * of frozen croquettes and a loaf of rye do not — a printed page stands
+ * those side by side, because they are three offers that happen to
+ * share a price, not one shelf.
+ *
+ * The prompt cannot rescue that. It is handed a list and told to
+ * arrange it, so the more unrelated things on the list the more it has
+ * to invent a scene that does not exist: sizes with nothing to compare
+ * against, a hero among products that are not each other's neighbours.
+ * What comes back looks exactly like what it is.
+ *
+ * So the question is asked BEFORE anything is paid for, and it is asked
+ * of the feed's own categories rather than of a model. Unnamed
+ * categories are not counted: a feed that says nothing cannot be used
+ * to refuse, and the count is the fallback there.
+ */
+export function clusterFamilies(products: { category?: string | null }[]): string[] {
+  return [...new Set(
+    products.map((product) => (product.category ?? '').trim()).filter(Boolean),
+  )];
+}
+
+/**
+ * Why these products are not one photograph — or `null` when they are.
+ *
+ * A sentence rather than a boolean, because every caller has to be able
+ * to say WHY it skipped a tile. A person who is told "three varegrupper"
+ * knows what to do about it; one who is told "skipped" does not.
+ */
+export function notOnePhotograph(
+  products: { name: string; category?: string | null }[],
+): string | null {
+  if (products.length < MIN_CLUSTER) return 'for få varer til en opstilling';
+  if (products.length > MAX_CLUSTER) {
+    return `${products.length} varer er flere end ét fotografi kan holde`;
+  }
+  const families = clusterFamilies(products);
+  if (families.length > 1) {
+    return `${products.length} varer i ${families.length} varegrupper `
+      + `(${families.join(', ')}) — det er flere tilbud, ikke én opstilling`;
+  }
+  return null;
+}
+
+/** Whether one product of a cluster has been moved, resized or turned. */
+export function packTouched(overrides: PlacementOverrides, index: number): boolean {
+  const item = packOverride(overrides, index);
+  return item.offsetX !== 0 || item.offsetY !== 0
+    || item.scale !== 1 || item.rotate !== 0 || item.depth !== 0 || item.hidden;
+}
 
 /**
  * One box's corrections, the artwork included.
@@ -391,6 +600,8 @@ export function partTouched(overrides: PlacementOverrides, part: TilePart): bool
 export function tileArranged(overrides: PlacementOverrides): boolean {
   return Object.values(overrides.parts).some(
     (p) => p.offsetX !== 0 || p.offsetY !== 0 || p.scale !== 1,
+  ) || Object.values(overrides.pack).some(
+    (p) => p.offsetX !== 0 || p.offsetY !== 0 || p.scale !== 1 || p.rotate !== 0,
   );
 }
 

@@ -222,14 +222,32 @@ export interface GeneratedImage {
   mimeType: string;
 }
 
-/** One prompt in, one image out. */
+/**
+ * One prompt in, one image out — with reference pictures, when the job
+ * is to compose them rather than to invent something.
+ *
+ * The references go in the SAME message as the prompt and before it, so
+ * "the attached product images" means something: this API reads a turn
+ * as one list of parts, and a prompt that names "image 1" with no
+ * images in front of it is a prompt about nothing. Their order is the
+ * order the prompt numbers them in, which is why `composeCluster`
+ * refuses to send a list with a gap in it.
+ */
 export async function generateImage(
   prompt: string,
   options: GeminiOptions = {},
+  references: GeneratedImage[] = [],
 ): Promise<GeneratedImage> {
   const model = options.model ?? DEFAULT_IMAGE_MODEL;
   const { parts } = await call(model, {
-    contents: [{ parts: [{ text: prompt }] }],
+    contents: [{
+      parts: [
+        ...references.map((image) => ({
+          inline_data: { mime_type: image.mimeType, data: image.bytes.toString('base64') },
+        })),
+        { text: prompt },
+      ],
+    }],
   }, options);
 
   const image = parts.find((p) => p.inlineData);

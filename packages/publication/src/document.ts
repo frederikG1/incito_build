@@ -409,6 +409,7 @@ export function publicationDocument(
             imageOffsetX: 0,
             imageOffsetY: 0,
             parts: {},
+            pack: {},
           },
         }))
         : [],

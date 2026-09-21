@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import type { PagePart } from '@incitio/schema';
 import { PAGE_PART_NAMES, pageTextLimits, pageTextOverride } from '@incitio/schema';
 import { useStudio } from './state.js';
+import { shifted, snap, targetsFrom, type Guide } from './snap.js';
 
 /**
  * The editing overlay on one of a page's own lines.
@@ -105,6 +106,8 @@ export function PageTextEditor({ pageId, part }: PageTextEditorProps) {
   const [editing, setEditing] = useState<{ value: string; type: CSSProperties } | null>(null);
   /** Live readout during a move or a resize. Null when the line is at rest. */
   const [hud, setHud] = useState<string | null>(null);
+  /** The alignment lines, while a drag is holding one. */
+  const [guides, setGuides] = useState<Guide[]>([]);
 
   const words = page ? (part === 'title' ? page.title : page.subtitle) : '';
 
@@ -191,13 +194,47 @@ export function PageTextEditor({ pageId, part }: PageTextEditorProps) {
     const from = { x: event.clientX, y: event.clientY };
     const bounds = withinPage(element, sheet, start, perX, perY, reach);
 
+    /*
+     * What a heading may line up with: the sheet itself — its margins
+     * and its centre — the other line of the masthead, and the tiles
+     * below. A theme line that shares a left edge with the offer under
+     * it is the difference between a designed page and a drifted one,
+     * and nobody hits it by eye.
+     */
+    const sheetElement = element.closest('.page');
+    /*
+     * Measured in VIEWPORT coordinates, not the sheet's.
+     *
+     * The line is drawn from inside this handle, which is a box the
+     * size of the words — and a heading lines up with things that are
+     * not inside it, so a locally positioned line would be clipped to
+     * the very box it started from. Fixed positioning is the way out,
+     * and fixed positioning counts from the viewport.
+     */
+    const origin = { left: 0, top: 0 } as DOMRect;
+    const box = element.getBoundingClientRect();
+    const own = { left: box.left, top: box.top, width: box.width, height: box.height };
+    const targets = sheetElement ? [
+      ...targetsFrom(sheetElement, '.page__title, .page__subtitle', element, origin),
+      ...targetsFrom(sheetElement, '.slot', null, origin),
+      ...targetsFrom(sheetElement, '.page__grid', null, origin),
+    ] : [];
+
     // Capture keeps the drag alive when the pointer leaves the words,
     // which it does on the first pixel: the box hugs them.
     try { element.setPointerCapture(event.pointerId); } catch { /* uncapturable */ }
 
     const onMove = (move: PointerEvent) => {
-      const x = clamp(start.offsetX + (move.clientX - from.x) * perX, bounds.minX, bounds.maxX);
-      const y = clamp(start.offsetY + (move.clientY - from.y) * perY, bounds.minY, bounds.maxY);
+      const px = move.clientX - from.x;
+      const py = move.clientY - from.y;
+      // Alt suspends it, exactly as it does inside a tile.
+      const pull = move.altKey
+        ? { dx: 0, dy: 0, guides: [] }
+        : snap(shifted(own, px, py), targets);
+      setGuides(pull.guides);
+
+      const x = clamp(start.offsetX + (px + pull.dx) * perX, bounds.minX, bounds.maxX);
+      const y = clamp(start.offsetY + (py + pull.dy) * perY, bounds.minY, bounds.maxY);
       updatePageText(pageId, part, { offsetX: x, offsetY: y }, `text-move:${pageId}:${part}`);
       setHud(`${PAGE_PART_NAMES[part]}  ${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}  ${y >= 0 ? '+' : '−'}${Math.abs(y).toFixed(1)}`);
     };
@@ -209,6 +246,7 @@ export function PageTextEditor({ pageId, part }: PageTextEditorProps) {
       element.removeEventListener('pointercancel', onUp);
       endGesture();
       setHud(null);
+      setGuides([]);
     };
 
     element.addEventListener('pointermove', onMove);
@@ -232,6 +270,25 @@ export function PageTextEditor({ pageId, part }: PageTextEditorProps) {
       onDoubleClick={(event) => { event.stopPropagation(); edit(); }}
     >
       <b className="handle__tag">{PAGE_PART_NAMES[part]}</b>
+
+      {/*
+        * Drawn in the SHEET's frame, not this box's.
+        *
+        * A heading lines up with things that are not inside it — the
+        * page's margin, the tile below — so a line drawn inside the
+        * handle would be clipped to the words it started from. Fixed
+        * against the page instead, which is what `withinPage` already
+        * measures against.
+        */}
+      {guides.map((guide, index) => (
+        <span
+          key={`${guide.axis}-${guide.at}-${index}`}
+          className={`handle__guide handle__guide--${guide.axis} handle__guide--sheet`}
+          style={guide.axis === 'x'
+            ? { left: guide.at, top: guide.from, height: guide.to - guide.from }
+            : { top: guide.at, left: guide.from, width: guide.to - guide.from }}
+        />
+      ))}
 
       {hud && <span className="handle__hud">{hud}</span>}
 

@@ -121,6 +121,7 @@ export function Library() {
   const note = useStudio((s) => s.arrangeNote);
   const setNote = useStudio((s) => s.setArrangeNote);
   const busy = useStudio((s) => Boolean(s.busy));
+  const decorReady = useStudio((s) => s.decorReady);
   const pageSlots = useStudio((s) => s.pageSlots);
   const selectedOfferId = useStudio((s) => s.selectedOfferId);
 
@@ -302,7 +303,8 @@ export function Library() {
               disabled={busy || !activePageId || !slotId || picked.length > 8}
               title={picked.length > 8
                 ? 'En plads kan bære otte varer'
-                : 'Samme layout — modellen ser varerne og sætter dem op som en avis'}
+                : 'Samme layout — modellen ser varerne og sætter dem op som en avis.'
+                  + ' Hver vare kan stadig flyttes for sig.'}
               onClick={() => {
                 if (activePageId && slotId) void fill(activePageId, slotId, picked);
               }}
@@ -310,6 +312,38 @@ export function Library() {
               Saml i pladsen
             </button>
           </div>
+
+          {/*
+            * The second way to fill the cell, and it is a different
+            * thing rather than a setting on the first — so it is its
+            * own button with its own sentence under it. One gives
+            * cutouts you can move one at a time; this gives a
+            * photograph that looks like a printed page and cannot be
+            * taken apart again.
+            */}
+          {picked.length > 1 && (
+            <>
+              <button
+                className="library__compose"
+                disabled={busy || !activePageId || !slotId || !decorReady || picked.length > 8}
+                title={decorReady
+                  ? 'Billedmodellen fotograferer varerne sammen — ét billede, som en avis'
+                  : 'Kræver GEMINI_API_KEY i .env'}
+                onClick={() => {
+                  if (activePageId && slotId) {
+                    void fill(activePageId, slotId, picked, { compose: true });
+                  }
+                }}
+              >
+                Saml som ét fotografi
+              </button>
+              <p className="library__aside">
+                {decorReady
+                  ? 'Ét billede af varerne sammen. Kan ikke redigeres vare for vare bagefter.'
+                  : 'Kræver GEMINI_API_KEY og fakturering på Google-projektet.'}
+              </p>
+            </>
+          )}
 
           {/*
             * A steer for the model that sets the group up, and nothing

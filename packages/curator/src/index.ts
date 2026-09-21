@@ -320,3 +320,9 @@ function describe(error: unknown): string {
  * geometry — and the same refusal to be load-bearing.
  */
 export * from './arrange.js';
+
+/*
+ * Reading a composition back out of a picture of one — the half that
+ * makes an image model usable here at all. See `layout.ts`.
+ */
+export * from './layout.js';
