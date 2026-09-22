@@ -291,6 +291,38 @@ describe('saying what is wrong with an arrangement', () => {
     expect(said[0]!.said).toMatch(/5\.0× så stor/);
   });
 
+  it('names the flat pack drawn as wide as three cartons are tall', () => {
+    // The Riberhus case: a nearly square cheese tub beside tall narrow
+    // cartons. Every height agrees, so the height rule above sees
+    // nothing — and the tub still carries three times the ink.
+    const said = reviewCluster([
+      want(0, 0.15, 0.10, 0.4),
+      want(1, 0.45, 0.32, 0.4),
+      want(2, 0.80, 0.10, 0.4),
+    ]);
+    expect(said.some((entry) => entry.index === 1 && /så bred som de andre/.test(entry.said)))
+      .toBe(true);
+  });
+
+  it('leaves a product alone that is honestly bigger', () => {
+    // Taller AND wider is a bigger product, not a badly drawn one.
+    // Complaining about it is how a warning stops being read.
+    expect(reviewCluster([
+      want(0, 0.25, 0.10, 0.20),
+      want(1, 0.70, 0.30, 0.60),
+    ]).filter((entry) => /så bred/.test(entry.said))).toEqual([]);
+  });
+
+  it('says it once, not twice, about a product that is both', () => {
+    // Out of proportion in both dimensions is one complaint — the
+    // height one, which is the one somebody can act on.
+    const said = reviewCluster([
+      want(0, 0.2, 0.10, 0.2), want(1, 0.5, 0.10, 0.2), want(2, 0.8, 0.40, 0.9),
+    ]);
+    expect(said.filter((entry) => entry.index === 2)).toHaveLength(1);
+    expect(said[0]!.said).toMatch(/højere end de andre/);
+  });
+
   it('says nothing about sizes it was not given', () => {
     expect(reviewCluster([want(0, 0.3, 0.15, 0.3), want(1, 0.7, 0.3, 0.5)])).toEqual([]);
   });

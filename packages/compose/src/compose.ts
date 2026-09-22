@@ -156,6 +156,9 @@ export function composeCatalog(
       schemaVersion: 2,
       name: options.name,
       brandId: brand.id,
+      // The composer does not know which week it is; the pipeline does,
+      // and stamps it — see `BuildOptions.week`.
+      week: null,
       pages,
       // The composer lays out on the chain's OWN layouts, so a composed
       // document never brings one of its own.

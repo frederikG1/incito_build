@@ -1,4 +1,4 @@
-import { Brand, CatalogDocument, Offer } from '@incitio/schema';
+import { Brand, CatalogDocument, CatalogWeek, Offer } from '@incitio/schema';
 
 const BASE = '/api';
 
@@ -12,13 +12,83 @@ const BASE = '/api';
  */
 export const BRAND_HEADER = 'x-incitio-brand';
 
+/**
+ * Where the editor's own key for the image model is carried.
+ *
+ * The alternative is `GEMINI_API_KEY` in the server's `.env`, and it
+ * stays the default. This is for the ordinary case where the person
+ * with the key is not the person who started the server: they paste it
+ * into the studio, it lives in THEIR browser, and it rides along on
+ * the requests that draw. It is never written to the repo, never sent
+ * anywhere but this project's own API, and the server uses it for the
+ * one call and forgets it.
+ */
+export const KEY_HEADER = 'x-gemini-key';
+
+/** Survives a reload, and only in this browser. */
+const KEY_STORE = 'incitio.geminiKey';
+
+let imageKey = read();
+
+function read(): string {
+  try {
+    return window.localStorage.getItem(KEY_STORE) ?? '';
+  } catch {
+    // Private browsing. The key still works for this session.
+    return '';
+  }
+}
+
+/** Whether a key is in hand. Never the key itself — nothing needs it. */
+export function hasImageKey(): boolean {
+  return imageKey.trim().length > 0;
+}
+
+/** The last four characters, for showing that the right one is in. */
+export function imageKeyTail(): string {
+  const value = imageKey.trim();
+  return value.length > 4 ? value.slice(-4) : '';
+}
+
+/** Keep it, or forget it when given an empty string. */
+export function setImageKey(value: string): void {
+  imageKey = value.trim();
+  try {
+    if (imageKey) window.localStorage.setItem(KEY_STORE, imageKey);
+    else window.localStorage.removeItem(KEY_STORE);
+  } catch { /* private browsing; it holds for this session */ }
+}
+
 function headers(brandId: string, extra: Record<string, string> = {}): HeadersInit {
-  return { [BRAND_HEADER]: brandId, ...extra };
+  return {
+    [BRAND_HEADER]: brandId,
+    // Only when there is one: an empty header would override nothing
+    // and confuse a proxy.
+    ...(imageKey ? { [KEY_HEADER]: imageKey } : {}),
+    ...extra,
+  };
 }
 
 async function fail(response: Response): Promise<never> {
-  const body = (await response.json().catch(() => ({}))) as { detail?: string; error?: string };
-  throw new Error(body.detail ?? body.error ?? `${response.status} ${response.statusText}`);
+  const body = (await response.json().catch(() => ({}))) as {
+    detail?: string;
+    error?: string;
+    issues?: { path?: (string | number)[]; message?: string }[];
+  };
+  /*
+   * A rejected body says WHICH field was wrong.
+   *
+   * "invalid request" on its own cost an afternoon: a route capped its
+   * product list at eight, the studio started sending a whole page's
+   * worth, and the only thing on screen was the file name and those
+   * two words. The server already sends `issues`; not showing them was
+   * the whole of the mystery.
+   */
+  const issue = body.issues?.[0];
+  const said = body.detail ?? body.error ?? `${response.status} ${response.statusText}`;
+  throw new Error(issue?.message
+    ? `${said} (${[...(issue.path ?? [])].join('.') || 'body'}: ${issue.message})`
+    : said);
 }
 
 export interface BrandSummary { id: string; name: string }
@@ -41,6 +111,8 @@ export interface BrandSource {
 
 export interface BrandProfile {
   brand: Brand;
+  /** A publication link to test with, from the server's own `.env`. */
+  testPublication?: string;
   /** Every format this chain delivers. The first is the default. */
   sources: BrandSource[];
 }
@@ -48,8 +120,17 @@ export interface BrandProfile {
 export async function fetchBrandProfile(brandId: string): Promise<BrandProfile> {
   const response = await fetch(`${BASE}/brand/profile`, { headers: headers(brandId) });
   if (!response.ok) await fail(response);
-  const body = (await response.json()) as { brand: unknown; sources: BrandSource[] };
-  return { brand: Brand.parse(body.brand), sources: body.sources };
+  const body = (await response.json()) as {
+    brand: unknown;
+    sources: BrandSource[];
+    testPublication?: string;
+  };
+  return {
+    brand: Brand.parse(body.brand),
+    sources: body.sources,
+    // The machine's own test avis, when its `.env` names one.
+    ...(body.testPublication ? { testPublication: body.testPublication } : {}),
+  };
 }
 
 export async function fetchCurationStatus(brandId: string): Promise<boolean> {
@@ -137,6 +218,10 @@ export interface BuildReply {
   curated: boolean;
   curationError: string | null;
   offerCount: number;
+  /** Offers the feed carried that do not run in the chosen week. */
+  outsideWeek: number;
+  /** How many DO run in it. Zero means the feed is another week's. */
+  inWeek: number | null;
   dropped: number;
   substitutions: { pageId: string; asked: string; used: string; reason: string }[];
   usage: { inputTokens: number; outputTokens: number } | null;
@@ -149,6 +234,8 @@ export interface BuildRequest {
   brief?: string;
   skipCuration?: boolean;
   seed?: string;
+  /** The week the paper is for. Cuts the feed and names the document. */
+  week?: CatalogWeek;
 }
 
 /**
@@ -547,6 +634,12 @@ export interface ClusterReply {
   /** Exactly what the image model was asked for. */
   prompt: string;
   model: string;
+  /**
+   * The cutouts re-served from the server, when `copies` was asked
+   * for — the same list `/prepare` returns, and the reason standing a
+   * cluster up is now one request instead of two.
+   */
+  files?: { index: number; name: string; url: string; bytes: number }[];
 }
 
 /**
@@ -564,7 +657,9 @@ export interface ClusterReply {
  */
 export async function composeCluster(
   brandId: string,
-  request: { offers: Offer[]; aspect?: number; note?: string },
+  request: {
+    offers: Offer[]; aspect?: number; note?: string; copies?: boolean; model?: string;
+  },
 ): Promise<ClusterReply> {
   const response = await fetch(`${BASE}/brand/cluster`, {
     method: 'POST',
@@ -613,9 +708,15 @@ export interface LayoutReading {
     /** The product's lowest edge, 0–1 down the picture — see `PlacedProduct`. */
     bottom: number;
     rotate: number;
+    /** A step forward or back among the products — the placing call only. */
+    depth?: number;
   }[];
   /** Products the model could not find. Left where they were. */
   missing: number[];
+  /** Whether the group stands on a floor or lies flat — the placing call only. */
+  view?: 'side' | 'top';
+  /** The model that was asked for, when a busy queue handed it on. */
+  insteadOf?: string;
   model: string;
   usage: { inputTokens: number; outputTokens: number } | null;
 }
@@ -630,6 +731,42 @@ export interface LayoutReading {
  * away, and the chain's own artwork ends up standing where the
  * composition put it.
  */
+/**
+ * The arrangement as numbers, with no picture drawn.
+ *
+ * The other way to the same answer — see `composeCluster`, which pays
+ * an image model to photograph the products and a second model to
+ * measure the photograph. This asks one vision model to look at the
+ * cutouts and say where each should stand: one call, no image model,
+ * no billing account behind it.
+ */
+export async function placeCluster(
+  brandId: string,
+  request: {
+    offers: Offer[];
+    aspect?: number;
+    /** The cell in pixels, as the page draws it — see the route. */
+    canvas?: { width: number; height: number };
+    /** Each cutout's own proportions, in the offers' order. */
+    aspects?: number[];
+    offerName?: string;
+    note?: string;
+    model?: string;
+    /** Refuse an answer from any other model — no reserve queue. */
+    strict?: boolean;
+    /** The editor's own version of the standing prompt. */
+    system?: string;
+  },
+): Promise<LayoutReading & { elapsedMs: number }> {
+  const response = await fetch(`${BASE}/brand/cluster/place`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as LayoutReading & { elapsedMs: number };
+}
+
 export async function readClusterLayout(
   brandId: string,
   request: { file: string; offers: Offer[] },

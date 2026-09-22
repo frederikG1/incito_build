@@ -157,6 +157,18 @@ export function publicationOffer(
     validTo: options.validTo ?? isoDate(6),
     imageUrl: offer.imageUrl,
     imagePack: [],
+    /*
+     * No labels from the publication, and this was tried.
+     *
+     * `PublicationOffer.marks` looks like the answer — it is every
+     * image in the tile that is not the packshot — and it is not: the
+     * split is by S3 bucket, so the chain's PRICE SPLASH is in there
+     * with the Ø-mark, and the tile duly printed a red blob where a
+     * certification mark goes. See `isPackshot`. Telling the two apart
+     * needs the size and place of each image inside the tile, which
+     * the reader does not keep, so the honest answer is none until it
+     * does. Feed offers still get their marks from the dictionary.
+     */
     labels: [],
     priority: null,
     // A published offer stands for itself. Grouping is something an
@@ -325,6 +337,38 @@ export function publicationDocument(
     const templateId = `pub/${publication.id}/p${page.number}`;
     const read = pageTemplate(page, templateId);
 
+    /*
+     * The section headline, as the page prints it.
+     *
+     * These publications set "Kolonial og Dybfrost" as a drawing, not
+     * as type — so there is no string to put in `title`, and a page
+     * imported without this one image lost the only thing on it that
+     * said what it was about. It travels as a decoration with its own
+     * measured box, which is what `PageDecoration.rect` is for.
+     */
+    const masthead = page.masthead
+      ? [{
+        id: `pub-masthead-p${page.number}`,
+        imageUrl: page.masthead.imageUrl,
+        subject: `overskrift på side ${page.number}`,
+        offerId: null,
+        // Ignored while `rect` is set; kept honest for an editor who
+        // clears the box and drags the artwork somewhere else.
+        anchor: 'top-left' as const,
+        scale: Math.min(0.6, Math.max(0.05, page.masthead.rect.w / page.width)),
+        rotate: 0,
+        opacity: 1,
+        offsetX: 0,
+        offsetY: 0,
+        rect: {
+          x: page.masthead.rect.x / page.width,
+          y: page.masthead.rect.y / page.height,
+          w: page.masthead.rect.w / page.width,
+          h: page.masthead.rect.h / page.height,
+        },
+      }]
+      : [];
+
     const background = page.background
       ? {
         imageUrl: page.background.imageUrl,
@@ -361,7 +405,7 @@ export function publicationDocument(
           placements: [],
           rationale: `Side ${page.number} i udgivelsen — uden gitter`,
           ground: page.ground,
-          decorations: [],
+          decorations: masthead,
           background,
           texts: {},
         });
@@ -415,7 +459,7 @@ export function publicationDocument(
         : [],
       rationale: `Side ${page.number} i udgivelsen`,
       ground: page.ground,
-      decorations: [],
+      decorations: masthead,
       background,
       texts: {},
     });
@@ -428,6 +472,9 @@ export function publicationDocument(
       schemaVersion: 2,
       name: options.name,
       brandId: options.brandId,
+      // A publication link says nothing about which week it is. The
+      // studio asks and stamps it — see `AskWeek`.
+      week: null,
       pages,
       /*
        * Every product the publication carries travels with the

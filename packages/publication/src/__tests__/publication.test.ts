@@ -256,3 +256,117 @@ describe('getting the document out of a viewer page', () => {
     expect(() => extractIncito('<html>hej</html>')).toThrow(PublicationError);
   });
 });
+
+/**
+ * What the import keeps of the printed page, beyond the offers.
+ *
+ * Both of these were READ and then thrown away: the section headline,
+ * which these publications set as a drawing rather than as type, and
+ * the marks printed inside a tile. A page that drops them cannot look
+ * like the one it was imported from.
+ */
+describe('a page imported with its own furniture', () => {
+  const imported = publicationDocument(readIncito(PUBLICATION), {
+    brandId: 'superbrugsen',
+    catalogId: 'c1',
+    name: 'Uge 38',
+  });
+
+  it('puts the printed section headline on the page', () => {
+    const decor = imported.document.pages[0]!.decorations[0]!;
+    expect(decor.imageUrl).toBe('https://img.example/masthead.png');
+    expect(decor.rect).toEqual({ x: 0, y: 0.03, w: 1, h: 0.1 });
+  });
+
+  /*
+   * The marks are READ and deliberately not used. They share a bucket
+   * with the price splash — see `isPackshot` — so putting them on the
+   * tile printed a red blob where a certification mark goes.
+   */
+  it('does not turn the tile artwork into certification marks', () => {
+    expect(imported.document.offers[0]!.labels).toEqual([]);
+  });
+});
+
+/*
+ * A publication that wraps its page in a section twice the size.
+ *
+ * Measured on a Coop leaflet: `section 1200x2000` holding one
+ * `view 600x1000` that is the whole page. Read against the section,
+ * every coordinate came back at half scale — so the offers all sat in
+ * the top-left quarter, the grid fitter padded the other three
+ * quarters with empty tracks, and the ground and the background were
+ * never found at all, because the test for "this view is the sheet"
+ * was asking for 98 % of a box twice the size of anything in it.
+ */
+describe('a page wrapped in an oversized section', () => {
+  const wrapped = {
+    id: 'wrapped',
+    locale: 'da-DK',
+    root_view: view({
+      view_name: 'HTMLView',
+      role: 'paged-proximity',
+      child_views: [
+        view({
+          role: 'section',
+          id: 's1',
+          view_name: 'View',
+          layout_width: 1200,
+          layout_height: 2000,
+          child_views: [
+            view({
+              view_name: 'HTMLView',
+              layout_top: 0,
+              layout_left: 0,
+              layout_width: 600,
+              layout_height: 1000,
+              style: 'position:absolute;background-color:rgb(213,228,237)',
+              child_views: [
+                view({
+                  view_name: 'HTMLView',
+                  layout_top: 0,
+                  layout_left: 0,
+                  layout_width: 600,
+                  layout_height: 1000,
+                  child_views: [
+                    offer('1', 'Coop kylling', 49, [0, 0, 300, 1000], '240 g.'),
+                    offer('2', 'Irma focaccia', 29, [300, 0, 300, 1000], '250 g.'),
+                  ],
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    }),
+  };
+
+  const page = readIncito(wrapped).pages[0]!;
+
+  it('measures against the page, not the box around it', () => {
+    expect(page.width).toBe(600);
+    expect(page.height).toBe(1000);
+  });
+
+  it('gives the offers the whole sheet instead of a quarter of it', () => {
+    const right = Math.max(...page.offers.map((o) => (o.rect.x + o.rect.w) / page.width));
+    const bottom = Math.max(...page.offers.map((o) => (o.rect.y + o.rect.h) / page.height));
+    expect(right).toBeCloseTo(1, 6);
+    expect(bottom).toBeCloseTo(1, 6);
+  });
+
+  it('finds the ground the wrapper was hiding', () => {
+    expect(page.ground).toBe('#d5e4ed');
+  });
+});
+
+describe('a page that is not wrapped at all', () => {
+  it('is left exactly where it was', () => {
+    // The ordinary shape: section and page the same size. Stepping
+    // into anything here would be stepping into the page's content.
+    const page = readIncito(PUBLICATION).pages[0]!;
+    expect(page.width).toBe(600);
+    expect(page.height).toBe(1000);
+    expect(page.offers).toHaveLength(3);
+  });
+});

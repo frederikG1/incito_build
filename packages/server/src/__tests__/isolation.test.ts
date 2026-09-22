@@ -8,6 +8,7 @@ function doc(brandId: string, id = 'c1'): CatalogDocument {
     schemaVersion: 2,
     name: 'Uge 38',
     brandId,
+    week: null,
     pages: [],
     offers: [],
     templates: [],

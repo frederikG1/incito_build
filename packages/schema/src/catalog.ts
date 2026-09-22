@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ImageRef, Offer } from './offer.js';
-import { PageTemplate } from './template.js';
+import { MeasuredRect, PageTemplate } from './template.js';
+import { CatalogWeek } from './week.js';
 
 /** Where on the page a decoration is pinned. */
 export const DECOR_ANCHORS = [
@@ -78,6 +79,21 @@ export const PageDecoration = z.object({
    */
   offsetX: z.number().min(-75).max(75).default(0),
   offsetY: z.number().min(-75).max(75).default(0),
+  /**
+   * Where the artwork actually sits, when it was MEASURED off a printed
+   * page rather than pinned to a corner.
+   *
+   * `anchor` and `scale` are right for artwork somebody generated to
+   * fill a corner. They cannot say "this strip, 84% of the sheet wide,
+   * 61pt down" — and that is exactly what a published leaflet's own
+   * section headline is: a drawing, at a stated place, which the
+   * publisher's designer positioned. Imported without it, the one piece
+   * of the page that says what the page is ABOUT was thrown away.
+   *
+   * `offsetX`/`offsetY` still apply on top, so an editor can move a
+   * measured piece by hand exactly as they move a pinned one.
+   */
+  rect: MeasuredRect.optional(),
 });
 export type PageDecoration = z.infer<typeof PageDecoration>;
 
@@ -755,6 +771,19 @@ export const CatalogDocument = z.object({
   schemaVersion: z.literal(2),
   name: z.string().min(1),
   brandId: z.string().min(1),
+  /**
+   * The week this paper is for.
+   *
+   * Nullable and defaulted, so every catalogue saved before anyone
+   * asked still parses — and a null here is the honest answer for
+   * those: nobody knows which week they were.
+   *
+   * It is the document's, not the brand's, and not the session's: the
+   * name is derived from it, the offers are checked against it, and
+   * two catalogues open side by side may well be two different weeks.
+   * See `weekDates`, which is why the two dates are not also stored.
+   */
+  week: CatalogWeek.nullable().default(null),
   pages: z.array(CatalogPage),
   /**
    * The offers this catalog prints, snapshotted at build time.

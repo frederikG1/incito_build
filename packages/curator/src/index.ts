@@ -326,3 +326,10 @@ export * from './arrange.js';
  * makes an image model usable here at all. See `layout.ts`.
  */
 export * from './layout.js';
+
+/*
+ * The same composition, asked for as numbers instead of drawn — the
+ * way round the image model's billing gate, and the cheap one. See
+ * `place.ts`.
+ */
+export * from './place.js';

@@ -10,6 +10,27 @@ import { z } from 'zod';
 export const SlotRole = z.enum(['hero', 'feature', 'standard', 'compact']);
 export type SlotRole = z.infer<typeof SlotRole>;
 
+/**
+ * A box on the sheet, in shares of it: 0.5 is half the page across.
+ *
+ * Shares and not points, because everything else in this repo already
+ * is — a page is drawn from a thumbnail to A4 out of the same numbers,
+ * and a rectangle in the publisher's own units would be the one thing
+ * that did not scale with it.
+ *
+ * Only artwork uses this — see `PageDecoration.rect`. The offers are
+ * placed by the grid, deliberately: a template is a layout somebody
+ * can fill again, and a page of rectangles read off one printed sheet
+ * is not.
+ */
+export const MeasuredRect = z.object({
+  x: z.number().min(-0.5).max(1.5),
+  y: z.number().min(-0.5).max(1.5),
+  w: z.number().min(0.01).max(2),
+  h: z.number().min(0.01).max(2),
+});
+export type MeasuredRect = z.infer<typeof MeasuredRect>;
+
 export const TemplateSlot = z.object({
   /** Also the CSS grid-area name, so `areas` below can refer to it. */
   id: z.string().min(1).regex(/^[a-z][a-z0-9]*$/, 'must be a CSS ident'),

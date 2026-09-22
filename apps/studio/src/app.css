@@ -38,14 +38,21 @@ body {
   border-bottom: 1px solid var(--chrome-line);
   flex: 0 0 auto;
   /*
-   * One line, always. Wrapped, the last group fell under the first and
-   * the order the groups are in — which is the only thing telling a
-   * newcomer what comes before what — stopped being an order at all.
-   * The chain picker gives up its width first; it is the one control
-   * here whose value is already visible everywhere else on screen.
+   * One line while it fits, and a second rather than a secret.
+   *
+   * It used to be `nowrap` with `overflow: hidden`, on the argument
+   * that the order of the groups is what tells a newcomer what comes
+   * before what. That order is now said outright — the step chip at
+   * the far left — and the clipping it bought was never free: past a
+   * certain number of controls the ones at the right end simply were
+   * not on screen, with nothing to say so. A control nobody can reach
+   * is worse than a toolbar two lines tall.
+   *
+   * The chain picker still gives up its width first; its value is
+   * already visible everywhere else on screen.
    */
-  flex-wrap: nowrap;
-  overflow: hidden;
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 .bar .field select { min-width: 0; }
 .bar__group:first-of-type .field select { max-width: 190px; }
@@ -345,6 +352,31 @@ body {
   border-radius: 999px;
   background: #e6e9ee;
   color: #4b5563;
+}
+
+/*
+ * The key control, pushed to the right end of the row it shares with
+ * the strip's own name.
+ *
+ * `margin-left: auto` rather than a column, because the row already
+ * holds badges of unpredictable width and the key is the one thing in
+ * it a person goes looking for.
+ */
+.decor__key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.decor__keyinput {
+  font: inherit;
+  font-size: 12px;
+  width: 210px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid #d3d7dd;
+  background: #fff;
 }
 
 .decor__model { font-size: 11px; opacity: 0.5; }
@@ -671,6 +703,106 @@ body {
 }
 .inspector__promote:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
 .inspector__promote:disabled { opacity: 0.45; cursor: default; }
+
+/*
+ * The arrangement block: how a cluster is stood up, and what the last
+ * run did.
+ *
+ * Boxed rather than loose in the panel, because it is the one place in
+ * the inspector where a choice costs money — and because the report
+ * under it only makes sense as the answer to the control above it.
+ */
+.way {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 2px 0 10px;
+  padding: 9px 10px;
+  border: 1px solid #e3e6ea;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.way__field { display: flex; flex-direction: column; gap: 3px; }
+.way__field > span { font-size: 11px; color: #6b7280; }
+.way__field select {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 7px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.way__aside { margin: 0; font-size: 11px; line-height: 1.35; color: #6b7280; }
+
+/* The one press this box is for: full width, and coloured like the
+   decision it is. */
+.way__go {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 12px;
+  border: 1px solid var(--hot, #2f6df6);
+  border-radius: 7px;
+  background: var(--hot, #2f6df6);
+  color: #fff;
+  cursor: pointer;
+}
+.way__go:hover:not(:disabled) { filter: brightness(1.06); }
+.way__go:disabled { opacity: 0.45; cursor: default; }
+
+.way__prompt { display: flex; align-items: center; gap: 8px; }
+
+/* The last few runs, so a prompt change can be compared with what it
+   replaced rather than remembered. */
+.way__runs {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+.way__runs li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  color: #55606d;
+}
+.way__runs span { flex: 1 1 auto; min-width: 0; }
+.way__badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e6e9ee;
+  color: #4b5563;
+}
+
+/* Monospaced because it is a literal — the thing that leaves the
+   machine, not a description of it. */
+.way__text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  min-height: 220px;
+  padding: 8px 9px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  background: #fff;
+  resize: vertical;
+}
+
+/* Measured facts about the last run, set apart from the controls. */
+.way__run {
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px solid #e3e6ea;
+}
+.way__run p { margin: 0 0 4px; font-size: 11px; line-height: 1.4; color: #55606d; }
+.way__run p:last-child { margin-bottom: 0; }
+.way__warn { color: #b45309 !important; }
 
 /* The theme line, quieter than the heading it sits beside — it is the
    second voice in the masthead and should look like it here too. */
@@ -1655,8 +1787,16 @@ body {
  * IS, and reading order puts the source before the subject. It also
  * keeps the canvas between them, which is where everything lands.
  */
+/*
+ * Wider than it was, and everything in it a size up.
+ *
+ * 272px with 12px names was a list you had to lean into: the packshot
+ * was a stamp, the name wrapped after three words, and the one button
+ * that does the whole job read like a footnote. This is a list
+ * somebody picks products from for an hour at a time.
+ */
 .library {
-  flex: 0 0 272px;
+  flex: 0 0 340px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1687,8 +1827,8 @@ body {
   gap: 8px;
   padding: 12px 12px 8px;
 }
-.library__head strong { font-size: 14px; }
-.library__said { flex: 1 1 auto; font-size: 11px; color: #8b919b; line-height: 1.25; }
+.library__head strong { font-size: 15px; }
+.library__said { flex: 1 1 auto; font-size: 12px; color: #8b919b; line-height: 1.25; }
 .library__close {
   border: none;
   background: none;
@@ -1700,7 +1840,7 @@ body {
 
 .library__search {
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   margin: 0 12px 8px;
   padding: 6px 8px;
   border: 1px solid #d3d7dd;
@@ -1752,13 +1892,13 @@ body {
 .card__body {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: 44px 1fr auto;
+  grid-template-columns: 64px 1fr auto;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   font: inherit;
   text-align: left;
-  padding: 5px 6px;
+  padding: 7px 8px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: none;
@@ -1771,8 +1911,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 40px;
-  border-radius: 5px;
+  height: 58px;
+  border-radius: 6px;
   background: #f2f4f7;
   overflow: hidden;
 }
@@ -1783,24 +1923,46 @@ body {
    characters and the list has to stay scannable. */
 .card__name {
   min-width: 0;
-  font-size: 12px;
-  line-height: 1.25;
+  font-size: 13.5px;
+  line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.card__price { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.card__price { font-size: 14px; font-weight: 700; white-space: nowrap; }
 
-.card--placed .card__body { opacity: 0.55; }
-.card__where { flex: 0 0 auto; font-size: 10px; color: #8b919b; width: 30px; text-align: center; }
+/*
+ * Already in the avis, and therefore not on offer here.
+ *
+ * Greyed rather than hidden: knowing that a product is placed — and on
+ * which page — is half of what this list is read for, and a product
+ * that vanished the moment it was used would make the feed look like
+ * it was shrinking. It cannot be ticked; clicking it goes to the tile.
+ */
+.card--placed .card__body {
+  opacity: 0.45;
+  filter: saturate(0.35);
+}
+.card--placed .card__body:hover {
+  opacity: 0.7;
+  filter: none;
+  background: #f2f4f7;
+}
+.card--placed .card__name { text-decoration: line-through; text-decoration-color: #c7ccd3; }
+.card__where {
+  /* The page number carries the explanation, so it must look like
+     something with an answer rather than a stray label. */
+  cursor: help;
+}
+.card__where { flex: 0 0 auto; font-size: 11px; color: #8b919b; width: 34px; text-align: center; }
 
 .card__add {
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   font: inherit;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1;
   border: 1px solid #d3d7dd;
   border-radius: 6px;
@@ -1837,25 +1999,33 @@ body {
 /* The composed photograph is a different thing from the cutouts, not a
    setting on them, so it gets its own button and its own colour — the
    same violet everything the image model draws is marked in. */
+/*
+ * The one-press button, sized like the decision it is.
+ *
+ * It does four things — cell, composition, reading, placement — and
+ * sat at twelve pixels below a row of pickers, where it read as an
+ * option rather than as the way through.
+ */
 .library__compose {
   width: 100%;
   font: inherit;
-  font-size: 12px;
-  padding: 7px 9px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 11px 12px;
   border: 1px solid #7a5af8;
-  border-radius: 6px;
+  border-radius: 7px;
   background: #7a5af8;
   color: #fff;
   cursor: pointer;
 }
 .library__compose:hover:not(:disabled) { filter: brightness(1.06); }
 .library__compose:disabled { opacity: 0.4; cursor: not-allowed; }
-.library__aside { margin: -2px 0 0; font-size: 11px; color: #8b919b; line-height: 1.3; }
+.library__aside { margin: -2px 0 0; font-size: 12px; color: #6b7280; line-height: 1.35; }
 .library__act .field span { color: #6b7280; }
 .library__act select,
 .library__act button {
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   padding: 6px 9px;
   border: 1px solid #d3d7dd;
   border-radius: 6px;
@@ -1984,7 +2154,10 @@ body {
 
 /* --------------------------------------- kør kompositionen i hånden */
 
-.manual {
+/* The proof: the picture the round trip drew, and the arithmetic it
+   led to. Named for what it holds now that the by-hand route is
+   gone. */
+.proof {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1995,20 +2168,7 @@ body {
   background: #fafbfc;
 }
 
-.manual__steps {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: #4b5160;
-}
-.manual__steps li + li { margin-top: 4px; }
-.manual__steps .inspector__link { margin-left: 4px; }
-
-/* Read-only and short: it is there to be copied, not to be edited —
-   the prompt is built from the products, and a hand-edited copy would
-   not be the one the automatic route sends. */
-.manual__prompt {
+.proof__numbers {
   font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
   height: 90px;
   padding: 7px;
@@ -2019,29 +2179,18 @@ body {
   resize: vertical;
 }
 
-.manual__files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.manual__files a {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 5px;
-  border-radius: 6px;
-  font-size: 11px;
-  color: #33363d;
-  text-decoration: none;
-}
-.manual__files a:hover { background: #eef1f5; color: var(--hot); }
-.manual__files img {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
-  background: #fff;
-  border: 1px solid #e3e6ea;
-  border-radius: 4px;
-}
-.manual__files span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.manual__drop {
+/*
+ * A place to drop a picture.
+ *
+ * `display: block` and its own margin, because a <label> is inline
+ * and these no longer live inside a flex column: standing on their
+ * own in the panel they overlapped each other and their own second
+ * line. A control has to carry its own layout.
+ */
+.drop {
+  display: block;
+  width: 100%;
+  margin: 0 0 6px;
   font-size: 12px;
   text-align: center;
   padding: 8px;
@@ -2050,9 +2199,9 @@ body {
   color: #7a5af8;
   cursor: pointer;
 }
-.manual__drop input { display: none; }
-.manual__drop:hover { background: rgb(122 90 248 / 0.07); }
-.manual__drop em {
+.drop input { display: none; }
+.drop:hover { background: rgb(122 90 248 / 0.07); }
+.drop em {
   display: block;
   font-style: normal;
   font-size: 10px;
@@ -2062,87 +2211,379 @@ body {
 
 /* The one that keeps the chain's own pixels. Solid, because it is not a
    trade-off the way the other one is. */
-.manual__drop--layout {
+.drop--layout {
   border-style: solid;
   background: #7a5af8;
   color: #fff;
 }
-.manual__drop--layout:hover { background: #6a48f0; }
-
-/*
- * The sheet's own cluster panel.
- *
- * Between the page's bar and the page itself, so it reads as belonging
- * to this sheet and not to the toolbar: what it holds is one errand for
- * THESE tiles — every prompt, every cutout, and one place to put the
- * pictures back.
- */
-.clusters {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 0 0 10px;
-  padding: 10px 12px;
-  border: 1px solid #e3e6ea;
-  border-radius: 8px;
-  background: #fafbfc;
-}
-
-.clusters__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-.clusters__list > li {
-  display: grid;
-  gap: 5px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #eceff3;
-}
-.clusters__list > li:last-child { border-bottom: 0; padding-bottom: 0; }
-
-.clusters__head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  font-size: 12px;
-  color: #33363d;
-}
-.clusters__head b { margin-right: auto; font-weight: 600; }
-
-/* The cutouts, numbered by their filename — the number is what keeps
-   the prompt's own order when they are uploaded. */
-.clusters__files { list-style: none; margin: 0; padding: 0; display: flex; gap: 5px; flex-wrap: wrap; }
-.clusters__files img {
-  width: 34px;
-  height: 34px;
-  object-fit: contain;
-  background: #fff;
-  border: 1px solid #e3e6ea;
-  border-radius: 4px;
-}
-.clusters__files a:hover img { border-color: var(--hot); }
-
-.clusters__drop {
-  font-size: 12px;
-  text-align: center;
-  padding: 10px;
-  border-radius: 6px;
-  background: #7a5af8;
-  color: #fff;
-  cursor: pointer;
-}
-.clusters__drop input { display: none; }
-.clusters__drop:hover { background: #6a48f0; }
-.clusters__drop em {
-  display: block;
-  font-style: normal;
-  font-size: 10px;
-  opacity: 0.8;
-  margin-top: 2px;
-}
+.drop--layout:hover { background: #6a48f0; }
 
 /* In the sheet's bar, beside the layout pickers. */
 .sheet__clusters { white-space: nowrap; }
+
+/* ------------------------------------------------------------ ugen */
+
+/*
+ * The week, in the toolbar.
+ *
+ * Two things in one control: the number, which is editable in place,
+ * and the dates, which are what the offers are actually checked
+ * against. Nobody reads "uge 39" as a fortnight in September, so both
+ * are shown — and the dates are the part that shrinks first, because
+ * the number is the one the toolbar cannot do without.
+ */
+.week { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.week__pick { display: flex; align-items: center; gap: 5px; font-size: 12px; opacity: 0.9; }
+.week__pick input {
+  width: 52px;
+  background: #21252c;
+  color: var(--chrome-ink);
+  border: 1px solid #333944;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+.week__range {
+  font-size: 11px;
+  opacity: 0.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.week__range i { font-style: normal; color: #f0b429; opacity: 0.9; }
+.week--none { font-size: 12px; opacity: 0.45; }
+
+/*
+ * The one question this studio asks.
+ *
+ * Over everything, because it is holding a request that cannot run
+ * without an answer, and because a strip somewhere on the page would
+ * be missed by exactly the person who needs it. Dim rather than black:
+ * the avis behind it is the context for the answer.
+ */
+.ask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(16 18 22 / 0.42);
+}
+.ask__card {
+  width: min(480px, calc(100vw - 32px));
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px 22px 16px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
+}
+.ask__card h2 { margin: 0 0 6px; font-size: 17px; letter-spacing: -0.01em; }
+.ask__why { margin: 0 0 16px; font-size: 12.5px; line-height: 1.45; color: #6b7280; }
+.ask__row { display: flex; align-items: flex-end; gap: 12px; }
+.ask__field { display: flex; flex-direction: column; gap: 3px; }
+.ask__field > span { font-size: 11px; color: #6b7280; }
+.ask__field input,
+.ask__field select {
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 14px;
+  background: #fff;
+}
+.ask__field input { width: 78px; }
+.ask__field input:focus,
+.ask__field select:focus { border-color: var(--hot); outline: none; }
+.ask__said { margin: 0 0 7px; font-size: 13px; color: #4b5563; }
+.ask__said b { color: #16181d; }
+.ask__said--bad { color: #b4401f; }
+.ask__foot { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+.ask__name { flex: 1 1 auto; font-size: 11px; color: #8b919b; min-width: 0; }
+.ask__skip,
+.ask__go {
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ask__skip { color: #6b7280; }
+.ask__skip:hover { border-color: #b4401f; color: #b4401f; }
+.ask__go { border-color: var(--hot); background: var(--hot); color: #fff; font-weight: 600; }
+.ask__go:hover:not(:disabled) { filter: brightness(1.07); }
+.ask__go:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* The week as a filter on the product list. */
+.library__week {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 12px 8px;
+  font-size: 12px;
+  color: #4b5563;
+  cursor: pointer;
+}
+.library__week i { font-style: normal; color: #8b919b; }
+
+/* --------------------------------------------------- hvad mangler */
+
+/*
+ * The checklist.
+ *
+ * A strip under the banners rather than a third column: it is read in
+ * bursts — before a print, after a rebuild — and a permanent panel
+ * would take width from the two things that need it, the products and
+ * the sheet. Capped in height and scrolled, because a fresh draft of a
+ * twenty-page book can carry sixty lines and the rest of the studio
+ * must not be pushed off screen by its own homework.
+ */
+.checks {
+  flex: 0 0 auto;
+  padding: 10px 18px 12px;
+  background: #fff;
+  border-bottom: 1px solid #e3e6ea;
+}
+.checks__head { display: flex; align-items: center; gap: 10px; }
+.checks__head h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.checks__count { flex: 1 1 auto; font-size: 11px; color: #8b919b; }
+.checks__again,
+.checks__close {
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 8px;
+  color: #6b7280;
+  cursor: pointer;
+}
+.checks__again:hover,
+.checks__close:hover { border-color: var(--hot); color: var(--hot); }
+.checks__close { padding: 3px 7px; font-size: 13px; line-height: 1; }
+.checks__clear { margin: 8px 0 0; font-size: 12px; color: #1c5c34; }
+.checks__list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  max-height: 27vh;
+  overflow: auto;
+}
+.checks__line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: #33363d;
+}
+.checks__line:hover { background: #f2f4f7; border-color: #dfe3e8; }
+.checks__line.is-here { border-color: var(--hot); background: #eaf1fd; }
+.checks__mark { flex: 0 0 auto; width: 13px; text-align: center; opacity: 0.6; }
+.checks__said { flex: 1 1 auto; min-width: 0; }
+/* Two weights and no more: can this go to print, or is it worth a look. */
+.checks__line--stop .checks__mark { color: #b4401f; opacity: 1; }
+.checks__line--se { color: #6b7280; }
+
+/* The count on the toolbar button that opens it. */
+.bar__badge {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #3a4048;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+.bar__badge--stop { background: #b4401f; color: #fff; }
+.bar button.accent .bar__badge,
+.bar button.primary .bar__badge { background: rgb(255 255 255 / 0.25); color: #fff; }
+
+/*
+ * A tile whose arrangement is still coming.
+ *
+ * The products are already in the cell and the page already prints —
+ * what is running is the model that improves where they stand, and it
+ * used to hold the whole toolbar hostage. Said on the cell instead,
+ * which is the only place it is true.
+ */
+.handle--standing { outline: 1px dashed color-mix(in srgb, var(--hot) 55%, transparent); }
+.handle__working {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 11px;
+  background: rgb(22 24 29 / 0.82);
+  color: #fff;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+}
+.handle__working .spinner { width: 9px; height: 9px; border-width: 1.5px; margin: 0; }
+
+/* ------------------------------------------------- de foldede paneler */
+
+/*
+ * What the toolbar folds out.
+ *
+ * Three strips used to stand permanently between the toolbar and the
+ * first sheet — the step indicator, the mood artwork and the two other
+ * ways into a page. Folded shut they still cost their line each, which
+ * is a hundred pixels of chrome above the one thing the screen is for.
+ *
+ * So they lie over the canvas instead. Not dimmed and not centred: a
+ * fold-out belongs under the button that opened it, and the page it is
+ * about has to stay readable behind it. Only the card takes the
+ * pointer; the rest of the layer is there to catch a click outside.
+ */
+/*
+ * Anchored, not centred: a fold-out belongs directly under the button
+ * that opened it. The element itself is a zero-height marker sitting
+ * where the strips used to sit — immediately below the toolbar, whose
+ * height is not a number anybody can write down since it wraps — and
+ * the card hangs off it.
+ */
+.panel {
+  position: relative;
+  height: 0;
+  z-index: 40;
+}
+.panel__away { position: fixed; inset: 0; }
+.panel__card {
+  position: absolute;
+  top: 8px;
+  left: 18px;
+  right: 18px;
+  max-width: 1100px;
+  background: #fff;
+  border: 1px solid #dfe3e8;
+  border-radius: 10px;
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.18);
+  /* Tall content — the drawn-layout row, the full prompt — scrolls
+     inside the card rather than growing past the bottom of the screen. */
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+}
+.panel__close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 1;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  border-radius: 5px;
+  width: 24px;
+  height: 24px;
+  font-size: 15px;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+}
+.panel__close:hover { border-color: #b4401f; color: #b4401f; }
+
+/* Inside a card they are plain sections: the borders and the paper
+   colour belonged to the strips they used to be. */
+.panel__card .steps,
+.panel__card .decor,
+.panel__card .ways {
+  border: 0;
+  background: none;
+  padding: 14px 18px;
+}
+.panel__card .decor__head { justify-content: flex-end; padding-right: 30px; }
+.panel__card .steps__say { margin-bottom: 0; }
+
+/* The step, in the toolbar. */
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 5px;
+  border: 1px solid #333944;
+  border-radius: 999px;
+  background: #21252c;
+  color: var(--chrome-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.chip:hover { background: #2b3038; }
+.chip--on { border-color: var(--hot); background: var(--hot); color: #fff; }
+.chip__no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3a4048;
+  font-size: 11px;
+  font-weight: 600;
+}
+.chip--on .chip__no { background: rgb(255 255 255 / 0.28); }
+
+/* Something in the panel needs attention — today, a missing key. */
+.bar__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #f0b429;
+  vertical-align: 1px;
+}
+
+/* The label in front of the prompt picker. */
+.way__which { font-size: 11px; color: #6b7280; }
+
+/*
+ * The price, under the tokens it is worked out from.
+ *
+ * Quieter than the line above it, because it is the only figure in
+ * this panel that was not measured — see `price.ts`. "anslået" is set
+ * smaller still, so the word is there without competing with the
+ * number it qualifies.
+ */
+.way__price { margin: 2px 0 0 !important; font-size: 11px; color: #6b7280; }
+.way__price i { font-style: normal; font-size: 10px; opacity: 0.7; }
+
+/* The reserve switch, under the model it qualifies. */
+.way__strict {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+/*
+ * A model answered that nobody chose.
+ *
+ * Loud on purpose. It used to be a parenthesis in a grey line, and a
+ * whole afternoon went by comparing two prompts on tiles that had all
+ * been made by the same reserve model.
+ */
+.way__swap { color: #b4401f; font-weight: 600; }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Offer } from '@incitio/schema';
+import { coversWeek, weekRange, type Offer } from '@incitio/schema';
 import { formatPrice } from '@incitio/renderer';
 import { count, useStudio } from './state.js';
 
@@ -59,6 +59,7 @@ function Card({ offer, placedOn }: { offer: Offer; placedOn: string | null }) {
   const activePageId = useStudio((s) => s.activePageId);
   const toggle = useStudio((s) => s.toggleLibraryPick);
   const add = useStudio((s) => s.addOffersToPage);
+  const goTo = useStudio((s) => s.goToOffer);
 
   return (
     <li className={`card${picked ? ' card--picked' : ''}${placedOn ? ' card--placed' : ''}`}>
@@ -69,12 +70,20 @@ function Card({ offer, placedOn }: { offer: Offer; placedOn: string | null }) {
         * pick several — a click that silently unpicked the last five
         * would make the multi-select unusable. One product on its own
         * does not need the selection at all: that is the `+`.
+        *
+        * A product that already has a place in the avis cannot be
+        * ticked at all: two cells printing the same goods is not an
+        * edit anybody makes on purpose. It is not a dead card though —
+        * clicking it goes and stands at the tile, which is the thing
+        * somebody clicking a product they can already see wants.
         */}
       <button
         className="card__body"
-        title={`${offer.name}\n${offer.description}`}
-        aria-pressed={picked}
-        onClick={() => toggle(offer.id)}
+        title={placedOn
+          ? `${offer.name}\nLigger allerede på ${placedOn} — klik for at gå dertil`
+          : `${offer.name}\n${offer.description}`}
+        aria-pressed={placedOn ? undefined : picked}
+        onClick={() => (placedOn ? goTo(offer.id) : toggle(offer.id))}
       >
         <span className="card__shot">
           {offer.imageUrl
@@ -89,7 +98,12 @@ function Card({ offer, placedOn }: { offer: Offer; placedOn: string | null }) {
       </button>
 
       {placedOn
-        ? <span className="card__where" title={`Ligger allerede på ${placedOn}`}>{placedOn}</span>
+        ? (
+          <span
+            className="card__where"
+            title={`Ligger allerede på ${placedOn}. Tag den af siden for at bruge den et andet sted.`}
+          >{placedOn}</span>
+        )
         : (
           <button
             className="card__add"
@@ -118,12 +132,17 @@ export function Library() {
   const closed = useStudio((s) => s.libraryClosedGroups);
   const toggleGroup = useStudio((s) => s.toggleLibraryGroup);
   const fill = useStudio((s) => s.fillSlot);
+  const composeSlot = useStudio((s) => s.composeSlot);
   const note = useStudio((s) => s.arrangeNote);
   const setNote = useStudio((s) => s.setArrangeNote);
   const busy = useStudio((s) => Boolean(s.busy));
   const decorReady = useStudio((s) => s.decorReady);
   const pageSlots = useStudio((s) => s.pageSlots);
   const selectedOfferId = useStudio((s) => s.selectedOfferId);
+  const placedAt = useStudio((s) => s.placedAt);
+  const week = useStudio((s) => s.week);
+  const weekOnly = useStudio((s) => s.weekOnly);
+  const setWeekOnly = useStudio((s) => s.setWeekOnly);
 
   /*
    * The feed's products first, then any the document has that the feed
@@ -131,19 +150,40 @@ export function Library() {
    * document is the whole list; after an upload the two overlap, and the
    * feed's copy is the current one.
    */
-  const offers = useMemo(() => {
+  const all = useMemo(() => {
     const seen = new Set(feedOffers.map((offer) => offer.id));
     return [...feedOffers, ...(document?.offers ?? []).filter((offer) => !seen.has(offer.id))];
   }, [feedOffers, document]);
 
-  /** Which page, if any, is already showing each product. */
-  const placed = useMemo(() => {
-    const map = new Map<string, string>();
-    document?.pages.forEach((page, index) => {
-      for (const placement of page.placements) map.set(placement.offerId, `s. ${index + 1}`);
-    });
-    return map;
-  }, [document]);
+  /*
+   * Only the goods that actually run in the week.
+   *
+   * A feed is a range, not a paper: the chain's own file carries every
+   * offer it is running, each with its own dates, and picking week
+   * 39's products out of 1,235 rows by eye is how last week's cheese
+   * ends up on this week's page. Filtered rather than sorted, and the
+   * count of what was set aside is said out loud beside the switch —
+   * a list that quietly hides a third of the file would be worse than
+   * no filter at all.
+   *
+   * On by default once a week is known, and off is one click away for
+   * the ordinary case where somebody wants to look at everything.
+   */
+  const offers = useMemo(
+    () => (week && weekOnly ? all.filter((offer) => coversWeek(offer, week)) : all),
+    [all, week, weekOnly],
+  );
+  const setAside = all.length - offers.length;
+
+  /*
+   * Which page, if any, is already showing each product.
+   *
+   * Asked of the store rather than worked out here, because the same
+   * question decides whether a product can be ticked at all — see
+   * `placedAt`. Two places answering it separately is how a card comes
+   * out grey and pickable.
+   */
+  const placed = useMemo(() => placedAt(), [document, placedAt]);
 
   const groups = useMemo(() => grouped(offers, search), [offers, search]);
   const searching = search.trim() !== '';
@@ -179,10 +219,15 @@ export function Library() {
     <aside className="library">
       <header className="library__head">
         <strong>Varer</strong>
+        {/* The count is what is LISTED, with the whole file beside it
+            when the week has taken some of it away — a bare number
+            that silently means two thirds of the file is a number
+            nobody can check. */}
         <span className="library__said">
           {reading
-            ? `${reading.source.name} · ${offers.length} · ${reading.withImage} med billede`
-            : `${offers.length} i avisen`}
+            ? `${reading.source.name} · ${offers.length}${
+              setAside > 0 ? ` af ${all.length}` : ''} · ${reading.withImage} med billede`
+            : `${offers.length}${setAside > 0 ? ` af ${all.length}` : ''} i avisen`}
         </span>
         <button className="library__close" title="Skjul listen" onClick={() => setOpen(false)}>×</button>
       </header>
@@ -194,9 +239,35 @@ export function Library() {
         onChange={(event) => setSearch(event.target.value)}
       />
 
+      {/* The week, as a filter you can see and switch off. Only shown
+          once somebody has said which week — see `AskWeek`. */}
+      {week && (
+        <label className="library__week" title={`Uge ${week.week}: ${weekRange(week)}`}>
+          <input
+            type="checkbox"
+            checked={weekOnly}
+            onChange={(event) => setWeekOnly(event.target.checked)}
+          />
+          <span>
+            Kun uge {week.week}
+            {setAside > 0 && <i> · {setAside} lagt til side</i>}
+            {weekOnly && setAside === 0 && <i> · alle gælder</i>}
+          </span>
+        </label>
+      )}
+
+      {/*
+        * Two different emptinesses, and saying the wrong one is worse
+        * than saying nothing: a list emptied by the week filter looks
+        * exactly like a feed nobody uploaded, and the answer to the
+        * first is one click while the answer to the second is a file.
+        */}
       {offers.length === 0 && (
         <p className="library__empty">
-          Upload denne uges feed, eller hent en udgivelse via link — så står varerne her.
+          {all.length > 0
+            ? `Ingen af feedets ${all.length} varer gælder i uge ${week?.week}. `
+              + 'Slå filteret fra herover, eller ret ugen i bjælken.'
+            : 'Upload denne uges feed, eller hent en udgivelse via link — så står varerne her.'}
         </p>
       )}
 
@@ -323,24 +394,34 @@ export function Library() {
             */}
           {picked.length > 1 && (
             <>
+              {/*
+                * The whole job in one press.
+                *
+                * It used to be four: put them in the cell, fetch the
+                * prompt and the cutouts, run them through Gemini, drop
+                * the picture back. Every one of those was a step
+                * somebody had to remember, and none of them was ever a
+                * decision — so they are one button, and it says what
+                * it does rather than what it costs.
+                */}
               <button
                 className="library__compose"
                 disabled={busy || !activePageId || !slotId || !decorReady || picked.length > 8}
                 title={decorReady
-                  ? 'Billedmodellen fotograferer varerne sammen — ét billede, som en avis'
-                  : 'Kræver GEMINI_API_KEY i .env'}
+                  ? 'Ét klik: varerne i pladsen, billedmodellen stiller dem op,'
+                    + ' opstillingen læses, og kædens egne udklip flytter sig på plads'
+                  : 'Kræver en Gemini-nøgle — indsæt den under Stemningsbillede'}
                 onClick={() => {
-                  if (activePageId && slotId) {
-                    void fill(activePageId, slotId, picked, { compose: true });
-                  }
+                  if (activePageId && slotId) void composeSlot(activePageId, slotId, picked);
                 }}
               >
-                Saml som ét fotografi
+                Saml og stil op · {count(picked.length, 'vare', 'varer')}
               </button>
               <p className="library__aside">
                 {decorReady
-                  ? 'Ét billede af varerne sammen. Kan ikke redigeres vare for vare bagefter.'
-                  : 'Kræver GEMINI_API_KEY og fakturering på Google-projektet.'}
+                  ? 'Modellen stiller varerne op som en avis. Det er kædens egne'
+                    + ' udklip der bliver stående, så hver vare kan stadig flyttes bagefter.'
+                  : 'Kræver en Gemini-nøgle — indsæt den øverst under Stemningsbillede.'}
               </p>
             </>
           )}

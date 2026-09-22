@@ -189,20 +189,77 @@ const MAX_BYTES = 6 * 1024 * 1024;
  * list quietly closed up would put every label on the wrong product.
  */
 export async function fetchImages(urls: (string | null)[]): Promise<(GeneratedImage | null)[]> {
-  return Promise.all(urls.map(async (url) => {
+  return Promise.all(urls.map((url) => {
     if (!url || !/^https?:/.test(url)) return null;
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_MS) });
-      if (!response.ok) return null;
-      const type = (response.headers.get('content-type') ?? '').split(';')[0]!.trim();
-      if (!IMAGE_TYPES.includes(type as (typeof IMAGE_TYPES)[number])) return null;
-      const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.length === 0 || bytes.length > MAX_BYTES) return null;
-      return { bytes, mimeType: type };
-    } catch {
-      return null;
-    }
+    const hit = cached(url);
+    if (hit) return hit;
+    const pending = download(url);
+    remember(url, pending);
+    return pending;
   }));
+}
+
+/* ------------------------------------------------- the cutouts, kept */
+
+/**
+ * The same cutout is asked for several times in a row.
+ *
+ * Standing one cluster up fetches its products twice — once for the
+ * same-origin copies the studio measures against, once for the
+ * composition itself — and standing a whole sheet up, then trying a
+ * second arrangement of the same tile, fetches them again. Every one of
+ * those is a round trip to the chain's image host, in front of a person
+ * waiting, for bytes that cannot have changed.
+ *
+ * So: the answer is held for ten minutes, and the PROMISE is held
+ * rather than the bytes, which is what makes six clusters composed at
+ * once share one download of a product two of them have in common.
+ * A fetch that fails is dropped again immediately — a cache is not the
+ * place to remember an outage.
+ */
+const CACHE_MS = 10 * 60_000;
+/** Far more than a page's worth; the cap is only there so it ends. */
+const CACHE_MAX = 300;
+
+const store = new Map<string, { at: number; image: Promise<GeneratedImage | null> }>();
+
+function cached(url: string): Promise<GeneratedImage | null> | null {
+  const entry = store.get(url);
+  if (!entry) return null;
+  if (Date.now() - entry.at > CACHE_MS) { store.delete(url); return null; }
+  // Re-inserted so the oldest key really is the least recently used.
+  store.delete(url);
+  store.set(url, entry);
+  return entry.image;
+}
+
+function remember(url: string, image: Promise<GeneratedImage | null>): void {
+  store.set(url, { at: Date.now(), image });
+  void image.then((value) => { if (!value) store.delete(url); }, () => store.delete(url));
+  while (store.size > CACHE_MAX) {
+    const oldest = store.keys().next().value;
+    if (oldest === undefined) break;
+    store.delete(oldest);
+  }
+}
+
+/** Drop everything. For a test, and for an editor who replaced a photo. */
+export function forgetImages(): void {
+  store.clear();
+}
+
+async function download(url: string): Promise<GeneratedImage | null> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_MS) });
+    if (!response.ok) return null;
+    const type = (response.headers.get('content-type') ?? '').split(';')[0]!.trim();
+    if (!IMAGE_TYPES.includes(type as (typeof IMAGE_TYPES)[number])) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > MAX_BYTES) return null;
+    return { bytes, mimeType: type };
+  } catch {
+    return null;
+  }
 }
 
 /*

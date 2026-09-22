@@ -3,7 +3,7 @@ import { imagePrompt, normaliseStyle, STYLE_LIMIT } from '@incitio/decor/prompt'
 import { useStudio } from './state.js';
 
 /**
- * The mood-artwork controls, as a strip of their own under the toolbar.
+ * The mood-artwork controls, as a panel the toolbar folds out.
  *
  * They were one nameless input squeezed between two buttons on the bar,
  * which was survivable while there was one field and stopped being so
@@ -11,28 +11,11 @@ import { useStudio } from './state.js';
  * DIFFERENT models, and two unlabelled boxes side by side say the
  * opposite. A strip has room for the labels that carry that distinction.
  *
- * It folds. This used to be open always, on the argument that artwork is
- * iterated on — draw, look, reword, draw again — and a control you
- * reopen every round is one you stop using. That was right when the
- * strip sat above the only other thing on screen. It is not right now
- * that pages are made by handing in references: two labelled fields and
- * a prompt preview are a lot of chrome above the page you are actually
- * looking at, for a step most sessions never run.
- *
- * Shut is the default, and the choice is remembered — someone who folds
- * it away has said what they think of it, and saying it again after
- * every reload is the same complaint twice.
+ * It used to be a strip that folded, which meant it cost a line of
+ * chrome above the page even when it was shut — for a step most
+ * sessions never run. Folded away it is now nothing at all: a button
+ * in the toolbar, and what it opens lies over the canvas. See `panel`.
  */
-
-const OPEN_KEY = 'incitio.decor.open';
-
-function remembered(): boolean {
-  try {
-    return window.localStorage.getItem(OPEN_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Stands in for the motif, which is the one part of the prompt this
@@ -42,17 +25,92 @@ function remembered(): boolean {
  */
 const MOTIF_SLOT = '‹motivet for siden›';
 
+/**
+ * Where an editor puts their own key for the image model.
+ *
+ * In the browser and nowhere else. It goes into this browser's own
+ * storage and onto the requests that draw, as a header — never into
+ * the repo, never into a document, never onto the server's disk, and
+ * never into a chat with anybody. `GEMINI_API_KEY` in the server's
+ * `.env` still works and still wins when no key is pasted here; this
+ * is for the ordinary case where the person who has the key is not the
+ * person who started the server.
+ *
+ * What is shown back is the last four characters. Enough to tell two
+ * keys apart, useless to a shoulder.
+ */
+function KeyField() {
+  const s = useStudio();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  function keep(value: string) {
+    s.setImageKey(value);
+    setDraft('');
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <form
+        className="decor__key"
+        onSubmit={(e) => { e.preventDefault(); keep(draft); }}
+      >
+        <input
+          type="password"
+          className="decor__keyinput"
+          value={draft}
+          autoFocus
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="Indsæt Gemini-nøgle"
+          aria-label="Gemini-nøgle"
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button type="submit" className="decor__toggle" disabled={draft.trim().length < 20}>
+          Gem i browseren
+        </button>
+        <button
+          type="button"
+          className="decor__toggle"
+          onClick={() => { setDraft(''); setEditing(false); }}
+        >
+          Fortryd
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <span className="decor__key">
+      {s.imageKeyTail && (
+        <span className="decor__badge" title="Nøglen ligger kun i denne browser">
+          nøgle i browseren ···{s.imageKeyTail}
+        </span>
+      )}
+      {!s.imageKeyTail && s.serverKey && (
+        <span className="decor__badge" title="GEMINI_API_KEY på serveren">nøgle på serveren</span>
+      )}
+      {!s.imageKeyTail && !s.serverKey && <span className="decor__off">ingen nøgle</span>}
+      <button
+        className="decor__toggle"
+        onClick={() => setEditing(true)}
+        title="Nøglen bliver i denne browser — hverken i projektet eller på serveren"
+      >
+        {s.imageKeyTail ? 'Skift' : 'Indsæt nøgle'}
+      </button>
+      {s.imageKeyTail && (
+        <button className="decor__toggle" onClick={() => keep('')} title="Glem nøglen i denne browser">
+          Ryd
+        </button>
+      )}
+    </span>
+  );
+}
+
 export function DecorBar() {
   const s = useStudio();
   const [open, setOpen] = useState(false);
-  const [shown, setShown] = useState(remembered);
-
-  function show(next: boolean) {
-    setShown(next);
-    try {
-      window.localStorage.setItem(OPEN_KEY, next ? '1' : '0');
-    } catch { /* private browsing; it still folds for this session */ }
-  }
 
   if (!s.brand) return null;
 
@@ -78,32 +136,22 @@ export function DecorBar() {
   const at = mine ? preview.indexOf(mine) : -1;
 
   return (
-    <section className={shown ? 'decor' : 'decor decor--shut'} aria-label="Stemningsbilleder">
+    <section className="decor" aria-label="Stemningsbilleder">
       {/*
-        * The one row that is always there.
+        * The key, and which model is about to be billed.
         *
-        * Folded, it still has to say the two things someone would open
-        * it to check — whether their own wording is in the prompt, and
-        * whether the key is there at all — or folding it would mean
-        * losing track of it.
+        * The key used to sit in the row that was always on screen, on
+        * the argument that every button which draws is dark without
+        * one and the control that lights them up must not hide. That
+        * job belongs to the toolbar button now — it carries a mark
+        * when nothing can draw — and the key itself belongs here,
+        * with the fields it pays for. The model's name is said once,
+        * in the row at the foot beside the prompt it is sent.
         */}
       <div className="decor__head">
-        <button
-          className="decor__disclose"
-          onClick={() => show(!shown)}
-          aria-expanded={shown}
-        >
-          <span className="decor__caret" aria-hidden="true">{shown ? '▾' : '▸'}</span>
-          <h2 className="decor__title">Stemningsbillede</h2>
-        </button>
-        {!shown && mine && <span className="decor__badge">din tekst er med</span>}
-        {!shown && s.decorReady && s.decorModel && (
-          <code className="decor__model" title="Billedmodellen der kaldes">{s.decorModel}</code>
-        )}
-        {!shown && !s.decorReady && <span className="decor__off">ingen GEMINI_API_KEY</span>}
+        <KeyField />
       </div>
 
-      {shown && (
       <div className="decor__row">
         <label className="decor__field">
           <span className="decor__label">Motiv <em>— hvad skal tegnes?</em></span>
@@ -146,20 +194,23 @@ export function DecorBar() {
           Tegn billeder
         </button>
       </div>
-      )}
 
-      {shown && (
       <div className="decor__row decor__row--meta">
         <button className="decor__toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
           {open ? 'Skjul' : 'Vis'} den fulde prompt
         </button>
         {mine && !open && <span className="decor__badge">din tekst er med</span>}
         {s.decorModel && <code className="decor__model" title="Billedmodellen der kaldes">{s.decorModel}</code>}
-        {!s.decorReady && <span className="decor__off">ingen GEMINI_API_KEY på serveren</span>}
+        {!s.decorReady && (
+          <span className="decor__off">
+            Ingen nøgle. Indsæt din egen ovenfor — den bliver i denne browser — eller sæt{' '}
+            <code>GEMINI_API_KEY</code> i <code>.env</code>. Nøgle:{' '}
+            <a href="https://ai.dev" target="_blank" rel="noreferrer">ai.dev</a>
+          </span>
+        )}
       </div>
-      )}
 
-      {shown && open && (
+      {open && (
         <p className="decor__prompt">
           {at >= 0
             ? <>

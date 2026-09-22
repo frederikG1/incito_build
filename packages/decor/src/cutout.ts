@@ -219,3 +219,43 @@ export async function cutout(
     if (!options.browser) await browser.close();
   }
 }
+
+/* ------------------------------------------------- one Chromium, kept */
+
+let shared: Promise<Browser> | null = null;
+
+/**
+ * One Chromium for the whole process, launched on first use.
+ *
+ * `cutout` launches its own when nobody hands it one, which is right
+ * for a script that runs once and exits. It is wrong for the server:
+ * a launch is the better part of a second, it is paid on EVERY composed
+ * picture, and a page whose six clusters are composed at the same time
+ * would start six browsers to do six flood fills. So a long-lived
+ * caller asks for this one and passes it in.
+ *
+ * Deliberately not the default inside `cutout`: a browser held open
+ * keeps the event loop alive, and `npm run decorate` would stop
+ * exiting.
+ */
+export async function sharedBrowser(): Promise<Browser> {
+  if (!shared) {
+    shared = chromium.launch().then((browser) => {
+      // A crashed browser must not be handed out for the rest of the
+      // process's life.
+      browser.on('disconnected', () => { shared = null; });
+      return browser;
+    }).catch((error: unknown) => {
+      shared = null;
+      throw error;
+    });
+  }
+  return shared;
+}
+
+/** Let the process exit. Safe to call when none was ever launched. */
+export async function closeSharedBrowser(): Promise<void> {
+  const browser = shared;
+  shared = null;
+  if (browser) await (await browser).close().catch(() => {});
+}

@@ -98,6 +98,11 @@ function key(options: GeminiOptions): string {
 
 interface Part { text?: string; inlineData?: { mimeType: string; data: string } }
 
+export interface GeneratedImage {
+  bytes: Buffer;
+  mimeType: string;
+}
+
 const sleep = (ms: number) => new Promise((r) => { setTimeout(r, ms); });
 
 /**
@@ -183,18 +188,54 @@ async function call(
   throw describe(last!.status, last!.message, model);
 }
 
-/** One prompt in, one JSON object out. Throws rather than guessing. */
+/**
+ * One prompt in, one JSON object out. Throws rather than guessing.
+ *
+ * Pictures may go in front of the prompt, for a job that is about
+ * them: the same arrangement as `generateImage` and for the same
+ * reason — this API reads a turn as one list of parts, so a prompt
+ * that names "image 1" with no images before it is a prompt about
+ * nothing. The order is the order the prompt numbers them in.
+ */
+/**
+ * A JSON Schema this API will actually accept.
+ *
+ * `responseSchema` is an OpenAPI subset, not JSON Schema: it rejects
+ * the request outright — 400, "Unknown name additionalProperties" —
+ * for keys the other house requires. Rather than keeping two copies of
+ * every schema, the strict one is written once and the keys this API
+ * does not know are stripped on the way out.
+ */
+export function forGemini(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(forGemini);
+  if (!schema || typeof schema !== 'object') return schema;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
+    if (key === 'additionalProperties' || key === '$schema') continue;
+    out[key] = forGemini(value);
+  }
+  return out;
+}
+
 export async function generateJson<T>(
   prompt: string,
   schema: unknown,
   options: GeminiOptions = {},
+  references: GeneratedImage[] = [],
 ): Promise<{ value: T; usage?: { input: number; output: number } }> {
   const model = options.model ?? DEFAULT_TEXT_MODEL;
   const { parts, usage } = await call(model, {
-    contents: [{ parts: [{ text: prompt }] }],
+    contents: [{
+      parts: [
+        ...references.map((image) => ({
+          inline_data: { mime_type: image.mimeType, data: image.bytes.toString('base64') },
+        })),
+        { text: prompt },
+      ],
+    }],
     generationConfig: {
       responseMimeType: 'application/json',
-      responseSchema: schema,
+      responseSchema: forGemini(schema),
       /*
        * Zero, and it is the cache that demands it.
        *
@@ -215,11 +256,6 @@ export async function generateJson<T>(
   } catch {
     throw new GeminiError(`${model} returnerede ugyldig JSON: ${text.slice(0, 160)}`);
   }
-}
-
-export interface GeneratedImage {
-  bytes: Buffer;
-  mimeType: string;
 }
 
 /**

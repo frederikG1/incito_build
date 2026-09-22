@@ -1,21 +1,22 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
-import { CatalogDocument, Offer, packSizeOf } from '@incitio/schema';
+import { CatalogDocument, CatalogWeek, Offer, packSizeOf } from '@incitio/schema';
 import {
   findBrand, findSource, listBrands, resolveSource, type BrandDefinition,
 } from '@incitio/brands';
 import { buildCatalogue } from '@incitio/pipeline';
-import { arrangeGroup, readClusterLayout } from '@incitio/curator';
+import { arrangeGroup, placeCluster, readClusterLayout } from '@incitio/curator';
 import {
   EMPTY_LABEL_DICTIONARY, ingestCsv, ingestJson, type LabelDictionary,
 } from '@incitio/ingest';
 import { imaginePage, matchPage, MatchError, mediaType } from '@incitio/match';
+import type { Browser } from 'playwright';
 import { uploadStore } from './uploads.js';
 import { renderCataloguePdf } from '@incitio/pdf';
 import {
   clusterPrompt, composeCluster, cutout, decorate, fetchImages,
-  DEFAULT_IMAGE_MODEL, GeminiError,
+  sharedBrowser, DEFAULT_IMAGE_MODEL, GeminiError,
 } from '@incitio/decor';
 import { importPublication, PublicationError } from '@incitio/publication';
 import { Store } from './db.js';
@@ -32,6 +33,37 @@ export { Store } from './db.js';
  * and nothing else — the routes never learn where the brand came from.
  */
 export const BRAND_HEADER = 'x-incitio-brand';
+
+/**
+ * A key for the image model, carried by the request instead of by the
+ * server's environment.
+ *
+ * The reason it exists: a key in `.env` is a key on the machine, and
+ * the person who has one is not always the person who started the
+ * server — so the studio lets an editor paste theirs into the browser
+ * and sends it along. It is read here, used for that one call and
+ * never stored, never logged and never echoed back; `/decor/status`
+ * keeps reporting the SERVER's key, because the browser already knows
+ * about its own.
+ *
+ * `.env` still wins nothing and loses nothing: the header takes
+ * precedence when it is there, and the environment answers when it is
+ * not, so a deployment that sets the key centrally is unaffected.
+ */
+export const KEY_HEADER = 'x-gemini-key';
+
+/**
+ * The key this request should draw with, if any.
+ *
+ * Shape-checked rather than trusted: a Google API key is a short
+ * printable token, and anything else is a header somebody sent by
+ * mistake — refusing it here means it can never reach a log or a URL.
+ */
+function imageKey(c: { req: { header: (name: string) => string | undefined } }): string | null {
+  const sent = (c.req.header(KEY_HEADER) ?? '').trim();
+  if (sent && /^[A-Za-z0-9._-]{20,200}$/.test(sent)) return sent;
+  return process.env['GEMINI_API_KEY'] || null;
+}
 
 interface Scope {
   Variables: { brand: BrandDefinition };
@@ -64,7 +96,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
   const labels = options.labels ?? EMPTY_LABEL_DICTIONARY;
   const uploads = options.assetDir ? uploadStore(options.assetDir) : null;
 
-  app.use('/api/*', cors({ origin: '*', allowHeaders: ['content-type', BRAND_HEADER] }));
+  app.use('/api/*', cors({ origin: '*', allowHeaders: ['content-type', BRAND_HEADER, KEY_HEADER] }));
 
   app.get('/api/health', (c) => c.json({ ok: true }));
 
@@ -96,6 +128,20 @@ export function createApp(store: Store, options: AppOptions = {}) {
     const { brand, sources } = c.get('brand');
     return c.json({
       brand,
+      /*
+       * A publication to test with, when the machine has one.
+       *
+       * From the environment rather than from the code, because the
+       * link IS the access: a preview carries its signature in `?s=`,
+       * and a signature committed to a repository is a publication
+       * shared with everyone who clones it. `.env` is gitignored, and
+       * this is the same bargain the keys make.
+       *
+       * It only prefills a field. Anyone can type another link over
+       * it, and a deployment without the variable simply gets an
+       * empty box, exactly as before.
+       */
+      testPublication: process.env['INCITIO_TEST_PUBLICATION'] ?? '',
       // The mappings are functions and stay server-side; the editor
       // only needs to know which readers exist and where the samples
       // live.
@@ -170,6 +216,8 @@ export function createApp(store: Store, options: AppOptions = {}) {
     brief: z.string().max(2000).optional(),
     skipCuration: z.boolean().optional(),
     seed: z.string().max(64).optional(),
+    /** The week the paper is for — see `BuildOptions.week`. */
+    week: CatalogWeek.optional(),
   });
 
   app.get('/api/brand/curation/status', (c) =>
@@ -226,11 +274,13 @@ export function createApp(store: Store, options: AppOptions = {}) {
         503,
       );
     }
-    if (!process.env['GEMINI_API_KEY']) {
+    const apiKey = imageKey(c);
+    if (!apiKey) {
       return c.json(
         {
           error: 'ingen API-nøgle',
-          detail: 'Sæt GEMINI_API_KEY i .env og genstart API-serveren.',
+          detail: 'Indsæt en Gemini-nøgle i studioet, eller sæt GEMINI_API_KEY i .env'
+            + ' og genstart API-serveren.',
         },
         503,
       );
@@ -261,6 +311,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
       const result = await decorate(parsed.data.document, {
         assetRoot: options.assetDir,
         brand: definition.brand,
+        apiKey,
         ...(parsed.data.brief ? { brief: parsed.data.brief } : {}),
         ...(parsed.data.style ? { style: parsed.data.style } : {}),
         ...(parsed.data.offline ? { offline: true } : {}),
@@ -312,6 +363,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
         ...(parsed.data.sourceId ? { sourceId: parsed.data.sourceId } : {}),
         ...(parsed.data.brief ? { brief: parsed.data.brief } : {}),
         ...(parsed.data.seed ? { seed: parsed.data.seed } : {}),
+        ...(parsed.data.week ? { week: parsed.data.week } : {}),
         skipCuration: !wantsCuration,
       });
 
@@ -321,6 +373,8 @@ export function createApp(store: Store, options: AppOptions = {}) {
         source: result.source,
         curationError: result.curationError ?? null,
         offerCount: result.offerCount,
+        outsideWeek: result.outsideWeek,
+        inWeek: result.inWeek,
         dropped: result.dropped.length,
         issues: result.issues.slice(0, 20),
         substitutions: result.substitutions,
@@ -417,7 +471,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
      */
     if (parsed.data.cut) {
       try {
-        const cut = await cutout(bytes, mediaType(bytes), { trim: true });
+        const cut = await cutout(bytes, mediaType(bytes), await cutOptions());
         /*
          * `kept` is the honest half. A flood fill that finds nothing
          * returns the picture essentially unchanged — which is what a
@@ -598,6 +652,26 @@ export function createApp(store: Store, options: AppOptions = {}) {
     aspect: z.number().positive().max(20).optional(),
     /** The editor's own words, added on top of the craft. */
     note: z.string().max(500).optional(),
+    /**
+     * Also return the cutouts re-served from here, as `/prepare` does.
+     *
+     * The studio needs both — the composition to read, and same-origin
+     * copies to measure the products against, because a canvas may not
+     * read another origin's pixels. Asking for them here rather than
+     * calling `/prepare` first saves a whole round of downloads from
+     * the chain's image host per cluster, which is most of the wait
+     * that is not the model's own.
+     */
+    copies: z.boolean().optional(),
+    /**
+     * Which image model draws it.
+     *
+     * A field rather than only an env var, because the choice is the
+     * editor's and it is a price: the flash models cost a few cents a
+     * picture and the pro ones several times that. `GEMINI_IMAGE_MODEL`
+     * stays the default for anyone who does not pass one.
+     */
+    model: z.string().max(80).optional(),
   });
 
   /**
@@ -618,11 +692,13 @@ export function createApp(store: Store, options: AppOptions = {}) {
     if (!options.assetDir) {
       return c.json({ error: 'serveren har ingen assetDir at gemme billeder i' }, 503);
     }
-    if (!process.env['GEMINI_API_KEY']) {
+    const apiKey = imageKey(c);
+    if (!apiKey) {
       return c.json({
         error: 'ingen nøgle til billedmodellen',
-        detail: 'Sæt GEMINI_API_KEY i .env og genstart API-serveren. '
-          + 'Billedgenerering kræver desuden fakturering på Google-projektet.',
+        detail: 'Indsæt en Gemini-nøgle i studioet, eller sæt GEMINI_API_KEY i .env'
+          + ' og genstart API-serveren. Billedgenerering kræver desuden fakturering'
+          + ' på Google-projektet.',
       }, 503);
     }
 
@@ -676,6 +752,9 @@ export function createApp(store: Store, options: AppOptions = {}) {
         references: fetched.filter((image): image is NonNullable<typeof image> => image !== null),
         ...(parsed.data.aspect ? { aspect: parsed.data.aspect } : {}),
         ...(parsed.data.note ? { note: parsed.data.note } : {}),
+        // The editor's own key when the browser sent one, the
+        // server's otherwise — see `imageKey`.
+        gemini: { apiKey, ...(parsed.data.model ? { model: parsed.data.model } : {}) },
       });
 
       /*
@@ -688,8 +767,9 @@ export function createApp(store: Store, options: AppOptions = {}) {
        * instead of a field produces — reported rather than discovered
        * on a printed page.
        */
-      const cut = await cutout(drawn.bytes, drawn.mimeType, { trim: true });
-      const stored = uploadStore(options.assetDir).put(cut.bytes, 'png');
+      const cut = await cutout(drawn.bytes, drawn.mimeType, await cutOptions());
+      const store = uploadStore(options.assetDir);
+      const stored = store.put(cut.bytes, 'png');
 
       return c.json({
         url: stored.ref,
@@ -697,6 +777,18 @@ export function createApp(store: Store, options: AppOptions = {}) {
         prompt: drawn.prompt,
         model: drawn.model || DEFAULT_IMAGE_MODEL,
         cut: { kept: cut.kept, threshold: cut.threshold },
+        // The same cutouts `/prepare` hands back, when the caller says
+        // it needs them — the bytes are already here and downloading
+        // them a second time is the slowest thing this route does.
+        ...(parsed.data.copies
+          ? {
+            files: copyCutouts(
+              offers,
+              fetched as { bytes: Buffer; mimeType: string }[],
+              store,
+            ),
+          }
+          : {}),
       });
     } catch (error) {
       if (error instanceof GeminiError) return c.json({ error: error.message }, 422);
@@ -713,20 +805,19 @@ export function createApp(store: Store, options: AppOptions = {}) {
   });
 
   /**
-   * Everything needed to run the composition BY HAND.
+   * The cutouts, re-served from here, and the prompt that goes with
+   * them.
    *
-   * The image model is billing-gated on Google's side, and waiting for
-   * a billing account is not a reason to be unable to see whether the
-   * prompt works. This hands back the two things a person needs to do
-   * it themselves in Gemini's own app: the prompt exactly as the server
-   * would send it, and the cutouts as files, numbered in the order the
-   * prompt names them.
+   * It was the way to run the composition by hand in Gemini's own
+   * app, back when the image model was behind a billing account
+   * nobody had. The studio does the whole job itself now, and what
+   * this is still for is the half that has nothing to do with models:
+   * a canvas may not read another origin's pixels, so the arrangement
+   * cannot measure how much of a packshot is product until there is a
+   * same-origin copy of it. That is what these are.
    *
-   * The pictures are re-served from this server rather than linked to
-   * the chain's: a cross-origin link cannot carry a filename, and the
-   * filename is the whole point — the prompt says "image 1: Klovborg
-   * skæreost" and the file has to say so too, or the upload order is
-   * guesswork and every label lands on the wrong product.
+   * The prompt comes along because it costs nothing to build and is
+   * worth reading when a tile comes out wrong.
    */
   app.post('/api/brand/cluster/prepare', async (c) => {
     if (!options.assetDir) {
@@ -755,20 +846,11 @@ export function createApp(store: Store, options: AppOptions = {}) {
       }, 422);
     }
 
-    const store = uploadStore(options.assetDir);
-    const files = offers.map((offer, index) => {
-      const image = fetched[index]!;
-      const stored = store.put(image.bytes, image.mimeType.split('/')[1] ?? 'png');
-      return {
-        index: index + 1,
-        // What the file should be called when it is saved. Numbered
-        // first so a folder sorts into the prompt's own order.
-        name: `${index + 1}-${offer.name.replace(/[^\p{L}\p{N} .-]/gu, '').trim().slice(0, 50)}`
-          + `.${image.mimeType.split('/')[1] ?? 'png'}`,
-        url: stored.ref,
-        bytes: image.bytes.length,
-      };
-    });
+    const files = copyCutouts(
+      offers,
+      fetched as { bytes: Buffer; mimeType: string }[],
+      uploadStore(options.assetDir),
+    );
 
     return c.json({
       prompt: clusterPrompt(
@@ -789,11 +871,182 @@ export function createApp(store: Store, options: AppOptions = {}) {
     });
   });
 
+  const PlaceRequest = z.object({
+    offers: z.array(Offer).min(2).max(8),
+    /** Width over height of the cell they have to stand in. */
+    aspect: z.number().positive().max(20).optional(),
+    /**
+     * The cell in pixels, as the page actually draws it.
+     *
+     * Measured in the browser and sent, because only the browser knows
+     * it — and the answer is in pixels, so a made-up canvas would put
+     * every size a few per cent out. `aspect` is the fallback when it
+     * is missing.
+     */
+    canvas: z.object({
+      width: z.number().positive().max(10_000),
+      height: z.number().positive().max(10_000),
+    }).optional(),
+    /**
+     * Each cutout's own proportions, width over height, in the offers'
+     * order.
+     *
+     * Also measured in the browser: the ink inside a cutout is not the
+     * cutout's frame, and the studio has already scanned it to place
+     * the product — see `inkOf`. Reading it again here would mean
+     * decoding every packshot on the server for a number it already
+     * has.
+     */
+    aspects: z.array(z.number().positive().max(20)).max(8).optional(),
+    /** What the offer is called, so the hero can be the product it names. */
+    offerName: z.string().max(200).optional(),
+    note: z.string().max(500).optional(),
+    /** Which vision model does the placing. */
+    model: z.string().max(80).optional(),
+    /**
+     * Refuse to answer with anything but `model` — see
+     * `PlaceOptions.strict`. Off by default, because a batch nobody is
+     * watching is better served by an answer from the next model than
+     * by no answer at all.
+     */
+    strict: z.boolean().optional(),
+    /**
+     * The editor's own version of the standing prompt.
+     *
+     * The studio shows the prompt and lets it be rewritten for the
+     * session — see `PLACE_SYSTEM`, which is the default and stays
+     * the default. This is the fastest loop anybody has found for
+     * improving a tile: change a line, press the button, look.
+     */
+    system: z.string().max(8000).optional(),
+  });
+
+  /**
+   * The arrangement as numbers, with no picture drawn.
+   *
+   * The cheap half of the round trip and the way round its billing
+   * gate: `/cluster` pays an image model to photograph the products
+   * together and `/cluster/layout` pays a second model to measure the
+   * result, while this asks one vision model to look at the cutouts
+   * and say where each should stand. Same answer shape as
+   * `/cluster/layout`, so the studio can swap one for the other
+   * without changing anything downstream.
+   *
+   * No Gemini key is involved at all — this is the reading model's
+   * work, and that key has never been the one behind a paywall.
+   */
+  app.post('/api/brand/cluster/place', async (c) => {
+    /*
+     * Gemini's key, not Anthropic's — see `DEFAULT_PLACE_MODEL`.
+     *
+     * The placing model is a text-and-vision one, and those DO have a
+     * free tier on that API; it is only the image models that do not.
+     * So the cheap way needs the key the editor already pasted into
+     * the studio, and nothing else. A Claude model id is still
+     * accepted for a comparison, and then it is Anthropic's key that
+     * has to be there.
+     */
+    const geminiKey = imageKey(c);
+
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const parsed = PlaceRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+
+    const wantsClaude = /^claude/i.test(parsed.data.model ?? '');
+    if (wantsClaude && !process.env['ANTHROPIC_API_KEY']) {
+      return c.json({
+        error: 'ingen API-nøgle',
+        detail: 'Sæt ANTHROPIC_API_KEY i .env og genstart API-serveren.',
+      }, 503);
+    }
+    if (!wantsClaude && !geminiKey) {
+      return c.json({
+        error: 'ingen nøgle til opstillingsmodellen',
+        detail: 'Indsæt en Gemini-nøgle i studioet, eller sæt GEMINI_API_KEY i .env.'
+          + ' Opstilling efter koordinater bruger en tekstmodel, som er med i'
+          + ' gratis-niveauet — til forskel fra billedmodellerne.',
+      }, 503);
+    }
+
+    const offers = parsed.data.offers;
+    const fetched = await fetchImages(offers.map((offer) => offer.imageUrl));
+    const missing = offers.filter((_, index) => fetched[index] === null);
+    if (missing.length > 0) {
+      return c.json({
+        error: 'billedet kunne ikke hentes for '
+          + missing.map((offer) => offer.name).join(', '),
+      }, 422);
+    }
+
+    const started = Date.now();
+    try {
+      /*
+       * The canvas the answer is measured in.
+       *
+       * The browser's own numbers when it sent them; otherwise a box
+       * of the right proportions at a plausible print size, because
+       * the prompt asks for pixels and "1:1" is not a canvas.
+       */
+      const ratio = parsed.data.aspect ?? 1;
+      const canvas = parsed.data.canvas ?? { width: Math.round(500 * ratio), height: 500 };
+
+      const placed = await placeCluster({
+        products: offers.map((offer, index) => {
+          const size = packSizeOf(offer);
+          const shape = parsed.data.aspects?.[index];
+          return {
+            name: offer.brand ? `${offer.brand} ${offer.name}` : offer.name,
+            ...(size ? { size } : {}),
+            ...(shape ? { aspect: shape } : {}),
+          };
+        }),
+        references: fetched.map((image) => ({
+          base64: image!.bytes.toString('base64'),
+          mimeType: image!.mimeType,
+        })),
+        canvas,
+        ...(parsed.data.offerName ? { offerName: parsed.data.offerName } : {}),
+        ...(parsed.data.note ? { note: parsed.data.note } : {}),
+        ...(parsed.data.model ? { model: parsed.data.model } : {}),
+        ...(parsed.data.strict ? { strict: true } : {}),
+        ...(parsed.data.system?.trim() ? { system: parsed.data.system.trim() } : {}),
+        // Anthropic reads its own key from the environment; Gemini's
+        // may have come from the browser — see `imageKey`.
+        ...(!wantsClaude && geminiKey ? { apiKey: geminiKey } : {}),
+      });
+      return c.json({ ...placed, elapsedMs: Date.now() - started });
+    } catch (error) {
+      return c.json({
+        error: error instanceof Error ? error.message : 'opstillingen kunne ikke laves',
+      }, 500);
+    }
+  });
+
   const ClusterLayoutRequest = z.object({
     /** The composed picture, base64. */
     file: z.string().min(1).max(24_000_000),
-    /** The products, in the order the composition's prompt numbered them. */
-    offers: z.array(Offer).min(2).max(8),
+    /**
+     * The products the picture MIGHT hold, numbered.
+     *
+     * Not a cluster, which is why the cap is not `MAX_CLUSTER`. A
+     * composition is at most eight products, but this route is asked
+     * "which of these does the picture contain, and where" — and the
+     * studio asks it with every product on the sheet, or in the whole
+     * book, precisely so nobody has to pair a file with a tile by
+     * hand. Capped at eight it rejected any page with more than eight
+     * grouped products as an invalid request, which is how it was
+     * found. The reader itself has no such limit; the number is here
+     * only so a runaway body is refused.
+     */
+    offers: z.array(Offer).min(2).max(240),
   });
 
   /**
@@ -943,11 +1196,13 @@ export function createApp(store: Store, options: AppOptions = {}) {
   app.post('/api/brand/layout', async (c) => {
     const definition = c.get('brand');
 
-    if (!process.env['GEMINI_API_KEY']) {
+    const apiKey = imageKey(c);
+    if (!apiKey) {
       return c.json({
         error: 'ingen nøgle til billedmodellen',
-        detail: 'Sæt GEMINI_API_KEY i .env og genstart API-serveren. '
-          + 'Billedgenerering kræver desuden fakturering på Google-projektet.',
+        detail: 'Indsæt en Gemini-nøgle i studioet, eller sæt GEMINI_API_KEY i .env'
+          + ' og genstart API-serveren. Billedgenerering kræver desuden fakturering'
+          + ' på Google-projektet.',
       }, 503);
     }
     if (!process.env['ANTHROPIC_API_KEY']) {
@@ -985,6 +1240,9 @@ export function createApp(store: Store, options: AppOptions = {}) {
         ...(parsed.data.exclude?.length ? { exclude: parsed.data.exclude } : {}),
         ...(parsed.data.poolSize ? { poolSize: parsed.data.poolSize } : {}),
         referenceName: 'genereret layout',
+        // The drawing half. The casting half is Claude's and reads its
+        // own key from the environment.
+        gemini: { apiKey },
       });
 
       return c.json({
@@ -1132,4 +1390,50 @@ export function createApp(store: Store, options: AppOptions = {}) {
   });
 
   return app;
+}
+
+
+/**
+ * The cutouts, re-served from this server and numbered.
+ *
+ * Shared by `/cluster/prepare` and by `/cluster` when it is asked for
+ * copies, because the numbering is the contract: the prompt says
+ * "image 1: Klovborg skæreost", so the file has to say so too, or the
+ * upload order is guesswork and every label lands on the wrong
+ * product. Same-origin as well as named — a canvas may not read
+ * another origin's pixels, and the studio measures how much of each
+ * file is product before it stands the composition up.
+ */
+function copyCutouts(
+  offers: { name: string }[],
+  fetched: { bytes: Buffer; mimeType: string }[],
+  store: ReturnType<typeof uploadStore>,
+): { index: number; name: string; url: string; bytes: number }[] {
+  return offers.map((offer, index) => {
+    const image = fetched[index]!;
+    const extension = image.mimeType.split('/')[1] ?? 'png';
+    const stored = store.put(image.bytes, extension);
+    return {
+      index: index + 1,
+      // Numbered first so a folder sorts into the prompt's own order.
+      name: `${index + 1}-${offer.name.replace(/[^\p{L}\p{N} .-]/gu, '').trim().slice(0, 50)}`
+        + `.${extension}`,
+      url: stored.ref,
+      bytes: image.bytes.length,
+    };
+  });
+}
+
+/**
+ * Chromium for a flood fill, launched once for the whole server.
+ *
+ * Falls back to letting `cutout` launch its own: a browser that will
+ * not start is a reason to be slow, not a reason to refuse to compose.
+ */
+async function cutOptions(): Promise<{ trim: true; browser?: Browser }> {
+  try {
+    return { trim: true, browser: await sharedBrowser() };
+  } catch {
+    return { trim: true };
+  }
 }

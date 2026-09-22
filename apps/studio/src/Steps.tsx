@@ -11,8 +11,13 @@
  * So the work is named as four steps, the step you are actually on is
  * lit, and ONE sentence under it says what to do — with the one control
  * that does it. The toolbar keeps everything, because an editor who
- * knows the tool should not have to walk through a wizard; this strip
- * is the answer to "where am I", not a gate.
+ * knows the tool should not have to walk through a wizard; this is the
+ * answer to "where am I", not a gate.
+ *
+ * And because it IS only that answer, it no longer stands permanently
+ * above the page. The toolbar carries the step you are on — four
+ * characters — and the four steps with their sentence are one click
+ * behind it. Somebody who knows where they are never opens it.
  *
  * The step is derived, never stored. A stored step is a thing that can
  * disagree with the document — open yesterday's catalogue and a stored
@@ -74,19 +79,54 @@ function guidance(step: StepKey, count: number, pages: number): ReactNode {
   return <>Siderne er rettet til. <b>Gem</b> arbejdet, og hent avisen som <b>PDF</b>.</>;
 }
 
+/** Where the document is, asked the same way by the chip and the panel. */
+function nowAt(): { step: StepKey; at: number } {
+  const s = useStudio.getState();
+  const step = stepOf({
+    feed: s.feed,
+    pages: s.document?.pages.length ?? 0,
+    // "Polished" is not a fact the document states, so it is read off
+    // the only trace polishing leaves: an undo history.
+    touched: s.past.length > 0,
+  });
+  return { step, at: STEPS.findIndex((entry) => entry.key === step) };
+}
+
+/**
+ * The step, in the toolbar, as four characters and a number.
+ *
+ * What is left of a strip that ran the width of the screen. It says
+ * the one thing that was worth having permanently on screen — which of
+ * the four you are on — and opens the rest.
+ */
+export function StepChip() {
+  const s = useStudio();
+  const open = useStudio((state) => state.panel === 'trin');
+  const toggle = useStudio((state) => state.togglePanel);
+  if (!s.brand) return null;
+
+  const { at } = nowAt();
+  const here = STEPS[at]!;
+
+  return (
+    <button
+      className={`chip${open ? ' chip--on' : ''}`}
+      onClick={() => toggle('trin')}
+      aria-expanded={open}
+      title="Hvor er jeg, og hvad er næste skridt?"
+    >
+      <span className="chip__no">{at + 1}</span>
+      {here.title}
+    </button>
+  );
+}
+
 export function Steps() {
   const s = useStudio();
   if (!s.brand) return null;
 
   const pages = s.document?.pages.length ?? 0;
-  const step = stepOf({
-    feed: s.feed,
-    pages,
-    // "Polished" is not a fact the document states, so it is read off
-    // the only trace polishing leaves: an undo history.
-    touched: s.past.length > 0,
-  });
-  const at = STEPS.findIndex((entry) => entry.key === step);
+  const { step, at } = nowAt();
 
   return (
     <div className="steps">

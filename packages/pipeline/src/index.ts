@@ -1,4 +1,6 @@
-import { Brand, type CatalogDocument, type PageTemplate } from '@incitio/schema';
+import {
+  Brand, coversWeek, weekName, type CatalogDocument, type CatalogWeek, type PageTemplate,
+} from '@incitio/schema';
 import { ingestCsv, ingestJson, type IngestIssue, type LabelDictionary } from '@incitio/ingest';
 import {
   findSource, getBrand, resolveSource,
@@ -55,6 +57,19 @@ export interface BuildOptions {
    * CLI is the only caller.
    */
   extraTemplates?: PageTemplate[];
+  /**
+   * The week the paper is for.
+   *
+   * Three things at once, and they are the same thing: the feed is cut
+   * to the offers that actually run that week, the document is named
+   * after it, and the document carries it so every later stage can ask.
+   *
+   * Omit and nothing is filtered and nothing is named — which is what
+   * every caller did before anybody asked which week, and is still the
+   * right answer for a one-off build off a file with no dates worth
+   * trusting.
+   */
+  week?: CatalogWeek;
 }
 
 export interface BuildResult extends ComposeResult {
@@ -71,6 +86,25 @@ export interface BuildResult extends ComposeResult {
   curated: boolean;
   curationError?: string;
   usage?: { inputTokens: number; outputTokens: number };
+  /**
+   * Offers the feed carried that do not run in the week.
+   *
+   * Reported rather than swallowed: a file that turns out to be last
+   * week's is a number in the thousands here, and that is the fastest
+   * way anybody will ever find out.
+   */
+  outsideWeek: number;
+  /**
+   * How many of the feed's offers actually run in the week, or null
+   * when no week was asked for.
+   *
+   * Zero is the interesting value and the reason this is not just
+   * `outsideWeek`: it means the filter matched nothing, the whole feed
+   * went through unfiltered, and what came back is NOT week 39's
+   * paper. Silently building it anyway — which is what the fallback
+   * does, deliberately — would be dishonest without this.
+   */
+  inWeek: number | null;
 }
 
 /**
@@ -135,6 +169,26 @@ export async function buildCatalogue(
   const maxPages = Math.max(1, options.maxPages ?? DEFAULT_MAX_PAGES);
 
   /*
+   * The week, applied where it costs nothing: before selection.
+   *
+   * A feed is a range, not a paper. SuperBrugsen's own file carries
+   * every offer the chain is running, with its own dates on each row,
+   * and building week 39's avis out of all of them is how a product
+   * that stopped being on offer on Sunday ends up printed. Cut here so
+   * neither the selector nor the curator ever sees them.
+   *
+   * Never to nothing: a filter that empties the feed has found a
+   * mislabelled file or the wrong week, and building an empty
+   * catalogue would hide both. The offers go through unfiltered and
+   * `outsideWeek` says how many were in question.
+   */
+  const inWeek = options.week
+    ? feed.offers.filter((offer) => coversWeek(offer, options.week!))
+    : feed.offers;
+  const offers = inWeek.length > 0 ? inWeek : feed.offers;
+  const outsideWeek = feed.offers.length - offers.length;
+
+  /*
    * Selection runs before curation, not after.
    *
    * Every offer sent to the curator goes into its prompt, so a
@@ -142,7 +196,7 @@ export async function buildCatalogue(
    * leaflet. Cutting to the page budget first also means the model is
    * choosing an arrangement rather than doing the chain's buying.
    */
-  const selection = selectOffers(feed.offers, {
+  const selection = selectOffers(offers, {
     targetCount: options.offerCount ?? offerBudget(brand, maxPages),
   });
 
@@ -172,14 +226,20 @@ export async function buildCatalogue(
 
   const composed = composeCatalog(plan, selection.selected, {
     id: options.catalogId ?? `${brand.id}-1`,
-    name: options.name ?? brand.name,
+    name: options.name ?? (options.week ? weekName(brand.name, options.week) : brand.name),
     brand,
     ...(options.seed ? { seed: options.seed } : {}),
   });
 
   return {
     ...composed,
+    // The week travels with the document, not only with this reply:
+    // the paper is week 39's from here on, including after it has been
+    // saved, reopened on another machine and printed.
+    document: { ...composed.document, week: options.week ?? null },
     issues,
+    outsideWeek,
+    inWeek: options.week ? inWeek.length : null,
     offerCount: feed.offers.length,
     notSelected: selection.rejected,
     dropped: plan.dropped,

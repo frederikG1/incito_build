@@ -7,7 +7,7 @@ import {
 } from "@incitio/brands";
 import { packLimits, pageTextLimits, partLimits } from "@incitio/schema";
 import { useStudio } from "./state.js";
-import { Steps, stepOf } from "./Steps.js";
+import { StepChip, Steps, stepOf } from "./Steps.js";
 import { Inspector } from "./Inspector.js";
 import { TileEditor } from "./TileEditor.js";
 import { PageTextEditor } from "./PageTextEditor.js";
@@ -15,6 +15,8 @@ import { Comparison, Reproduce } from "./Reproduce.js";
 import { DecorBar } from "./DecorBar.js";
 import { Ways } from "./Ways.js";
 import { Library } from "./Library.js";
+import { Checklist, ChecklistButton } from "./Checklist.js";
+import { AskWeek, WeekField } from "./Week.js";
 
 /**
  * Put a whole-sheet picture into the book here.
@@ -22,6 +24,7 @@ import { Library } from "./Library.js";
  * Under each sheet rather than in a toolbar: where the page goes is the
  * decision being made, and the button sits at the seam.
  */
+
 function InsertImage({ at }: { at: number }) {
   const addImagePage = useStudio((s) => s.addImagePage);
   const busy = useStudio((s) => Boolean(s.busy));
@@ -84,6 +87,19 @@ export function App() {
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         target?.isContentEditable === true;
+
+      /*
+       * Escape shuts whatever the toolbar folded out.
+       *
+       * Read before anything else that answers Escape, because a panel
+       * lies OVER the page: the thing on top is the thing the key is
+       * about.
+       */
+      if (event.key === "Escape" && useStudio.getState().panel) {
+        event.preventDefault();
+        useStudio.getState().closePanel();
+        return;
+      }
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
@@ -165,6 +181,24 @@ export function App() {
        * off-square.
        */
       const item = s.selectedPack;
+
+      /*
+       * G for Gemini: run the arrangement again on the tile in hand.
+       *
+       * The loop this feature is improved in is press, look, change a
+       * word in the prompt, press again — and the button for it sits
+       * in a panel that is two scrolls away once a page is full. The
+       * plain letter, no modifier, because the editor's hands are on
+       * the page and nothing else in this studio types.
+       */
+      if ((event.key === "g" || event.key === "G") && !event.metaKey && !event.ctrlKey) {
+        const offer = s.document?.offers.find((entry) => entry.id === offerId);
+        if (offer && offer.members.length > 1 && !s.busy) {
+          event.preventDefault();
+          void s.standUpOneCluster(offerId);
+        }
+        return;
+      }
 
       if (event.key === "Escape") {
         event.preventDefault();
@@ -274,6 +308,48 @@ export function App() {
     // Nothing: the handler reads the store itself — see the note above.
   }, []);
 
+  /*
+   * Re-read the checklist whenever the avis changes.
+   *
+   * Debounced, because half of it is a real measurement of the real
+   * pages — see `measureFindings` — and a drag fires a hundred
+   * document changes a second. A third of a second after the last one
+   * is fast enough to feel live and slow enough to cost nothing.
+   *
+   * Deliberately NOT listing `findings` as a dependency: this effect
+   * writes them, and a list that re-measures because it measured is a
+   * loop.
+   */
+  useEffect(() => {
+    const at = window.setTimeout(() => useStudio.getState().refreshFindings(), 350);
+    return () => window.clearTimeout(at);
+  }, [s.document, s.week, s.brand]);
+
+  /*
+   * And again once the artwork has landed.
+   *
+   * An image with no intrinsic size cannot be measured — the checker
+   * in `scripts/check-render.ts` learned this the hard way, where a
+   * partly loaded book came back with FEWER findings and read as the
+   * cleaner result. Here the pictures arrive over a chain's image
+   * service, seconds after the page. Captured rather than bubbled,
+   * because an `img`'s load event does not bubble.
+   */
+  useEffect(() => {
+    let at: number | undefined;
+    const again = () => {
+      window.clearTimeout(at);
+      at = window.setTimeout(() => useStudio.getState().refreshFindings(), 300);
+    };
+    window.addEventListener("load", again, true);
+    window.addEventListener("resize", again);
+    return () => {
+      window.clearTimeout(at);
+      window.removeEventListener("load", again, true);
+      window.removeEventListener("resize", again);
+    };
+  }, []);
+
   const offers = new Map(
     (s.document?.offers ?? []).map((offer) => [offer.id, offer]),
   );
@@ -286,6 +362,32 @@ export function App() {
    * lies.
    */
   const bench = s.benched();
+
+  /*
+   * How many tiles in the WHOLE book could be one photograph.
+   *
+   * Counted here so the toolbar can offer to compose the lot in one
+   * run — see `standUpAllClusters`. A book has as many of these as it
+   * has multi-product offers, and doing them a page at a time was the
+   * real cost of the feature: the waiting is the model's, but the
+   * coming back to press the next page's button was ours.
+   *
+   * Counted per page as well as in total, because the toolbar pair is
+   * only worth having when there is more than one page to save a trip
+   * to. On a single sheet they would say exactly what the sheet's own
+   * two buttons say, one line above them — see the render below.
+   */
+  const clusterPages = (s.document?.pages ?? [])
+    .map(
+      (page) =>
+        page.placements.filter(
+          (placement) =>
+            (s.document?.offers.find((o) => o.id === placement.offerId)?.members
+              .length ?? 0) > 1,
+        ).length,
+    )
+    .filter((tiles) => tiles > 0);
+  const clusterTiles = clusterPages.reduce((total, tiles) => total + tiles, 0);
 
   /*
    * Which step the toolbar should be shouting about.
@@ -307,16 +409,20 @@ export function App() {
         <strong className="bar__mark">Incitio</strong>
 
         {/*
-          * Grouped in the order the work happens.
-          *
-          * Ten controls on one line is a wall: nothing in it said that
-          * the feed comes before the pages, or that undo belongs to
-          * neither. Three groups with a rule between them say it
-          * without a word of explanation — the avis you are in, what
-          * goes on its pages, and the way out. Exactly one button is
-          * lit at a time, and it is the one the step strip below is
-          * talking about.
-          */}
+         * Grouped in the order the work happens.
+         *
+         * Ten controls on one line is a wall: nothing in it said that
+         * the feed comes before the pages, or that undo belongs to
+         * neither. Three groups with a rule between them say it
+         * without a word of explanation — the avis you are in, what
+         * goes on its pages, and the way out. Exactly one button is
+         * lit at a time, and it is the one the step strip below is
+         * talking about.
+         */}
+        {/* Where you are, in four characters. What used to be a strip
+            the width of the screen — see `StepChip`. */}
+        <StepChip />
+
         <div className="bar__group" role="group" aria-label="Avisen">
           {/* Stands in for signing in. Everything below is scoped to it. */}
           <label className="field">
@@ -334,6 +440,10 @@ export function App() {
             </select>
           </label>
 
+          {/* Which week this is. Everything below is named after it —
+              see `AskWeek`, which is where it gets answered. */}
+          <WeekField />
+
           {/*
            * Yesterday's work, reopened for nothing.
            *
@@ -344,7 +454,10 @@ export function App() {
            * question is always "which one".
            */}
           {s.catalogues.length > 0 && (
-            <label className="field" title="Åbn en gemt avis — koster ingenting">
+            <label
+              className="field"
+              title="Åbn en gemt avis — koster ingenting"
+            >
               <span>Åbn</span>
               <select
                 value=""
@@ -422,6 +535,65 @@ export function App() {
             Hurtigt udkast
           </button>
 
+          {/*
+           * The two strips that used to stand between the toolbar and
+           * the first sheet, as buttons. Here rather than anywhere
+           * else because both are ways into a page, which is what this
+           * group is — see `panel` for why they stopped being strips.
+           */}
+          <button
+            className={s.panel === "sider" ? "primary" : ""}
+            onClick={() => s.togglePanel("sider")}
+            aria-expanded={s.panel === "sider"}
+            title="Hent en trykt avis fra et link, eller lad modellen tegne et layout"
+          >
+            Hent/tegn
+          </button>
+
+          <button
+            className={s.panel === "stemning" ? "primary" : ""}
+            onClick={() => s.togglePanel("stemning")}
+            aria-expanded={s.panel === "stemning"}
+            title={
+              s.decorReady
+                ? "Stemningsbilleder bag varerne — motiv, prompt og nøgle"
+                : "Stemningsbilleder — der mangler en nøgle til billedmodellen"
+            }
+          >
+            Stemning
+            {/* A mark rather than a sentence: every button that draws
+                is dark without a key, and this is where the key is. */}
+            {!s.decorReady && <span className="bar__dot" aria-hidden="true" />}
+          </button>
+
+          {/* The whole book's clusters, composed in one run and written
+              as one undo step. Here rather than on a page bar because
+              it is one fact about the document, and because the point
+              of it is not having to come back per page. */}
+          {clusterPages.length > 1 && (
+            <button
+              onClick={() => void s.standUpAllClusters()}
+              disabled={Boolean(s.busy) || !s.decorReady}
+              title={
+                s.decorReady
+                  ? `Lad Gemini stille alle ${clusterTiles} sammensatte fliser i avisen op — flere ad gangen`
+                  : "Kræver en Gemini-nøgle"
+              }
+            >
+              Stil alle klynger op ({clusterTiles})
+            </button>
+          )}
+
+          {/* The five steps every test of the cluster feature starts
+              with, as one press — see `testCluster`. */}
+          <button
+            onClick={() => void s.testCluster()}
+            disabled={Boolean(s.busy) || (!s.feed && !s.document)}
+            title="Byg et udkast om nødvendigt, saml de tre første varer med billede i første plads, og lad Gemini stille dem op"
+          >
+            Testflise
+          </button>
+
           <label className="field" title="Hvor mange sider avisen må fylde">
             <span>Sider</span>
             <input
@@ -451,15 +623,27 @@ export function App() {
             marks rather than words so they stop competing with the
             things a person is meant to press. */}
         <div className="bar__group bar__group--quiet">
-          <button onClick={s.undo} disabled={s.past.length === 0} title="Fortryd (⌘Z)">
+          <button
+            onClick={s.undo}
+            disabled={s.past.length === 0}
+            title="Fortryd (⌘Z)"
+          >
             ↶
           </button>
-          <button onClick={s.redo} disabled={s.future.length === 0} title="Gentag (⇧⌘Z)">
+          <button
+            onClick={s.redo}
+            disabled={s.future.length === 0}
+            title="Gentag (⇧⌘Z)"
+          >
             ↷
           </button>
         </div>
 
         <div className="bar__rule" aria-hidden="true" />
+
+        {/* What stands between this avis and the PDF, counted. Beside
+            the print button because that is the question it answers. */}
+        <ChecklistButton />
 
         <button
           className={step === "pdf" ? "accent" : ""}
@@ -470,10 +654,35 @@ export function App() {
         </button>
       </header>
 
-      <Steps />
-
-      <DecorBar />
-      <Ways />
+      {/*
+       * One panel at a time, lying OVER the canvas.
+       *
+       * Three permanent strips used to stand here — a hundred pixels
+       * of chrome between the toolbar and the first sheet, in every
+       * session, including the ones that never opened any of them. The
+       * backdrop is not dimmed: this is a fold-out, not a dialogue,
+       * and the page it is about has to stay readable behind it.
+       */}
+      {s.panel && (
+        <div className="panel">
+          {/* A click anywhere else shuts it. Its own layer rather than
+              the card's backdrop, because the card is anchored under
+              the button and this has to cover the whole screen. */}
+          <div className="panel__away" onPointerDown={s.closePanel} />
+          <div className="panel__card">
+            <button
+              className="panel__close"
+              onClick={s.closePanel}
+              title="Luk (Esc)"
+            >
+              ×
+            </button>
+            {s.panel === "trin" && <Steps />}
+            {s.panel === "sider" && <Ways />}
+            {s.panel === "stemning" && <DecorBar />}
+          </div>
+        </div>
+      )}
 
       {/*
        * Where the work is, said in one place.
@@ -501,11 +710,16 @@ export function App() {
       )}
       {s.brand && s.curationReady && !s.decorReady && (
         <div className="banner banner--hint">
-          Stemningsbilleder er slået fra. Læg <code>GEMINI_API_KEY=…</code> i{" "}
-          <code>.env</code> og genstart API-serveren. Billedmodellerne kræver
-          desuden fakturering på Google-projektet.
+          Billedmodellen er slået fra. Indsæt din egen nøgle under{" "}
+          <b>Stemningsbillede</b> herover — den bliver i denne browser og kommer
+          hverken i projektet eller på serveren — eller læg{" "}
+          <code>GEMINI_API_KEY=…</code> i <code>.env</code> og genstart
+          API-serveren. Billedmodellerne kræver desuden fakturering på
+          Google-projektet.
         </div>
       )}
+
+      <Checklist />
 
       <Reproduce />
 
@@ -522,14 +736,14 @@ export function App() {
           }}
         >
           {/*
-            * The empty page, as a page.
-            *
-            * What to do next is said once, in the step strip — see
-            * `Steps`. This used to say it again, in different words,
-            * two inches lower; two sentences telling somebody to press
-            * the same button is how a screen stops being read at all.
-            * What is left is the shape of what they are about to get.
-            */}
+           * The empty page, as a page.
+           *
+           * What to do next is said once, in the step strip — see
+           * `Steps`. This used to say it again, in different words,
+           * two inches lower; two sentences telling somebody to press
+           * the same button is how a screen stops being read at all.
+           * What is left is the shape of what they are about to get.
+           */}
           {!s.document && s.brand && (
             <div className="blank">
               <div className="blank__sheet" aria-hidden="true" />
@@ -826,20 +1040,22 @@ export function App() {
                       </label>
 
                       {/*
-                        * Every cluster on the sheet, in one errand.
-                        *
-                        * Here rather than in the tile panel because
-                        * that is the whole point: standing six clusters
-                        * up one at a time means picking a tile, waiting
-                        * for its cutouts, going to Gemini and coming
-                        * back — six times. Prepared together, an editor
-                        * makes all the pictures in one sitting and
-                        * drops the lot back at once.
-                        */}
-                      {page.placements.some((placement) => (
-                        (s.document?.offers.find((o) => o.id === placement.offerId)
-                          ?.members.length ?? 0) > 1
-                      )) && (
+                       * Every cluster on the sheet, in one errand.
+                       *
+                       * Here rather than in the tile panel because
+                       * that is the whole point: standing six clusters
+                       * up one at a time means picking a tile, waiting
+                       * for its cutouts, going to Gemini and coming
+                       * back — six times. Prepared together, an editor
+                       * makes all the pictures in one sitting and
+                       * drops the lot back at once.
+                       */}
+                      {page.placements.some(
+                        (placement) =>
+                          (s.document?.offers.find(
+                            (o) => o.id === placement.offerId,
+                          )?.members.length ?? 0) > 1,
+                      ) && (
                         <div className="sheet__group">
                           {/* The whole job, with no trip to Gemini's own
                               app: the model composes each cluster here,
@@ -847,24 +1063,15 @@ export function App() {
                               the chain's own cutouts move to match. */}
                           <button
                             className="sheet__clusters"
-                            title={s.decorReady
-                              ? 'Lad billedmodellen stille alle sidens klynger op'
-                              : 'Kræver GEMINI_API_KEY på serveren'}
+                            title={
+                              s.decorReady
+                                ? "Lad billedmodellen stille alle sidens klynger op"
+                                : "Kræver GEMINI_API_KEY på serveren"
+                            }
                             disabled={Boolean(s.busy) || !s.decorReady}
                             onClick={() => void s.standUpClusters(page.id)}
                           >
                             Stil klynger op
-                          </button>
-                          {/* The way round a missing key, and the way to
-                              compose by hand when the model's own
-                              arrangement is not good enough. */}
-                          <button
-                            className="sheet__clusters"
-                            title="Hent prompt og udklip til alle sammensatte fliser, til Gemini i hånden"
-                            disabled={Boolean(s.busy)}
-                            onClick={() => void s.prepareClusters(page.id)}
-                          >
-                            Til Gemini
                           </button>
                         </div>
                       )}
@@ -887,70 +1094,6 @@ export function App() {
                       </div>
                     </div>
                   </div>
-
-                  {/*
-                    * The whole sheet's clusters, prepared together.
-                    *
-                    * One list and ONE drop zone, because the matching
-                    * is done by reading: every picture is read against
-                    * the page's own products, and the ones it holds say
-                    * which tile it belongs to. Nobody pairs a file with
-                    * a tile by hand.
-                    */}
-                  {s.manualPage?.pageId === page.id && (
-                    <div className="clusters">
-                      <ol className="clusters__list">
-                        {s.manualPage.tiles.map((tile) => (
-                          <li key={tile.offerId}>
-                            <div className="clusters__head">
-                              <b>{tile.name}</b>
-                              <button
-                                className="inspector__link"
-                                onClick={() => {
-                                  void navigator.clipboard?.writeText(tile.prompt);
-                                }}
-                              >Kopiér prompt</button>
-                            </div>
-                            <ul className="clusters__files">
-                              {tile.files.map((cut) => (
-                                <li key={cut.url}>
-                                  {/* Same-origin, so the filename
-                                      survives the save — the number in
-                                      it is what keeps the order. */}
-                                  <a href={cut.url} download={cut.name} title={cut.name}>
-                                    <img src={cut.url} alt="" />
-                                  </a>
-                                </li>
-                              ))}
-                            </ul>
-                          </li>
-                        ))}
-                      </ol>
-
-                      <label className="clusters__drop">
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/png,image/jpeg,image/webp"
-                          onChange={async (e) => {
-                            const picked = [...(e.target.files ?? [])];
-                            e.target.value = "";
-                            if (picked.length > 0) {
-                              await s.applyClusterLayouts(page.id, picked);
-                            }
-                          }}
-                        />
-                        <span>
-                          Læg billederne ind — alle på én gang
-                          <em>hvert billede finder selv sin flise</em>
-                        </span>
-                      </label>
-
-                      <button className="inspector__link" onClick={s.closeClusters}>
-                        Luk
-                      </button>
-                    </div>
-                  )}
 
                   {/*
                    * The pictures on this page, only when there are any.
@@ -1110,6 +1253,10 @@ export function App() {
         </main>
         <Inspector />
       </div>
+
+      {/* Asked once, over everything, and only when something is about
+          to be built that has to be called something. */}
+      <AskWeek />
     </div>
   );
 }

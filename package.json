@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",
     "dev:studio": "npm run dev -w @incitio/studio",
-    "dev:api": "npm run dev -w @incitio/server",
+    "dev:api": "node scripts/dev-api.mjs",
     "build": "npm run build -w @incitio/studio",
     "test": "vitest run",
     "typecheck": "tsc -b packages/schema packages/ingest packages/brands packages/compose packages/curator packages/decor packages/reference packages/publication packages/match packages/pipeline packages/pdf packages/server && tsc --noEmit -p apps/studio",

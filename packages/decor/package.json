@@ -6,7 +6,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./prompt": "./src/prompt.ts"
+    "./prompt": "./src/prompt.ts",
+    "./gemini": "./src/gemini.ts"
   },
   "dependencies": {
     "@incitio/schema": "0.1.0",

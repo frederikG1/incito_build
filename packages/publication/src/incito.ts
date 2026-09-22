@@ -237,6 +237,52 @@ function readOffer(view: View, x: number, y: number): PublicationOffer | null {
 }
 
 /**
+ * The view that is actually the page, inside the section that holds it.
+ *
+ * Usually they are the same view and this returns the section. Some
+ * publications wrap the page in a section twice its size — measured on
+ * a Coop leaflet: `section 1200x2000` holding one `view 600x1000` that
+ * is the whole page — and normalising against the section halves every
+ * coordinate on the sheet. What that produced was a page whose offers
+ * all sat in the top-left quarter, a grid fitter honestly padding the
+ * other three quarters with empty tracks, and a ground and background
+ * that were never found at all, because the test for "this view is the
+ * sheet" asks for 98 % of a box twice the size of anything in it.
+ *
+ * So the wrapper is stepped through. Only a wrapper: one sized child,
+ * markedly smaller than its parent, the same shape as its parent, and
+ * holding children of its own. A single large picture inside a section
+ * is a full-bleed image and not a wrapper, which is what the last of
+ * those four tests is for.
+ */
+function sheetOf(section: View): View {
+  let page = section;
+  // Four is deeper than any wrapper seen; the cap is there so a
+  // pathological tree cannot walk the reader off the page.
+  for (let depth = 0; depth < 4; depth += 1) {
+    const children = (page.child_views ?? []).filter(sized);
+    const child = children.length === 1 ? children[0]! : undefined;
+    if (!child || (child.child_views?.length ?? 0) === 0) break;
+
+    const parentWidth = px(page.layout_width);
+    const parentHeight = px(page.layout_height);
+    const width = px(child.layout_width);
+    const height = px(child.layout_height);
+    if (parentWidth <= 0 || parentHeight <= 0 || width <= 0 || height <= 0) break;
+
+    const across = width / parentWidth;
+    const down = height / parentHeight;
+    // Same size: this IS the page, and there is nothing to step through.
+    if (across > 0.9 || down > 0.9) break;
+    // Not a plain scale: a child that is half as wide and a third as
+    // tall is a block on the page, not the page.
+    if (Math.abs(across - down) > 0.02) break;
+    page = child;
+  }
+  return page;
+}
+
+/**
  * One section of the tree as a page.
  *
  * The chrome is read before the offers and separately from them: a
@@ -246,15 +292,34 @@ function readOffer(view: View, x: number, y: number): PublicationOffer | null {
  * `walk` stops there.
  */
 function readPage(section: View, number: number): PublicationPage {
-  const width = px(section.layout_width);
-  const height = px(section.layout_height);
+  /*
+   * The view that is actually the page — see `sheetOf`.
+   *
+   * Measured against the section instead, every coordinate on some
+   * publications comes back at half scale. Everything downstream is a
+   * SHARE of this box: the offer rectangles the grid is fitted to, the
+   * test for what counts as the sheet, the strip that counts as a
+   * masthead. Get the box wrong and all three are wrong together.
+   */
+  const sheetView = sheetOf(section);
+  const width = px(sheetView.layout_width);
+  const height = px(sheetView.layout_height);
   const offers: PublicationOffer[] = [];
 
   let ground: string | null = null;
   let background: PublicationPage['background'] = null;
   let masthead: PublicationPage['masthead'] = null;
 
-  walk(section, 0, 0, (view, x, y) => {
+  /*
+   * Started at the sheet's own origin, not the section's.
+   *
+   * `walk` adds each view's `layout_left`/`layout_top` as it descends,
+   * so entering at the sheet with (0, 0) would count the sheet's own
+   * offset inside the section — and every rectangle on the page would
+   * be shifted by it. Cancelling it here makes the sheet's top-left
+   * corner the origin, which is what a share of the page means.
+   */
+  walk(sheetView, -px(sheetView.layout_left), -px(sheetView.layout_top), (view, x, y) => {
     if (view.role === 'offer') {
       const offer = readOffer(view, x, y);
       if (offer) offers.push(offer);

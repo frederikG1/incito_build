@@ -308,6 +308,23 @@ export function PageView({
             '--decor-opacity': String(decor.opacity),
             '--decor-x': `${decor.offsetX}cqw`,
             '--decor-y': `${decor.offsetY}cqh`,
+            /*
+             * A measured piece states its own box and ignores the
+             * anchor entirely — see `PageDecoration.rect`. `inset` and
+             * a stated size beat the corner rules in the stylesheet,
+             * and the offsets stay in the transform, so dragging one
+             * works exactly as it does for a pinned picture.
+             */
+            ...(decor.rect ? {
+              left: `${decor.rect.x * 100}%`,
+              top: `${decor.rect.y * 100}%`,
+              right: 'auto',
+              bottom: 'auto',
+              width: `${decor.rect.w * 100}%`,
+              height: `${decor.rect.h * 100}%`,
+              maxWidth: 'none',
+              objectFit: 'contain' as const,
+            } : {}),
           } as CSSProperties}
         />
       ))}

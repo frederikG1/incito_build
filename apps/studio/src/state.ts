@@ -1,15 +1,18 @@
 import { create } from 'zustand';
 import type {
-  Brand, CatalogDocument, DecorAnchor, Offer, PageBackground, PageDecoration,
+  Brand, CatalogDocument, CatalogWeek, DecorAnchor, Offer, PageBackground, PageDecoration,
   PagePart, PageTemplate, PageTextOverride,
   PackOverride, Placement, PartOverride, PlacementOverrides, TileArrangement, TilePart,
 } from '@incitio/schema';
 import {
+  CatalogDocument as CatalogDocumentSchema,
   CatalogPage, mergeCatalogDocuments, pageTextLimits, pageTextOverride, pageTextPatch,
   packLimits, packOverride, packPatch,
   partLimits, partOverride, partPatch, slotAssignmentOrder, slotCells,
 } from '@incitio/schema';
 import { groupOffers, notOnePhotograph, readPackSize } from '@incitio/schema';
+import { nextWeek, weekName, weekOf } from '@incitio/schema';
+import { bySeverity, measureFindings, readFindings, type Finding } from './findings.js';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
 import { freeSlots, growTemplate, grownId } from './grid.js';
 import * as api from './api.js';
@@ -19,6 +22,8 @@ import {
   type Complaint, type GhostFrame, type MeasuredProduct, type PackPatch, type PlacedProduct,
 } from './cluster-layout.js';
 import { inkOf, onWhite, WHOLE, type InkBox } from './ink.js';
+import { pool } from './pool.js';
+import { placePrompt, type PlacePromptId } from '@incitio/curator/place-prompt';
 
 /**
  * Which chain the user works for.
@@ -36,6 +41,40 @@ function rememberedBrand(): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The week the studio is working on, kept across reloads.
+ *
+ * Asked once — see `askWeek` — and then it is simply the answer. A
+ * studio that asked again after every reload would be the same
+ * question fifteen times, which is how "Hentet udgivelse" happened in
+ * the first place.
+ */
+const WEEK_KEY = 'incitio.week';
+
+function rememberedWeek(): CatalogWeek | null {
+  try {
+    const raw = window.localStorage.getItem(WEEK_KEY);
+    if (!raw) return null;
+    const said = JSON.parse(raw) as { year?: unknown; week?: unknown };
+    if (typeof said.year !== 'number' || typeof said.week !== 'number') return null;
+    return { year: said.year, week: said.week };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The week to suggest when nobody has said.
+ *
+ * Next week, not this one: a leaflet is made before it runs, and by
+ * the time anyone opens the studio on Monday the week on the shelf is
+ * already printed. Being one click from right beats being right on
+ * Sunday afternoon.
+ */
+export function suggestedWeek(now = new Date()): CatalogWeek {
+  return nextWeek(weekOf(now));
 }
 
 /**
@@ -191,6 +230,9 @@ export function referenceJobs(references: ReferenceFile[]): ReferenceJob[] {
   return jobs.slice(0, MAX_REFERENCE_PAGES);
 }
 
+/** The three things that used to be strips above the page. */
+export type PanelKey = 'trin' | 'stemning' | 'sider';
+
 export interface StudioState {
   brands: api.BrandSummary[];
   brandId: string | null;
@@ -199,6 +241,84 @@ export interface StudioState {
   sources: api.BrandSource[];
   feed: { text: string; source: string } | null;
   document: CatalogDocument | null;
+  /**
+   * Which week is being made.
+   *
+   * The question the studio never asked, and the reason fifteen saved
+   * catalogues were all called the same thing. Everything downstream
+   * is derived from it: the name, the validity dates, which offers in
+   * the feed are even candidates, and the line on screen that says
+   * "gælder 21.–27. september".
+   *
+   * Session state rather than document state — the document carries
+   * its own `week`, which is the durable copy. This is "the week I am
+   * working on", and opening last week's avis moves it.
+   */
+  week: CatalogWeek | null;
+  setWeek: (week: CatalogWeek) => void;
+  /**
+   * The work waiting on an answer.
+   *
+   * Set when somebody asks for pages before saying which week: the
+   * request is held, the question is asked once, and the same request
+   * runs the moment it is answered. A gate and not a nag — once the
+   * week is known this is never set again.
+   */
+  askWeek: { then: () => void } | null;
+  closeAskWeek: () => void;
+  /** Whether the library hides offers that do not run in the week. */
+  weekOnly: boolean;
+  setWeekOnly: (only: boolean) => void;
+  /**
+   * What is missing, as a list somebody can work through.
+   *
+   * Kept in the store rather than in the panel, because the toolbar
+   * shows the count and the panel shows the lines, and two components
+   * measuring the same pages separately is two answers.
+   */
+  /**
+   * Which fold-out panel is open, if any.
+   *
+   * These three used to be permanent strips stacked between the
+   * toolbar and the first sheet — a step indicator, the mood-artwork
+   * controls and the two other ways into a page. Folded away they
+   * still cost a hundred pixels of chrome above the thing the whole
+   * screen is for, every session, including the ones that never touch
+   * any of them.
+   *
+   * So they are buttons now, and what they open lies OVER the canvas
+   * rather than pushing it down. One at a time: two of these open at
+   * once is the stack again, and nothing in any of them needs another
+   * one on screen.
+   *
+   * Not remembered across reloads, unlike the folds they replace. A
+   * panel that reopens itself on every reload is the strip it was
+   * meant to remove.
+   */
+  panel: PanelKey | null;
+  /** Open it, or close it if it is the one already open. */
+  togglePanel: (panel: PanelKey) => void;
+  closePanel: () => void;
+  /**
+   * The tiles an arrangement is running on right now.
+   *
+   * Offer ids, and its own field rather than a second meaning for
+   * `busy`: putting products in a cell is instant and free — the
+   * arrangement that follows is a model call, and blocking the whole
+   * studio behind it made the fast half feel as slow as the slow one.
+   * The tile says it is working; everything else stays usable.
+   */
+  standingUp: string[];
+  findings: Finding[];
+  /** Whether the list is showing. Remembered: it is a habit, not a step. */
+  findingsOpen: boolean;
+  setFindingsOpen: (open: boolean) => void;
+  /** Re-read the document and re-measure the rendered pages. */
+  refreshFindings: () => void;
+  /** Go and stand at the tile a finding is about. */
+  goToFinding: (finding: Finding) => void;
+  /** Select a product where it sits, and scroll the sheet to it. */
+  goToOffer: (offerId: string) => void;
   /**
    * This chain's saved catalogues, newest first.
    *
@@ -209,10 +329,110 @@ export interface StudioState {
   catalogues: api.CatalogSummary[];
 
   curationReady: boolean;
-  /** Whether the server holds a GEMINI_API_KEY. Mood artwork needs one. */
+  /**
+   * Whether anything can draw: the server's own key, or the editor's.
+   *
+   * Every button that spends the image model reads this one flag, so
+   * it has to mean "a key will be sent", not "the server has one in
+   * its environment" — `serverKey` is that narrower fact.
+   */
   decorReady: boolean;
+  /** Whether the SERVER holds a GEMINI_API_KEY of its own. */
+  serverKey: boolean;
+  /**
+   * The last four characters of the key kept in this browser, or ''.
+   *
+   * Never the key itself. Nothing in the studio needs to read it back
+   * — `api` puts it in the header — and it is shown only so a person
+   * can see WHICH key is in without it being readable over a shoulder.
+   */
+  imageKeyTail: string;
   /** The image model that will be billed, named on screen beside the button. */
   decorModel: string;
+  /**
+   * How a cluster is stood up: by asking for numbers, or by drawing.
+   *
+   * Two ways to the same answer, and the difference is what is paid
+   * for. `koordinater` shows one vision model the cutouts and asks
+   * where each should stand — one call, no image model, nothing behind
+   * a Google billing account. `rundtur` pays an image model to
+   * photograph the products standing together and a second model to
+   * measure that photograph; it composes like a photographer and costs
+   * several times as much.
+   *
+   * Remembered, because it is a standing preference about money rather
+   * than a decision about this tile.
+   */
+  clusterWay: ClusterWay;
+  setClusterWay: (way: ClusterWay) => void;
+  /**
+   * Which image model the round trip draws with.
+   *
+   * Empty means the server's own default. The choice is a price — see
+   * the note on the route's `model` field.
+   */
+  clusterImageModel: string;
+  setClusterImageModel: (model: string) => void;
+  /**
+   * Which vision model decides the arrangement.
+   *
+   * Empty means the server's own default. Measured on a three-product
+   * tile: both of the two below answer in about thirteen seconds, and
+   * the stronger one puts the hero centre-front where the quicker one
+   * fans all three. The choice is real, so it is the editor's.
+   */
+  clusterPlaceModel: string;
+  setClusterPlaceModel: (model: string) => void;
+  /**
+   * Whether the named model is the only one allowed to answer.
+   *
+   * On by default in the studio, and off on the API, and the split is
+   * deliberate. A batch nobody is watching is better served by an
+   * answer from the next model than by no answer; somebody sitting in
+   * front of one tile judging a model is not served by it at all.
+   * Measured: two runs asking for `gemini-3.8-flash` came back in 49 s
+   * and 67 s and both were answered by `gemini-3.5-flash-lite`, so the
+   * model being judged had not run once.
+   */
+  placeStrict: boolean;
+  setPlaceStrict: (strict: boolean) => void;
+  /**
+   * The editor's own version of the placement prompt, or '' for the
+   * standing one.
+   *
+   * Kept in the browser and sent with the call. The prompt is where
+   * this feature's quality actually lives — one line about relative
+   * sizes is worth more than any amount of code around it — so it
+   * belongs in front of the person looking at the tile, not only in
+   * the repository.
+   */
+  clusterPrompt: string;
+  setClusterPrompt: (prompt: string) => void;
+  /**
+   * Which of the standing prompts a run is sent with.
+   *
+   * Two ways of saying the same craft — see `PLACE_PROMPTS` — and
+   * which one produces the better tile is a question only a tile can
+   * answer. So it is a switch and not a decision taken once in the
+   * repository, and choosing the other one cannot lose the first.
+   *
+   * `clusterPrompt` still beats both: what somebody typed into the box
+   * is theirs, and a picker that silently overwrote it would be the
+   * opposite of what the box is for.
+   */
+  clusterPromptId: PlacePromptId;
+  setClusterPromptId: (id: PlacePromptId) => void;
+  /** The last few runs, newest first — see `PromptRun`. */
+  promptRuns: PromptRun[];
+  /**
+   * What the last run actually did, for the panel.
+   *
+   * Not a log and not a toast: the one thing an editor asks after
+   * pressing the button is "did it place them all, what did it cost,
+   * and how long did it take" — and until now the answer was a
+   * sentence that scrolled away.
+   */
+  clusterRun: ClusterRun | null;
   /** Direction for the motif choice — the decor step's own brief. */
   decorNote: string;
   /**
@@ -342,19 +562,6 @@ export interface StudioState {
    */
   selectedPack: number | null;
   /**
-   * What is needed to compose a cluster BY HAND, when there is one.
-   *
-   * The image model is billing-gated on Google's side. This is the way
-   * round it that does not involve waiting: the prompt and the cutouts,
-   * to be pasted and uploaded into Gemini's own app, and a file input to
-   * bring the result back. Null until somebody asks for it.
-   */
-  manual: {
-    offerId: string;
-    prompt: string;
-    files: { index: number; name: string; url: string; bytes: number }[];
-  } | null;
-  /**
    * The composed pictures the page's clusters were stood up from, each
    * drawn over its own tile — see `Reference`.
    *
@@ -365,24 +572,6 @@ export interface StudioState {
    * is already the chain's own printed pages.
    */
   ghosts: Ghost[];
-  /**
-   * The prompts and cutouts for every cluster on one sheet.
-   *
-   * The page-sized version of `manual`, and the reason it exists: doing
-   * this a tile at a time means selecting a tile, waiting, copying,
-   * going to Gemini, coming back, dropping — six times over for a
-   * sheet. Prepared together, an editor takes the whole page into
-   * Gemini in one sitting and drops the results back in one go.
-   */
-  manualPage: {
-    pageId: string;
-    tiles: {
-      offerId: string;
-      name: string;
-      prompt: string;
-      files: { index: number; name: string; url: string; bytes: number }[];
-    }[];
-  } | null;
   /**
    * Which of a page's own lines is in hand, and whose page it is.
    *
@@ -443,11 +632,36 @@ export interface StudioState {
   reproduce: () => Promise<void>;
   setDecorNote: (value: string) => void;
   setDecorStyle: (value: string) => void;
+  /**
+   * Keep an image-model key in this browser, or forget it with ''.
+   *
+   * The key never reaches the repo, the document or the server's disk:
+   * it sits in this browser's own storage and rides along as a header
+   * on the requests that draw. For the ordinary case where the person
+   * with the key is not the person who started the server.
+   */
+  setImageKey: (key: string) => void;
   decorate: () => Promise<void>;
 
   setLibraryOpen: (open: boolean) => void;
   setLibrarySearch: (query: string) => void;
-  /** Tick or untick one product. Always a toggle; the list is a basket. */
+  /**
+   * Where each product already is, keyed by offer id — "s. 2".
+   *
+   * Every product any page shows, INCLUDING the ones inside a placed
+   * cluster: a tile that photographs six cheeses is showing all six,
+   * and a library that offered them again would deal the same cheese
+   * onto two pages. Derived, never stored.
+   */
+  placedAt: () => Map<string, string>;
+  /**
+   * Tick or untick one product. Always a toggle; the list is a basket.
+   *
+   * A product that already has a place in the avis cannot be ticked.
+   * Two cells printing the same product is not an edit anybody makes
+   * on purpose, and the way to move one is to take it off the page it
+   * is on — which is what the card's own page number is for.
+   */
   toggleLibraryPick: (offerId: string) => void;
   clearLibraryPicks: () => void;
   /** Fold one group of the library away, or open it again. */
@@ -507,8 +721,49 @@ export interface StudioState {
        * are right, for different cells.
        */
       compose?: boolean;
+      /**
+       * Ask the model how they should sit, before anything is drawn.
+       *
+       * On by default, and right for a drop that ENDS here: the
+       * stylesheet's own arrangement is drawn from the offer's id and
+       * is blind to what the products look like, so a tile nobody
+       * touches afterwards is better for having been looked at.
+       *
+       * Off for `composeSlot`, where a placement call decides every
+       * position a moment later. There the arrangement is overwritten
+       * before anybody sees it, and waiting fifteen seconds for an
+       * answer that is about to be replaced is fifteen seconds of
+       * spinner for nothing.
+       */
+      arrange?: boolean;
     },
   ) => Promise<void>;
+  /**
+   * The whole cluster job in one press.
+   *
+   * Put the chosen products in the cell, let the image model photograph
+   * them standing together, read that photograph as a layout, and move
+   * the chain's OWN cutouts to match. Four steps that used to be four
+   * decisions — group, fetch, compose, drop — and were never anything
+   * but one intention.
+   *
+   * What prints is still the chain's artwork: the composition is read
+   * for its geometry and kept only as the proof laid over the tile, so
+   * no label is ever a redrawn one. And because the cutouts are what
+   * stands there, every product can still be moved by hand afterwards.
+   */
+  composeSlot: (pageId: string, slotId: string, offerIds: string[]) => Promise<void>;
+  /**
+   * A cluster to look at, from nothing, in one press.
+   *
+   * Every test of this feature starts the same way: build a draft,
+   * open the library, find three products that have photographs, drop
+   * them in a cell, run the arrangement. Five steps, none of them the
+   * thing being tested. This does all five — and nothing else, so what
+   * comes out is comparable between runs: the first products in the
+   * feed that carry a picture, in the page's first cell.
+   */
+  testCluster: () => Promise<void>;
   /** The editor's own steer for how the products should sit together. */
   arrangeNote: string;
   setArrangeNote: (note: string) => void;
@@ -548,8 +803,6 @@ export interface StudioState {
   /** Arm a picture for dragging, or put it back down. */
   selectDecor: (decorId: string | null) => void;
   selectPart: (part: TilePart | null) => void;
-  /** Fetch the prompt and the cutouts for a grouped tile, to run by hand. */
-  prepareCluster: (offerId: string) => Promise<void>;
   /**
    * Stand the tile's own cutouts up the way a composed picture stands.
    *
@@ -560,39 +813,41 @@ export interface StudioState {
    * standing where the composition put it.
    */
   applyClusterLayout: (offerId: string, file: File) => Promise<void>;
-  /** Put the panel away. */
-  closeManual: () => void;
   /** Draw one cluster's composed picture over it, or take it back off. */
   toggleGhost: (offerId: string) => void;
   /**
-   * Fetch the prompt and the cutouts for EVERY cluster on one sheet.
+   * Stand every cluster on a sheet up, in the studio.
    *
-   * The page-sized `prepareCluster` — see `manualPage`.
-   */
-  prepareClusters: (pageId: string) => Promise<void>;
-  /**
-   * Stand every cluster on a sheet up, from a handful of pictures.
-   *
-   * Each picture is read against the whole page's products, which is
-   * what says WHICH cluster it is a picture of — so an editor drops the
-   * lot in at once and never picks a tile. One write, one undo step.
-   */
-  applyClusterLayouts: (pageId: string, files: File[]) => Promise<void>;
-  /**
-   * Stand every cluster on a sheet up without leaving the studio.
-   *
-   * The same job `applyClusterLayouts` does, with the trip to Gemini's
-   * own app folded in: the image model composes each cluster here, the
-   * composition is read as a layout, and the chain's own cutouts are
-   * moved to match. Nothing the model drew reaches the page.
+   * Gemini decides each arrangement — as numbers, or by drawing a
+   * photograph that is then measured — and the chain's own cutouts
+   * are moved to match. Nothing the model drew reaches the page. One
+   * write, one undo step.
    */
   standUpClusters: (pageId: string) => Promise<void>;
-  /** Put the page's cluster panel away. */
-  closeClusters: () => void;
+  /**
+   * The same, for every sheet in the book at once.
+   *
+   * The reason it is a separate button and not a checkbox: an editor
+   * who has settled the layout wants the whole publication composed
+   * while they do something else, and the run is long enough that
+   * being asked about it a page at a time is the actual cost. The
+   * tiles are composed a few at a time — see `CLUSTER_AT_ONCE` — and
+   * written once, so the whole book is one undo step.
+   */
+  standUpAllClusters: () => Promise<void>;
+  /**
+   * Stand ONE tile up, the way the panel is set to.
+   *
+   * The same engine as the page and the book — see `standUpClusters` —
+   * pointed at a single cluster, because the inspector is where
+   * somebody iterates on one tile: try the cheap way, look, try the
+   * round trip, look again.
+   */
+  standUpOneCluster: (offerId: string) => Promise<void>;
   /**
    * Put one picture on a tile as its whole artwork.
    *
-   * What the manual route needs to finish, and useful on its own: a
+   * For a designer with a photograph of their own: a
    * designer with a composed photograph of their own has nowhere to put
    * it otherwise. The pack is cleared, because the tile is now one
    * picture — `members` stays, so the document still says what the
@@ -958,6 +1213,33 @@ async function pictureAspect(file: File): Promise<number> {
 }
 
 /**
+ * A cutout's own proportions — the PRODUCT's, not the file's.
+ *
+ * A packshot arrives in a frame with margin around it, and the frame
+ * is not the product: a bottle in a square JPEG would report 1:1 and
+ * be placed as wide as it is tall. `inkOf` has already scanned where
+ * the ink actually is, for the placement arithmetic, and this is the
+ * same scan read for a different number.
+ */
+async function cutoutAspect(url: string): Promise<number> {
+  const [ink, frame] = await Promise.all([inkOf(url), frameAspect(url)]);
+  const aspect = frame * (ink.width / ink.height);
+  return Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+}
+
+/** The file's own width over height. */
+async function frameAspect(url: string): Promise<number> {
+  return new Promise((done) => {
+    const probe = new Image();
+    probe.onload = () => done(
+      probe.naturalHeight > 0 ? probe.naturalWidth / probe.naturalHeight : 1,
+    );
+    probe.onerror = () => done(1);
+    probe.src = url;
+  });
+}
+
+/**
  * The products behind a cluster's pictures, in the pack's own order.
  *
  * The pack is not the member list. `groupOffers` deduplicates the
@@ -1146,6 +1428,21 @@ async function standUpCluster(args: {
   };
 }
 
+/**
+ * The products of one cluster, back to front.
+ *
+ * Read off what the arrangement actually did rather than off the
+ * model's prose: a product standing lower on the page stands in
+ * front, which is how a printed group reads and how `planCluster`
+ * stacks them. Hidden ones are left out — they are not in the
+ * photograph at all.
+ */
+function backToFront(stood: StoodUp, members: Offer[]): string[] {
+  return [...stood.patches.entries()]
+    .sort((a, b) => a[1].offsetY - b[1].offsetY)
+    .map(([index]) => members[index]?.name ?? `vare ${index + 1}`);
+}
+
 /** What to call a cluster on screen: its products, not its id. */
 function tileName(members: Offer[]): string {
   return members.map((member) => member.name.split(/[,(]/)[0]!.trim()).join(' · ').slice(0, 60);
@@ -1245,6 +1542,144 @@ function pagePhotographs(
     else clusters.push({ offer, members });
   }
   return { clusters, skipped };
+}
+
+/**
+ * How many clusters are composed at the same time.
+ *
+ * Every cluster is an image-model call of half a minute or more, and
+ * they have nothing to say to each other — so a sheet of six is six
+ * minutes done one at a time and about a minute and a half done four
+ * at a time. Four and not sixteen because each one is also a paid call
+ * against a per-minute quota, and a whole book fired off in one breath
+ * is how a 429 is met. Raise it when the key's quota allows.
+ */
+const CLUSTER_AT_ONCE = Number(
+  (typeof localStorage !== 'undefined' && localStorage.getItem('incitio.clusterAtOnce')) || 4,
+) || 4;
+
+/** The two ways a cluster can be stood up — see `clusterWay`. */
+export type ClusterWay = 'koordinater' | 'rundtur';
+
+/** Remembered across reloads: it is a standing preference, not a step. */
+const WAY_KEY = 'incitio.clusterWay';
+const IMAGE_MODEL_KEY = 'incitio.clusterImageModel';
+const PLACE_MODEL_KEY = 'incitio.clusterPlaceModel';
+/** Whether a run may be answered by a model nobody asked for. */
+const STRICT_KEY = 'incitio.placeStrict';
+const PROMPT_KEY = 'incitio.clusterPrompt';
+/** Which standing prompt is chosen. A preference, so it is remembered. */
+const PROMPT_ID_KEY = 'incitio.clusterPromptId';
+/** Whether the checklist is open. A habit, so it survives a reload. */
+const CHECKS_KEY = 'incitio.checks.open';
+
+function remembered<T extends string>(key: string, fallback: T): T {
+  try {
+    return (window.localStorage.getItem(key) as T | null) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function remember(key: string, value: string): void {
+  try {
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
+  } catch { /* private browsing; it holds for this session */ }
+}
+
+/**
+ * What one run of the cluster machinery did.
+ *
+ * Reported rather than summarised: which way it went, which model
+ * answered, how long it took, how many products it actually placed and
+ * in which order they stand. Everything here is measured — nothing is
+ * an estimate dressed up as a fact, and there is no price, because the
+ * only honest price is the one on the bill.
+ */
+export interface ClusterRun {
+  way: ClusterWay;
+  /** The model that decided the arrangement. */
+  model: string;
+  /** The one that was asked for, when it was busy and another answered. */
+  insteadOf: string | null;
+  /** The image model, when one drew. */
+  drawnBy: string | null;
+  elapsedMs: number;
+  tokens: number | null;
+  /**
+   * The two halves, kept apart.
+   *
+   * A price needs them: reading six cutouts is input and forty
+   * numbers is output, and the two are charged at rates an order of
+   * magnitude apart — so a single total cannot be turned back into
+   * kroner. `tokens` stays because it is what the line says when
+   * nobody cares about the money.
+   */
+  inputTokens: number;
+  outputTokens: number;
+  /** Products placed, out of how many the tile holds. */
+  placed: number;
+  of: number;
+  /** Back to front, as they now stand. */
+  order: string[];
+  /** What the review complained about, if anything. */
+  complaints: string[];
+  /**
+   * Whether the group was stood on a floor or laid out flat.
+   *
+   * The placing call chooses it from how the cutouts were
+   * photographed — see `PLACE_SYSTEM` — and it is the one decision in
+   * the answer that is not a number, so it is worth showing.
+   */
+  view: 'side' | 'top' | null;
+}
+
+/**
+ * One run, kept so the next one can be compared with it.
+ *
+ * The prompt is the feature, and a prompt is improved by changing a
+ * line and looking — which only works if you can still see what the
+ * line before it produced. Everything here is what the panel already
+ * showed and then threw away: the words that were sent, the model
+ * that answered and how much of the tile it actually placed.
+ *
+ * The prompt is stored in full. It is a few thousand characters and
+ * five of them fit in the browser's storage many times over; keeping
+ * a hash would save nothing and give back nothing to restore.
+ */
+export interface PromptRun {
+  at: string;
+  /** What the tile was called, so a list of runs can be read. */
+  tile: string;
+  /** '' when a standing prompt was used — `promptId` says which. */
+  prompt: string;
+  /**
+   * Which shipped prompt the run used.
+   *
+   * Optional, because runs kept in this browser from before there was
+   * more than one carry no answer, and inventing one for them would
+   * be a claim about a run nobody can check.
+   */
+  promptId?: PlacePromptId;
+  model: string;
+  elapsedMs: number;
+  placed: number;
+  of: number;
+}
+
+/** How many are kept. Five is two afternoons of iterating. */
+const PROMPT_RUNS = 5;
+const RUNS_KEY = 'incitio.promptRuns';
+
+function rememberedRuns(): PromptRun[] {
+  try {
+    const raw = window.localStorage.getItem(RUNS_KEY);
+    const said = raw ? JSON.parse(raw) as unknown : null;
+    return Array.isArray(said) ? said.slice(0, PROMPT_RUNS) as PromptRun[] : [];
+  } catch {
+    return [];
+  }
 }
 
 /** A placement nobody has corrected yet. */
@@ -1402,6 +1837,511 @@ export const useStudio = create<StudioState>((set, get) => {
     });
   }
 
+  /**
+   * The two Danish lines a cluster prints, fetched alongside the
+   * arrangement rather than before it.
+   *
+   * `arrangeGroup` answers with an order, an arrangement name and
+   * these two lines. The first two are what `composeSlot` no longer
+   * waits for — the placement replaces them — and this is the part
+   * that survives: what the tile is CALLED, which no placement can
+   * decide and which the feed does not state for an assembled group.
+   *
+   * Never load-bearing and never noisy: a failure leaves the tile
+   * with the name `groupOffers` gave it, and an editor who has
+   * already typed their own heading keeps it.
+   */
+  async function settleGroup(
+    pageId: string,
+    slotId: string,
+    offerId: string,
+    /*
+     * Whether the order and the arrangement are the model's to
+     * decide, or somebody else's.
+     *
+     * Both, for a cell filled by hand: nothing else has an opinion
+     * about how six cheeses stand. Neither, in the compose path,
+     * where a placement call a second later gives every product a
+     * position in pixels — applying an order here would only scramble
+     * the tile on the way past.
+     */
+    reorder: boolean,
+  ): Promise<void> {
+    const { brandId, brand, document } = get();
+    if (!brandId || !brand || !document) return;
+    const page = document.pages.find((entry) => entry.id === pageId);
+    const template = page
+      ? resolveTemplate(brand, page.templateId)
+        ?? document.templates.find((entry) => entry.id === page.templateId)
+      : undefined;
+    const slot = template?.slots.find((entry) => entry.id === slotId);
+    const offer = document.offers.find((entry) => entry.id === offerId);
+    if (!template || !slot || !offer || offer.members.length < 2) return;
+
+    const cell = slotCells(template, brand.pageAspect).get(slotId);
+    try {
+      const said = await api.arrangeGroup(brandId, {
+        offers: packMembers(offer, document),
+        cell: { role: slot.role, aspect: cell?.aspect ?? 1, width: cell?.width ?? 0.5 },
+        ...(get().arrangeNote.trim() ? { note: get().arrangeNote.trim() } : {}),
+      });
+      /*
+       * The cell may not be this cell any more.
+       *
+       * This runs unawaited, seconds after the products landed, and
+       * in those seconds the editor may have filled the cell again,
+       * dragged the tile somewhere else or deleted it. Everything
+       * below is written only if the same group is still sitting in
+       * the same cell.
+       */
+      const now = overridesOf(offerId);
+      const still = pageById(pageId)?.placements
+        .some((entry) => entry.slotId === slotId && entry.offerId === offerId);
+      if (!now || !still) return;
+
+      /*
+       * The order, applied by rebuilding the group.
+       *
+       * `groupOffers` derives the pack from the member order, so the
+       * only way to reorder a tile is to assemble it again — with the
+       * SAME id, so the placement goes on pointing at it and every
+       * correction on the placement survives.
+       *
+       * Never over a hand-moved pack: a `pack` override means
+       * somebody has already dragged a product in this tile, and
+       * reshuffling the pack under them would move the wrong one.
+       */
+      if (reorder && Object.keys(now.pack).length === 0) {
+        const rank = new Map(said.order.map((id, index) => [id, index]));
+        const ordered = [...packMembers(offer, get().document!)]
+          .sort((a, b) => (rank.get(a.id) ?? 99) - (rank.get(b.id) ?? 99));
+        const same = ordered.every((member, index) => member.id === offer.members[index]);
+        if (!same) {
+          const rebuilt = groupOffers(ordered, offer.id);
+          gesture = null;
+          mutate((doc) => ({
+            ...doc,
+            offers: doc.offers.map((entry) => (entry.id === offer.id ? rebuilt : entry)),
+          }), `settle/${offer.id}`);
+        }
+      }
+
+      // Only into a line nobody has written, and an arrangement
+      // nobody has chosen. By the time this lands the editor may have
+      // typed their own, and overwriting that would be the worst kind
+      // of help.
+      const after = overridesOf(offerId);
+      if (!after) return;
+      get().updateOverrides(offerId, {
+        ...(reorder && !after.arrangement && said.arrangement
+          ? { arrangement: said.arrangement }
+          : {}),
+        ...(said.heading && !after.displayName && !after.description
+          ? {
+            displayName: said.heading,
+            ...(said.support ? { description: said.support } : {}),
+          }
+          : {}),
+      }, `settle/${offer.id}`);
+    } catch {
+      /* The tile keeps the name and the order the group was given. */
+    }
+  }
+
+  /**
+   * Stand every cluster on these sheets up, a few at a time.
+   *
+   * One routine for one page and for the whole book, because the only
+   * difference between them is how many tiles go into the same pool —
+   * and the pool is the point. Standing a cluster up is a download, an
+   * image model and a vision call, the better part of a minute, and
+   * none of it needs anything from the cluster next to it. Done one
+   * after the other a six-page book is half an hour; done
+   * `CLUSTER_AT_ONCE` at a time it is a few minutes.
+   *
+   * Three other things the loop used to pay for, gone:
+   *   - the cutouts were fetched twice per tile, once for the copies
+   *     the measurement needs and once for the composition. `copies`
+   *     makes the compose call hand back both.
+   *   - the server launched a Chromium per flood fill. It keeps one.
+   *   - the same cutout was downloaded again on every re-run. The
+   *     server holds them for ten minutes.
+   *
+   * What has NOT changed: one write at the end, so a book stood up in
+   * one go is one undo step, and every failure is a line in the note
+   * rather than an exception that takes the other tiles with it.
+   */
+  async function standUpOn(
+    pages: CatalogPage[],
+    onlyOfferId?: string,
+    /*
+     * Report on the TILE instead of in the toolbar.
+     *
+     * One cell somebody just filled is not the same errand as a whole
+     * book: the products are already in the cell and printable, the
+     * arrangement is an improvement arriving a few seconds later, and
+     * a banner that disables every other control while it comes is
+     * why a job of a few seconds felt like a wait. A batch of six
+     * still takes the banner — there, the waiting IS the errand.
+     */
+    quiet = false,
+  ): Promise<void> {
+    const { brandId, document, brand } = get();
+    if (!brandId || !document || !brand || pages.length === 0) return;
+
+    const notes: string[] = [];
+    const tasks: {
+      pageId: string; offerId: string; members: Offer[]; aspect?: number;
+    }[] = [];
+
+    for (const page of pages) {
+      const { clusters, skipped } = pagePhotographs(page, document);
+      notes.push(...skipped);
+      const template = resolveTemplate(brand, page.templateId)
+        ?? document.templates.find((entry) => entry.id === page.templateId);
+      const cells = template ? slotCells(template, brand.pageAspect) : undefined;
+      for (const { offer, members } of clusters) {
+        // One tile, when the caller named one: the same engine drives
+        // the whole book and a single cluster somebody just assembled.
+        if (onlyOfferId && offer.id !== onlyOfferId) continue;
+        const slot = page.placements.find((entry) => entry.offerId === offer.id)?.slotId;
+        const aspect = slot ? cells?.get(slot)?.aspect : undefined;
+        tasks.push({
+          pageId: page.id, offerId: offer.id, members, ...(aspect ? { aspect } : {}),
+        });
+      }
+    }
+
+    if (tasks.length === 0) {
+      set({
+        standingUp: [],
+        error: notes.length > 0 ? notes.join(' · ') : 'der er ingen sammensatte fliser på siden',
+      });
+      return;
+    }
+
+    const note = get().arrangeNote.trim();
+    const way = get().clusterWay;
+    const imageModel = get().clusterImageModel.trim();
+    const placeModel = get().clusterPlaceModel.trim();
+    /*
+     * The words this run is sent with.
+     *
+     * Whatever is in the box, and otherwise the standing prompt that
+     * is chosen — never the server's own default, so what a tile was
+     * made with is always the thing the studio is showing.
+     *
+     * The two are kept apart afterwards: `typed` is what a person
+     * wrote and is what the run list offers to put back, while
+     * `promptId` merely names which of the shipped prompts was used.
+     * Folding them together would make every run look like somebody
+     * had hand-written a prompt for it.
+     */
+    const typed = get().clusterPrompt.trim();
+    const promptId = get().clusterPromptId;
+    const ownPrompt = typed || placePrompt(promptId);
+    const started = Date.now();
+    set({
+      ...(quiet ? {} : { busy: `0/${tasks.length} klynger stillet op…` }),
+      standingUp: tasks.map((task) => task.offerId),
+      error: null,
+      note: null,
+      clusterRun: null,
+    });
+
+    try {
+      const done = await pool(tasks, CLUSTER_AT_ONCE, async (task) => {
+        const page = document.pages.find((entry) => entry.id === task.pageId)!;
+        const request = {
+          offers: task.members,
+          ...(task.aspect ? { aspect: task.aspect } : {}),
+          ...(note ? { note } : {}),
+        };
+        const overrides = page.placements
+          .find((entry) => entry.offerId === task.offerId)?.overrides ?? { ...FRESH };
+
+        /*
+         * The cheap way: numbers, straight out.
+         *
+         * No picture is drawn and none is thrown away — one vision
+         * call looks at the cutouts and says where each should stand,
+         * and everything below is the same arithmetic the round trip
+         * feeds. The cell's own proportions stand in for the
+         * photograph's, because the numbers are fractions of the cell.
+         */
+        if (way === 'koordinater') {
+          const ready = await api.prepareCluster(brandId, request);
+
+          /*
+           * The cell as the page actually draws it, and each cutout's
+           * own proportions.
+           *
+           * Both are the browser's to know and nobody else's — the
+           * cell is a rectangle in a laid-out page, and the ink inside
+           * a packshot is only visible once the file is decoded. The
+           * prompt asks for pixels inside a stated canvas, so handing
+           * over the real one is the difference between a size that is
+           * right and one that is a few per cent out on every product.
+           */
+          const tile = window.document
+            .querySelector(`[data-offer-id="${CSS.escape(task.offerId)}"]`);
+          const box = tile?.querySelector('.tile__media')?.getBoundingClientRect();
+          const aspects = await Promise.all(
+            ready.files.map((copy) => cutoutAspect(copy.url)),
+          );
+
+          const placed = await api.placeCluster(brandId, {
+            ...request,
+            ...(box && box.width > 0 && box.height > 0
+              ? { canvas: { width: Math.round(box.width), height: Math.round(box.height) } }
+              : {}),
+            aspects,
+            offerName: tileName(task.members),
+            ...(placeModel ? { model: placeModel } : {}),
+            ...(get().placeStrict ? { strict: true } : {}),
+            ...(ownPrompt ? { system: ownPrompt } : {}),
+          });
+          const stood = await standUpCluster({
+            offerId: task.offerId,
+            members: task.members,
+            overrides,
+            copies: ready.files,
+            placed: placed.products,
+            // The canvas the numbers were measured in — the same box,
+            // or the template's ideal when it could not be measured.
+            picture: box && box.height > 0 ? box.width / box.height : (task.aspect ?? 1),
+          });
+          if ('error' in stood) return { stood };
+          return {
+            stood,
+            missing: placed.missing.length,
+            ghost: null,
+            model: placed.model,
+            ...(placed.insteadOf ? { insteadOf: placed.insteadOf } : {}),
+            drawnBy: null,
+            tokens: (placed.usage?.inputTokens ?? 0) + (placed.usage?.outputTokens ?? 0),
+            inputTokens: placed.usage?.inputTokens ?? 0,
+            outputTokens: placed.usage?.outputTokens ?? 0,
+            view: placed.view ?? null,
+          };
+        }
+
+        /*
+         * One call, not two. The compose route returns the same-origin
+         * copies the measurement needs alongside the composition —
+         * `copies` — so the cutouts cross the wire once. An older
+         * server that does not know the flag still answers, and the
+         * copies are fetched the old way rather than the tile being
+         * measured against nothing.
+         */
+        const drawn = await api.composeCluster(brandId, {
+          ...request,
+          copies: true,
+          ...(imageModel ? { model: imageModel } : {}),
+        });
+        const copies = drawn.files
+          ?? (await api.prepareCluster(brandId, request)).files;
+
+        /*
+         * A file written a second ago is not yet a file the dev server
+         * will serve — see `reachable`. Reading it before it is there
+         * is how a composed tile ends up showing a broken image.
+         */
+        if (!await reachable(drawn.url)) {
+          throw new Error(`${drawn.url} kunne ikke hentes igen`);
+        }
+
+        // The composition arrives keyed out and trimmed; a reader needs
+        // it on white — see `onWhite`.
+        const bytes = await onWhite(drawn.url);
+        const reading = await api.readClusterLayout(brandId, {
+          file: toBase64(bytes), offers: task.members,
+        });
+
+        const stood = await standUpCluster({
+          offerId: task.offerId,
+          members: task.members,
+          overrides,
+          copies,
+          placed: reading.products,
+          picture: await pictureAspect(new File([bytes as BlobPart], 'composed.png')),
+        });
+        if ('error' in stood) return { stood };
+
+        return {
+          stood,
+          missing: reading.missing.length,
+          ghost: await keepGhost(brandId, stood, bytes, 'komposition.png'),
+          model: reading.model,
+          drawnBy: drawn.model,
+          tokens: (reading.usage?.inputTokens ?? 0) + (reading.usage?.outputTokens ?? 0),
+          inputTokens: reading.usage?.inputTokens ?? 0,
+          outputTokens: reading.usage?.outputTokens ?? 0,
+        };
+      }, (finished, total) => {
+        if (!quiet) set({ busy: `${finished}/${total} klynger stillet op…` });
+      });
+
+      /*
+       * Read back in the order they went in, never in the order they
+       * finished: a page whose tiles rearranged themselves by who
+       * answered first would be a different page every run.
+       */
+      const stoodUp: StoodUp[] = [];
+      const ghosts: Ghost[] = [];
+      for (const [index, result] of done.entries()) {
+        const name = tileName(tasks[index]!.members);
+        if (!result.ok) { notes.push(`${name}: ${message(result.error)}`); continue; }
+        const { stood } = result.value;
+        if ('error' in stood) { notes.push(stood.error); continue; }
+        if (stood.patches.size === 0) {
+          notes.push(`${name}: ingen af varerne kunne genfindes i kompositionen`);
+          continue;
+        }
+        stoodUp.push(stood);
+        if (result.value.ghost) ghosts.push(result.value.ghost);
+        notes.push(`${name}: ${count(stood.patches.size, 'vare', 'varer')} stillet op${
+          result.value.missing ? `, ${result.value.missing} ikke genfundet` : ''}${
+          stood.complaints.length > 0
+            ? `, ${count(stood.complaints.length, 'advarsel', 'advarsler')}` : ''}`);
+      }
+
+      if (stoodUp.length === 0) {
+        set({ busy: null, error: notes.join(' · ') || 'ingen af klyngerne kunne stilles op' });
+        return;
+      }
+
+      /*
+       * What the run did, for the panel.
+       *
+       * Measured, never estimated: the models that answered, the
+       * tokens they reported, the wall clock, and how many products
+       * actually moved. The back-to-front order is the tile's own pack
+       * order after the arrangement — which is the one thing a person
+       * looking at a cluster wants to check without clicking into it.
+       */
+      const first = done.find((entry) => entry.ok && !('error' in entry.value.stood));
+      const answered = first?.ok ? first.value : null;
+      const run: ClusterRun = {
+        way,
+        model: answered && 'model' in answered ? answered.model ?? '' : '',
+        insteadOf: answered && 'insteadOf' in answered ? answered.insteadOf ?? null : null,
+        drawnBy: answered && 'drawnBy' in answered ? answered.drawnBy ?? null : null,
+        elapsedMs: Date.now() - started,
+        tokens: done.reduce((total, entry) => (
+          entry.ok && 'tokens' in entry.value ? total + (entry.value.tokens ?? 0) : total
+        ), 0) || null,
+        // Summed over every cluster in the run, because the price is
+        // what the run cost and not what its first tile cost.
+        inputTokens: done.reduce((total, entry) => (
+          entry.ok && 'inputTokens' in entry.value ? total + (entry.value.inputTokens ?? 0) : total
+        ), 0),
+        outputTokens: done.reduce((total, entry) => (
+          entry.ok && 'outputTokens' in entry.value
+            ? total + (entry.value.outputTokens ?? 0) : total
+        ), 0),
+        placed: stoodUp.reduce((total, stood) => total + stood.patches.size, 0),
+        of: tasks.reduce((total, task) => total + task.members.length, 0),
+        order: stoodUp.length === 1
+          ? backToFront(stoodUp[0]!, tasks[0]!.members)
+          : [],
+        complaints: stoodUp.flatMap((stood) => stood.complaints.map((entry) => entry.said)),
+        view: answered && 'view' in answered ? answered.view ?? null : null,
+      };
+
+      /*
+       * Kept, so the next run can be compared with this one.
+       *
+       * Only the coordinate way: the round trip's quality is the
+       * image model's, and its prompt is not the one anybody is
+       * editing here.
+       */
+      const runs = way === 'koordinater'
+        ? [
+          {
+            at: new Date().toISOString(),
+            tile: tileName(tasks[0]?.members ?? []),
+            prompt: typed,
+            promptId,
+            model: run.model,
+            elapsedMs: run.elapsedMs,
+            placed: run.placed,
+            of: run.of,
+          },
+          ...get().promptRuns,
+        ].slice(0, PROMPT_RUNS)
+        : get().promptRuns;
+      if (runs !== get().promptRuns) {
+        try {
+          window.localStorage.setItem(RUNS_KEY, JSON.stringify(runs));
+        } catch { /* out of room; the list is a convenience */ }
+      }
+
+      gesture = null;
+      mutate((doc) => withPatches(doc, stoodUp));
+      set({
+        busy: null,
+        standingUp: [],
+        clusterRun: run,
+        promptRuns: runs,
+        ghosts: ghosts.reduce(withGhost, get().ghosts),
+        // How long it took, in front of the person who asked for it —
+        // this is the number the parallelism exists for.
+        note: [`${count(stoodUp.length, 'klynge', 'klynger')} på ${
+          Math.round((Date.now() - started) / 1000)}s`, ...notes].join(' · '),
+      });
+    } catch (error) {
+      set({ busy: null, standingUp: [], error: message(error) });
+    }
+  }
+
+  /**
+   * Hold a request until somebody says which week.
+   *
+   * Asked at the last possible moment and only once: the studio does
+   * not open with a modal, it asks the first time a request would
+   * produce pages that have to be called something. The request itself
+   * is kept, so answering the question also runs the thing that was
+   * asked for — the alternative is a dialog that closes and leaves the
+   * person to press the button again.
+   */
+  function askingWeek(then: () => void): boolean {
+    if (get().week) return false;
+    set({ askWeek: { then }, busy: null });
+    return true;
+  }
+
+  /** Where week 39's avis is stored. One avis per week, per chain. */
+  function weekId(brandId: string, week: CatalogWeek): string {
+    return `${brandId}-${week.year}-u${String(week.week).padStart(2, '0')}`;
+  }
+
+  /**
+   * Stamp a document that is being created right now.
+   *
+   * Id, name and week together, because they are one fact: this is
+   * week 39's paper for this chain. The id being derived is what makes
+   * a second run of week 39 a new VERSION of it — every save appends
+   * to the version table — rather than a sixteenth row in the picker
+   * with the same name as the other fifteen.
+   */
+  function forWeek(document: CatalogDocument): CatalogDocument {
+    const week = get().week;
+    if (!week) return document;
+    return {
+      ...document,
+      id: weekId(document.brandId, week),
+      name: weekName(get().brand?.name ?? document.brandId, week),
+      week,
+    };
+  }
+
+  /** The week alone, for a document that keeps the id and name it has. */
+  function withWeek(document: CatalogDocument): CatalogDocument {
+    const week = get().week;
+    return week ? { ...document, week } : document;
+  }
+
   return {
     brands: [],
     brandId: null,
@@ -1409,10 +2349,27 @@ export const useStudio = create<StudioState>((set, get) => {
     sources: [],
     feed: null,
     document: null,
+    week: rememberedWeek(),
+    askWeek: null,
+    weekOnly: true,
+    panel: null,
+    standingUp: [],
+    findings: [],
+    findingsOpen: remembered(CHECKS_KEY, '1') === '1',
     catalogues: [],
     curationReady: false,
-    decorReady: false,
+    decorReady: api.hasImageKey(),
+    serverKey: false,
+    imageKeyTail: api.imageKeyTail(),
     decorModel: '',
+    clusterWay: remembered<ClusterWay>(WAY_KEY, 'koordinater'),
+    clusterImageModel: remembered(IMAGE_MODEL_KEY, ''),
+    clusterPlaceModel: remembered(PLACE_MODEL_KEY, ''),
+    placeStrict: remembered(STRICT_KEY, '1') === '1',
+    clusterPrompt: remembered(PROMPT_KEY, ''),
+    clusterPromptId: remembered<PlacePromptId>(PROMPT_ID_KEY, 'regler'),
+    promptRuns: rememberedRuns(),
+    clusterRun: null,
     decorNote: '',
     decorStyle: '',
     busy: null,
@@ -1442,13 +2399,143 @@ export const useStudio = create<StudioState>((set, get) => {
     selectedDecorId: null,
     selectedPart: null,
     selectedPack: null,
-    manual: null,
     ghosts: [],
-    manualPage: null,
     selectedText: null,
     maxPages: 6,
     past: [],
     future: [],
+
+    /**
+     * The week, answered.
+     *
+     * Renames the open avis as well as setting the field. Every name
+     * this studio has ever produced was generated — "Hentet
+     * udgivelse", the chain's own name, a timestamp — so there is no
+     * hand-typed title to protect, and a document called last week's
+     * name while carrying this week's dates would be worse than the
+     * problem this replaces. It is an ordinary edit: ⌘Z takes it back.
+     */
+    setWeek(week) {
+      try {
+        window.localStorage.setItem(WEEK_KEY, JSON.stringify(week));
+      } catch { /* private browsing; it holds for this session */ }
+
+      const pending = get().askWeek;
+      set({ week, askWeek: null });
+
+      if (get().document) {
+        const name = weekName(get().brand?.name ?? get().brandId ?? '', week);
+        mutate((doc) => ({ ...doc, week, name }));
+      }
+
+      pending?.then();
+      get().refreshFindings();
+    },
+
+    togglePanel: (panel) => set({ panel: get().panel === panel ? null : panel }),
+    closePanel: () => set({ panel: null }),
+
+    closeAskWeek: () => set({ askWeek: null }),
+    setWeekOnly: (only) => set({ weekOnly: only }),
+
+    setFindingsOpen: (open) => {
+      remember(CHECKS_KEY, open ? '1' : '0');
+      set({ findingsOpen: open });
+    },
+
+    /**
+     * Read the document, measure the pages, and put both in one list.
+     *
+     * Two passes, because they answer two different kinds of question.
+     * The document knows what is absent — a product with no
+     * photograph, a cell nobody filled, an offer that does not run
+     * this week — and it knows it for nothing. The rendered page knows
+     * what came out wrong — a price on a name, a line clipped in half
+     * — and only the browser can say. `npm run check` has measured the
+     * second kind in a terminal all along; this is the same rules,
+     * standing next to the sheet they are about.
+     */
+    refreshFindings() {
+      const { document, brand, week } = get();
+      const read = readFindings(document, brand, week);
+      /*
+       * The clusters nobody has positioned.
+       *
+       * A pack with no `pack` corrections on its placement has never
+       * been through a placing model and has never been dragged — so
+       * every size in it is whatever the stylesheet made of the
+       * photograph, which is the one case worth complaining about.
+       * See `measureFindings`.
+       */
+      const untouched = new Set(
+        (document?.pages ?? [])
+          .flatMap((page) => page.placements)
+          .filter((placement) => Object.keys(placement.overrides.pack ?? {}).length === 0)
+          .map((placement) => placement.offerId),
+      );
+      const measured = document
+        ? measureFindings(window.document, document.pages.map((page) => page.id), untouched)
+        : [];
+      set({ findings: [...read, ...measured].sort(bySeverity) });
+    },
+
+    /**
+     * Stand at the tile the line is about.
+     *
+     * The whole point of the list: a complaint you cannot walk to is a
+     * report, and people do not act on reports. The page becomes the
+     * active one — so the library deals onto it — the tile is selected
+     * so the inspector is already open on it, and the sheet is
+     * scrolled to.
+     */
+    goToOffer(offerId) {
+      const { document } = get();
+      const page = document?.pages.find(
+        (entry) => entry.placements.some((placement) => (
+          placement.offerId === offerId
+          || document.offers.find((offer) => offer.id === placement.offerId)
+            ?.members.includes(offerId)
+        )),
+      );
+      if (!page) return;
+      // The assembled tile, when what was asked for is inside one: a
+      // member has no cell of its own to select.
+      const seat = page.placements.find((placement) => placement.offerId === offerId)
+        ?? page.placements.find((placement) => document!.offers
+          .find((offer) => offer.id === placement.offerId)?.members.includes(offerId));
+
+      set({
+        activePageId: page.id,
+        selectedOfferId: seat?.offerId ?? null,
+        selectedPart: null,
+        selectedPack: null,
+        selectedText: null,
+      });
+      window.document
+        .querySelector(`[data-offer-id="${CSS.escape(seat?.offerId ?? offerId)}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+
+    goToFinding(finding) {
+      set({
+        ...(finding.pageId ? { activePageId: finding.pageId } : {}),
+        selectedOfferId: finding.offerId,
+        selectedPart: null,
+        selectedPack: null,
+        selectedText: null,
+      });
+
+      const node = finding.offerId
+        ? window.document.querySelector(`[data-offer-id="${CSS.escape(finding.offerId)}"]`)
+        : finding.pageId
+          ? window.document.querySelector(`[data-page-id="${CSS.escape(finding.pageId)}"]`)
+          : null;
+      node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // Products with no cell are dealt from the library, so open it:
+      // the line names the problem and this is the tool for it.
+      if (!finding.pageId && finding.kind === 'plads') set({ libraryOpen: true });
+    },
 
     async start() {
       try {
@@ -1520,17 +2607,54 @@ export const useStudio = create<StudioState>((set, get) => {
           sample?.path ? api.fetchFeed(sample.path) : Promise.resolve(null),
         ]);
         void get().refreshCatalogues();
+        const parked = parkedWork(brandId);
         set({
           brandId,
           brand: profile.brand,
           sources: profile.sources,
           curationReady,
-          decorReady: decor.configured,
+          /*
+           * The test publication, in the field it belongs in.
+           *
+           * Only when the editor has not typed their own link: this
+           * is a convenience for the machine's own standing test
+           * avis, not something that should overwrite what somebody
+           * pasted a moment ago.
+           */
+          ...(profile.testPublication && !get().publicationUrl.trim()
+            ? { publicationUrl: profile.testPublication }
+            : {}),
+          // The server's key OR this browser's — either one draws.
+          decorReady: decor.configured || api.hasImageKey(),
+          serverKey: decor.configured,
           decorModel: decor.imageModel,
           feed: text && sample?.path
             ? { text, source: sample.path.split('/').pop() ?? sample.path }
             : null,
+          /*
+           * Back where you were.
+           *
+           * The studio reloads all day — a save, a stylesheet change,
+           * a closed laptop — and each one used to mean building the
+           * draft again, grouping the products again and paying for
+           * the arrangement again. The open catalogue is parked in
+           * this browser as it changes; here is where it comes back.
+           *
+           * Never over a document that is already open: this runs on
+           * picking a chain, and picking the chain you are already in
+           * must not undo the last ten minutes.
+           */
+          ...(!get().document && parked
+            ? { document: parked.document, past: [], future: [] }
+            : {}),
           busy: null,
+          ...(parked && !get().document
+            ? {
+              note: `Genoptog arbejdet fra ${new Date(parked.at).toLocaleTimeString('da-DK', {
+                hour: '2-digit', minute: '2-digit',
+              })} — ${parked.document.pages.length} sider`,
+            }
+            : {}),
         });
         // The shipped sample fills the library too, quietly: it is what
         // the editor opens with, not something somebody just did.
@@ -1562,6 +2686,10 @@ export const useStudio = create<StudioState>((set, get) => {
     async build(options = {}) {
       const { brandId, feed, maxPages } = get();
       if (!brandId || !feed) return;
+      // Which week, before anything is built: the draft is named after
+      // it and the feed is cut to it. See `askingWeek`.
+      if (askingWeek(() => void get().build(options))) return;
+      const week = get().week;
 
       set({ busy: 'Bygger…', error: null, note: null });
 
@@ -1570,6 +2698,7 @@ export const useStudio = create<StudioState>((set, get) => {
           feed: feed.text,
           maxPages,
           skipCuration: true,
+          ...(week ? { week } : {}),
           // A fresh seed on every click: pressing the button again is a
           // request for another take, and with a fixed seed the second
           // click returns the first click's pages.
@@ -1580,19 +2709,23 @@ export const useStudio = create<StudioState>((set, get) => {
           reply.source.name,
           `${reply.document.pages.length} sider af ${reply.offerCount} tilbud`,
           'kategorisortering — ingen model',
+          // The number that says the file is the wrong week's.
+          ...(reply.outsideWeek > 0
+            ? [`${reply.outsideWeek} gælder ikke i ugen og kom ikke med`] : []),
           ...(reply.dropped > 0 ? [`${reply.dropped} tilbud kunne ikke være med`] : []),
           ...(reply.substitutions.length > 0
             ? [`${reply.substitutions.length} sider fik en anden skabelon`]
             : []),
         ];
 
+        const document = forWeek(reply.document);
         set({
-          document: reply.document,
+          document,
           past: [],
           future: [],
           // The library deals onto a page, and a fresh document needs
           // one named or the first click would have nowhere to land.
-          activePageId: reply.document.pages[0]?.id ?? null,
+          activePageId: document.pages[0]?.id ?? null,
           selectedOfferId: null,
           selectedPart: null,
           selectedPack: null,
@@ -1602,7 +2735,23 @@ export const useStudio = create<StudioState>((set, get) => {
           // the comparison strips have nothing left to compare.
           reproductions: [],
           note: notes.join(' · '),
-          ...(reply.curationError ? { error: reply.curationError } : {}),
+          /*
+           * The feed is another week's.
+           *
+           * The build still happened — a filter that empties the feed
+           * falls back to all of it rather than producing an empty
+           * avis — so this is a warning and not a failure. It is also
+           * the single most useful thing the studio can say: the file
+           * that was uploaded does not cover the week that was asked
+           * for, and every page on screen is built from the wrong one.
+           */
+          ...(reply.inWeek === 0
+            ? {
+              error: `Ingen varer i feedet gælder i uge ${week?.week}`
+                + ' — siderne er bygget på hele filen. Upload ugens feed,'
+                + ' eller ret ugen i bjælken.',
+            }
+            : reply.curationError ? { error: reply.curationError } : {}),
         });
       } catch (error) {
         set({ busy: null, error: message(error) });
@@ -1645,6 +2794,17 @@ export const useStudio = create<StudioState>((set, get) => {
         }
         set({
           document,
+          /*
+           * Opening week 38's avis moves the studio to week 38.
+           *
+           * The alternative is an editor looking at last week's paper
+           * while every control around it is set to this week — and
+           * the first thing they do is add a product, which would be
+           * checked against the wrong dates. A catalogue from before
+           * anyone asked carries no week and leaves the studio's
+           * alone; that is the honest answer for those.
+           */
+          ...(document.week ? { week: document.week } : {}),
           busy: null,
           past: [],
           future: [],
@@ -1662,6 +2822,7 @@ export const useStudio = create<StudioState>((set, get) => {
           reproductions: [],
           note: `Åbnede ${document.name} · ${count(document.pages.length, 'side', 'sider')}`,
         });
+        get().refreshFindings();
       } catch (error) {
         set({ busy: null, error: message(error) });
       }
@@ -1804,6 +2965,10 @@ export const useStudio = create<StudioState>((set, get) => {
       const { brandId, feed, references, reproduceNote, reproduceAppend } = get();
       const jobs = referenceJobs(references);
       if (!brandId || jobs.length === 0) return;
+      // These pages cost a model call each and are saved the moment
+      // they land, so the week has to be known BEFORE the first one.
+      if (askingWeek(() => void get().reproduce())) return;
+      const week = get().week;
 
       /*
        * Adding to what is open, or starting again.
@@ -1844,12 +3009,27 @@ export const useStudio = create<StudioState>((set, get) => {
        * avis is the same avis, not a new one.
        */
       const stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 12);
-      const catalogId = base ? base.id : `${brandId}-${stamp}`;
+      /*
+       * The week names it when there is one.
+       *
+       * The timestamp below is what this used to be, and it is what
+       * made the picker unreadable: every run of every week called
+       * itself by the minute it happened. With a week, a second run of
+       * week 39 is a new VERSION of week 39's avis — every save
+       * appends to the version table, so nothing is lost — and the
+       * picker has one line per week, which is how the people making
+       * the paper think about it.
+       */
+      const catalogId = base
+        ? base.id
+        : (week ? weekId(brandId, week) : `${brandId}-${stamp}`);
       const catalogName = base
         ? base.name
-        : `${get().brand?.name ?? brandId} · ${new Date().toLocaleString('da-DK', {
-          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-        })}`;
+        : (week
+          ? weekName(get().brand?.name ?? brandId, week)
+          : `${get().brand?.name ?? brandId} · ${new Date().toLocaleString('da-DK', {
+            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+          })}`);
 
       const failures: { refId: string; name: string; message: string }[] = [];
       const cost = { inputTokens: 0, outputTokens: 0 };
@@ -1877,10 +3057,10 @@ export const useStudio = create<StudioState>((set, get) => {
           cost.inputTokens += reply.usage.inputTokens;
           cost.outputTokens += reply.usage.outputTokens;
 
-          const document = mergeCatalogDocuments(parts, {
+          const document = withWeek(mergeCatalogDocuments(parts, {
             id: catalogId,
             name: catalogName,
-          });
+          }));
           const landed = document.pages[document.pages.length - 1];
           runs = [...runs, {
             pageId: landed?.id ?? `page-${document.pages.length}`,
@@ -1981,6 +3161,44 @@ export const useStudio = create<StudioState>((set, get) => {
 
     setDecorNote: (value) => set({ decorNote: value }),
     setDecorStyle: (value) => set({ decorStyle: value }),
+
+    setClusterWay: (way) => {
+      remember(WAY_KEY, way);
+      set({ clusterWay: way });
+    },
+
+    setClusterImageModel: (model) => {
+      remember(IMAGE_MODEL_KEY, model);
+      set({ clusterImageModel: model });
+    },
+
+    setClusterPlaceModel: (model) => {
+      remember(PLACE_MODEL_KEY, model);
+      set({ clusterPlaceModel: model });
+    },
+
+    setPlaceStrict: (strict) => {
+      remember(STRICT_KEY, strict ? '1' : '0');
+      set({ placeStrict: strict });
+    },
+
+    setClusterPrompt: (prompt) => {
+      remember(PROMPT_KEY, prompt);
+      set({ clusterPrompt: prompt });
+    },
+
+    setClusterPromptId: (id) => {
+      remember(PROMPT_ID_KEY, id);
+      set({ clusterPromptId: id });
+    },
+
+    setImageKey: (key) => {
+      api.setImageKey(key);
+      set({
+        imageKeyTail: api.imageKeyTail(),
+        decorReady: get().serverKey || api.hasImageKey(),
+      });
+    },
 
     /**
      * Paint mood artwork behind the offers on every page.
@@ -2137,63 +3355,6 @@ export const useStudio = create<StudioState>((set, get) => {
 
     endGesture() { gesture = null; },
 
-    async prepareCluster(offerId) {
-      const { brandId, document, brand } = get();
-      if (!brandId || !document || !brand) return;
-
-      const offer = document.offers.find((entry) => entry.id === offerId);
-      if (!offer) return;
-      /*
-       * The MEMBERS, not the pack's image URLs: the prompt names image
-       * N after product N, so it needs the products — their names and
-       * their pack sizes — and not merely a list of pictures.
-       */
-      const members = packMembers(offer, document);
-      if (members.length < 2) {
-        set({ error: 'flisen er ikke sat sammen af flere varer' });
-        return;
-      }
-
-      // The cell's own proportions, so the picture comes back the shape
-      // it has to fill — the same number the automatic route sends.
-      const seat = document.pages
-        .flatMap((page) => page.placements.map((placement) => ({ page, placement })))
-        .find((entry) => entry.placement.offerId === offerId);
-      const template = seat
-        ? resolveTemplate(brand, seat.page.templateId)
-          ?? document.templates.find((t) => t.id === seat.page.templateId)
-        : undefined;
-      const cell = template && seat
-        ? slotCells(template, brand.pageAspect).get(seat.placement.slotId)
-        : undefined;
-
-      set({ busy: 'Henter prompt og udklip…', error: null, note: null });
-      try {
-        const ready = await api.prepareCluster(brandId, {
-          offers: members,
-          ...(cell?.aspect ? { aspect: cell.aspect } : {}),
-          ...(get().arrangeNote.trim() ? { note: get().arrangeNote.trim() } : {}),
-        });
-        /*
-         * Said, not enforced.
-         *
-         * The page-wide buttons refuse a tile that is three offers
-         * sharing a price — see `pagePhotographs`. This one was pressed
-         * at a named tile by somebody who meant it, so it runs, and the
-         * warning goes where it can still change their mind.
-         */
-        const doubt = notOnePhotograph(members);
-        set({
-          manual: { offerId, prompt: ready.prompt, files: ready.files },
-          busy: null,
-          note: [`${count(ready.files.length, 'udklip', 'udklip')} klar`, doubt]
-            .filter(Boolean).join(' · '),
-        });
-      } catch (error) {
-        set({ busy: null, error: message(error) });
-      }
-    },
-
     async applyClusterLayout(offerId, file) {
       const { brandId, document } = get();
       if (!brandId || !document) return;
@@ -2218,7 +3379,17 @@ export const useStudio = create<StudioState>((set, get) => {
           members,
           overrides: document.pages.flatMap((entry) => entry.placements)
             .find((entry) => entry.offerId === offerId)?.overrides ?? { ...FRESH },
-          copies: get().manual?.offerId === offerId ? get().manual?.files ?? [] : [],
+          /*
+           * No same-origin copies here.
+           *
+           * The by-hand route used to leave a set behind, and it is
+           * gone — a picture dropped on a tile now arrives with
+           * nothing but itself. `standUpCluster` falls back to
+           * treating each cutout as all product, which is right for
+           * the trimmed artwork a chain supplies and a little
+           * generous for a packshot with a margin.
+           */
+          copies: [],
           placed: reading.products,
           /*
            * The picture's own proportions, read from the file rather
@@ -2243,7 +3414,6 @@ export const useStudio = create<StudioState>((set, get) => {
         const ghost = await keepGhost(brandId, stood, bytes, file.name);
         set({
           busy: null,
-          manual: null,
           ghosts: withGhost(get().ghosts, ghost),
           note: [
             `${count(stood.patches.size, 'vare', 'varer')} stillet op efter billedet`,
@@ -2261,306 +3431,13 @@ export const useStudio = create<StudioState>((set, get) => {
       }
     },
 
-    async prepareClusters(pageId: string) {
-      const { brandId, document, brand } = get();
-      if (!brandId || !document || !brand) return;
-      const page = document.pages.find((entry) => entry.id === pageId);
-      if (!page) return;
+    standUpClusters: (pageId: string) => standUpOn(
+      (get().document?.pages ?? []).filter((page) => page.id === pageId),
+    ),
 
-      /*
-       * Every cluster on the sheet, in the order they are read.
-       *
-       * The point of doing them together: the prompts and the cutouts
-       * for a whole page are one errand, so an editor takes the lot
-       * into Gemini in one sitting instead of coming back to the studio
-       * between every tile.
-       */
-      const { clusters, skipped } = pagePhotographs(page, document);
-      if (clusters.length === 0) {
-        set({
-          error: skipped.length > 0
-            ? skipped.join(' · ')
-            : 'der er ingen sammensatte fliser på siden',
-        });
-        return;
-      }
+    standUpAllClusters: () => standUpOn(get().document?.pages ?? []),
 
-      const template = resolveTemplate(brand, page.templateId)
-        ?? document.templates.find((entry) => entry.id === page.templateId);
-      const cells = template ? slotCells(template, brand.pageAspect) : undefined;
-
-      set({ busy: `Henter prompter og udklip til ${clusters.length} klynger…`, error: null, note: null });
-      try {
-        const ready = [];
-        for (const { offer, members } of clusters) {
-          const slot = page.placements.find((entry) => entry.offerId === offer.id)?.slotId;
-          const aspect = slot ? cells?.get(slot)?.aspect : undefined;
-          // One at a time: each fetches every cutout in the cluster from
-          // the chain's image host, and a page of six would otherwise
-          // open forty connections at once.
-          // eslint-disable-next-line no-await-in-loop
-          const made = await api.prepareCluster(brandId, {
-            offers: members,
-            ...(aspect ? { aspect } : {}),
-            ...(get().arrangeNote.trim() ? { note: get().arrangeNote.trim() } : {}),
-          });
-          ready.push({
-            offerId: offer.id,
-            name: tileName(members),
-            prompt: made.prompt,
-            files: made.files,
-          });
-        }
-        set({
-          manualPage: { pageId, tiles: ready },
-          manual: null,
-          busy: null,
-          note: [
-            `${count(ready.length, 'klynge', 'klynger')} klar`
-            + ' — kør dem i Gemini og læg billederne ind samlet',
-            ...skipped,
-          ].join(' · '),
-        });
-      } catch (error) {
-        set({ busy: null, error: message(error) });
-      }
-    },
-
-    async applyClusterLayouts(pageId: string, files: File[]) {
-      const { brandId, document } = get();
-      if (!brandId || !document || files.length === 0) return;
-      const page = document.pages.find((entry) => entry.id === pageId);
-      if (!page) return;
-
-      const clusters = pagePhotographs(page, document).clusters
-        .map((entry) => ({ offerId: entry.offer.id, members: entry.members }));
-      if (clusters.length === 0) {
-        set({ error: 'der er ingen fliser på siden der kan være ét fotografi' });
-        return;
-      }
-
-      /*
-       * Every product on the sheet, named once, with a note of whose it
-       * is.
-       *
-       * This is what makes dropping a folder of compositions work: each
-       * picture is read against the WHOLE page rather than against a
-       * tile somebody had to pick first. The products it finds say
-       * which cluster it is a picture of, and the same answer carries
-       * the geometry — so matching the picture to the tile costs no
-       * extra call.
-       */
-      const roll = clusters.flatMap(({ offerId, members }) => members.map((member, index) => (
-        { offerId, packIndex: index, member }
-      )));
-
-      const stoodUp: StoodUp[] = [];
-      const ghosts: Ghost[] = [];
-      const notes: string[] = [];
-      const done = new Set<string>();
-
-      set({ busy: `Læser ${count(files.length, 'billede', 'billeder')}…`, error: null, note: null });
-      try {
-        for (const file of files) {
-          // eslint-disable-next-line no-await-in-loop
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          // eslint-disable-next-line no-await-in-loop
-          const reading = await api.readClusterLayout(brandId, {
-            file: toBase64(bytes),
-            offers: roll.map((entry) => entry.member),
-          });
-
-          // Whose picture is this? The cluster most of its products
-          // belong to — a picture of three cheeses names three members
-          // of one tile and nothing else.
-          const votes = new Map<string, typeof reading.products>();
-          for (const product of reading.products) {
-            const owner = roll[product.index - 1];
-            if (!owner) continue;
-            const list = votes.get(owner.offerId) ?? [];
-            list.push({ ...product, index: owner.packIndex + 1 });
-            votes.set(owner.offerId, list);
-          }
-          const winner = [...votes.entries()].sort((a, b) => b[1].length - a[1].length)[0];
-          if (!winner || winner[1].length < 2) {
-            notes.push(`${file.name}: ingen af sidens klynger blev genkendt`);
-            continue;
-          }
-          const [offerId, placed] = winner;
-          if (done.has(offerId)) {
-            notes.push(`${file.name}: ${tileName(
-              clusters.find((entry) => entry.offerId === offerId)!.members,
-            )} var allerede stillet op`);
-            continue;
-          }
-
-          const cluster = clusters.find((entry) => entry.offerId === offerId)!;
-          // eslint-disable-next-line no-await-in-loop
-          const stood = await standUpCluster({
-            offerId,
-            members: cluster.members,
-            overrides: page.placements.find((entry) => entry.offerId === offerId)?.overrides
-              ?? { ...FRESH },
-            copies: get().manualPage?.tiles.find((entry) => entry.offerId === offerId)?.files ?? [],
-            placed,
-            // eslint-disable-next-line no-await-in-loop
-            picture: await pictureAspect(file),
-          });
-          if ('error' in stood) {
-            notes.push(stood.error);
-            continue;
-          }
-          if (stood.patches.size === 0) {
-            notes.push(`${file.name}: ingen af varerne kunne genfindes`);
-            continue;
-          }
-
-          done.add(offerId);
-          stoodUp.push(stood);
-          // eslint-disable-next-line no-await-in-loop
-          const ghost = await keepGhost(brandId, stood, bytes, file.name);
-          if (ghost) ghosts.push(ghost);
-          notes.push(`${tileName(cluster.members)}: ${
-            count(stood.patches.size, 'vare', 'varer')} stillet op${
-            stood.complaints.length > 0
-              ? `, ${count(stood.complaints.length, 'advarsel', 'advarsler')}` : ''}`);
-        }
-
-        if (stoodUp.length === 0) {
-          set({ busy: null, error: notes.join(' · ') || 'ingen af billederne kunne bruges' });
-          return;
-        }
-
-        /*
-         * One write for the whole sheet, so the page is one undo step.
-         * Six clusters stood up together were arranged together.
-         */
-        gesture = null;
-        mutate((doc) => withPatches(doc, stoodUp));
-
-        set({
-          busy: null,
-          manualPage: null,
-          ghosts: ghosts.reduce(withGhost, get().ghosts),
-          note: notes.join(' · '),
-        });
-      } catch (error) {
-        set({ busy: null, error: message(error) });
-      }
-    },
-
-    closeManual: () => set({ manual: null }),
-
-    async standUpClusters(pageId: string) {
-      const { brandId, document, brand } = get();
-      if (!brandId || !document || !brand) return;
-      const page = document.pages.find((entry) => entry.id === pageId);
-      if (!page) return;
-
-      const { clusters, skipped } = pagePhotographs(page, document);
-      if (clusters.length === 0) {
-        set({
-          error: skipped.length > 0
-            ? skipped.join(' · ')
-            : 'der er ingen sammensatte fliser på siden',
-        });
-        return;
-      }
-
-      const template = resolveTemplate(brand, page.templateId)
-        ?? document.templates.find((entry) => entry.id === page.templateId);
-      const cells = template ? slotCells(template, brand.pageAspect) : undefined;
-      const note = get().arrangeNote.trim();
-
-      const stoodUp: StoodUp[] = [];
-      const ghosts: Ghost[] = [];
-      const notes: string[] = [...skipped];
-
-      try {
-        for (const { offer, members } of clusters) {
-          const name = tileName(members);
-          const slot = page.placements.find((entry) => entry.offerId === offer.id)?.slotId;
-          const aspect = slot ? cells?.get(slot)?.aspect : undefined;
-
-          /*
-           * The cutouts are copied onto this server first, and not only
-           * because the composition needs them: a canvas may not read
-           * another origin's pixels, so these copies are also the only
-           * way to measure how much of each file is product — see
-           * `inkOf`. No model is paid for this step.
-           */
-          set({ busy: `${name}: henter udklip…`, error: null, note: null });
-          // eslint-disable-next-line no-await-in-loop
-          const ready = await api.prepareCluster(brandId, {
-            offers: members,
-            ...(aspect ? { aspect } : {}),
-            ...(note ? { note } : {}),
-          });
-
-          set({ busy: `${name}: billedmodellen sætter varerne op…` });
-          // eslint-disable-next-line no-await-in-loop
-          const drawn = await api.composeCluster(brandId, {
-            offers: members,
-            ...(aspect ? { aspect } : {}),
-            ...(note ? { note } : {}),
-          });
-
-          set({ busy: `${name}: læser opstillingen…` });
-          // The composition arrives keyed out and trimmed; a reader
-          // needs it on white — see `onWhite`.
-          // eslint-disable-next-line no-await-in-loop
-          const bytes = await onWhite(drawn.url);
-          // eslint-disable-next-line no-await-in-loop
-          const reading = await api.readClusterLayout(brandId, {
-            file: toBase64(bytes), offers: members,
-          });
-
-          // eslint-disable-next-line no-await-in-loop
-          const stood = await standUpCluster({
-            offerId: offer.id,
-            members,
-            overrides: page.placements.find((entry) => entry.offerId === offer.id)?.overrides
-              ?? { ...FRESH },
-            copies: ready.files,
-            placed: reading.products,
-            // eslint-disable-next-line no-await-in-loop
-            picture: await pictureAspect(new File([bytes as BlobPart], 'composed.png')),
-          });
-          if ('error' in stood) { notes.push(stood.error); continue; }
-          if (stood.patches.size === 0) {
-            notes.push(`${name}: ingen af varerne kunne genfindes i kompositionen`);
-            continue;
-          }
-
-          stoodUp.push(stood);
-          // eslint-disable-next-line no-await-in-loop
-          const ghost = await keepGhost(brandId, stood, bytes, 'komposition.png');
-          if (ghost) ghosts.push(ghost);
-          notes.push(`${name}: ${count(stood.patches.size, 'vare', 'varer')} stillet op${
-            reading.missing.length > 0 ? `, ${reading.missing.length} ikke genfundet` : ''}${
-            stood.complaints.length > 0
-              ? `, ${count(stood.complaints.length, 'advarsel', 'advarsler')}` : ''}`);
-        }
-
-        if (stoodUp.length === 0) {
-          set({ busy: null, error: notes.join(' · ') || 'ingen af klyngerne kunne stilles op' });
-          return;
-        }
-
-        gesture = null;
-        mutate((doc) => withPatches(doc, stoodUp));
-        set({
-          busy: null,
-          manualPage: null,
-          ghosts: ghosts.reduce(withGhost, get().ghosts),
-          note: notes.join(' · '),
-        });
-      } catch (error) {
-        set({ busy: null, error: message(error) });
-      }
-    },
-
-    closeClusters: () => set({ manualPage: null }),
+    standUpOneCluster: (offerId: string) => standUpOn(get().document?.pages ?? [], offerId),
 
     toggleGhost: (offerId) => set((state) => ({
       ghosts: state.ghosts.map((entry) => (entry.offerId === offerId
@@ -2623,7 +3500,6 @@ export const useStudio = create<StudioState>((set, get) => {
         const uncut = cut !== undefined && cut.kept > 0.97;
         set({
           busy: null,
-          manual: null,
           selectedPack: null,
           note: uncut ? null : `${file.name} lagt på flisen · baggrunden skåret fra`,
           error: uncut
@@ -3019,7 +3895,34 @@ export const useStudio = create<StudioState>((set, get) => {
     setLibraryOpen: (open) => set({ libraryOpen: open }),
     setLibrarySearch: (query) => set({ librarySearch: query }),
 
+    placedAt() {
+      const { document } = get();
+      const where = new Map<string, string>();
+      if (!document) return where;
+      document.pages.forEach((page, index) => {
+        const said = `s. ${index + 1}`;
+        for (const placement of page.placements) {
+          where.set(placement.offerId, said);
+          /*
+           * And everything the tile is showing inside that placement.
+           *
+           * A cluster names one assembled offer; the products it
+           * photographs are members of it, and they are as printed as
+           * anything with a cell of its own. `benched` knows this —
+           * see the note there — and a library that did not would go
+           * on offering a product that is already on page two.
+           */
+          const offer = document.offers.find((entry) => entry.id === placement.offerId);
+          for (const member of offer?.members ?? []) where.set(member, said);
+        }
+      });
+      return where;
+    },
+
     toggleLibraryPick(offerId) {
+      // Already on a page: there is nothing to pick. The card says
+      // where it is instead, and clicking it goes there.
+      if (get().placedAt().has(offerId)) return;
       const picked = get().librarySelection;
       set({
         librarySelection: picked.includes(offerId)
@@ -3051,9 +3954,27 @@ export const useStudio = create<StudioState>((set, get) => {
       const page = document.pages.find((p) => p.id === pageId);
       if (!page || page.kind !== 'offers') return;
 
-      const onPage = new Set(page.placements.map((placement) => placement.offerId));
-      const wanted = [...new Set(offerIds)].filter((id) => !onPage.has(id));
-      if (wanted.length === 0) return;
+      /*
+       * Nothing that is already printed somewhere.
+       *
+       * The cell-level check was here from the start; the book-level
+       * one was not, so a product on page one could be dealt onto page
+       * three and the avis would print it twice. The library no longer
+       * lets one be ticked — see `toggleLibraryPick` — and this is the
+       * same rule at the place that actually seats them, so no other
+       * caller can get round it.
+       */
+      const already = get().placedAt();
+      const wanted = [...new Set(offerIds)].filter((id) => !already.has(id));
+      if (wanted.length === 0) {
+        const where = [...new Set(offerIds.map((id) => already.get(id)).filter(Boolean))];
+        set({
+          error: offerIds.length === 1
+            ? `Varen ligger allerede på ${where[0] ?? 'en side'}`
+            : `Varerne ligger allerede i avisen (${where.join(', ')})`,
+        });
+        return;
+      }
 
       /*
        * A product picked out of the library may not be in the document
@@ -3215,38 +4136,35 @@ export const useStudio = create<StudioState>((set, get) => {
        * says so with `model: null`.
        */
       const cell = slotCells(template, brand.pageAspect).get(slotId);
-      let seated = picked;
-      let arrangement: TileArrangement | null = null;
-      let wording: { heading: string; support: string } | null = null;
+      /*
+       * Picked order, stylesheet arrangement, the group's own name.
+       *
+       * All three used to be the model's and are now the defaults the
+       * drop lands with — `settleGroup` improves on them afterwards if
+       * it can. Kept as variables because the compose path still
+       * names the image model in `by`.
+       */
+      const seated = picked;
+      const arrangement: TileArrangement | null = null;
       let by: string | null = null;
 
-      if (picked.length > 1 && get().brandId) {
-        set({ busy: 'Modellen sætter varerne sammen…', error: null, note: null });
-        try {
-          const said = await api.arrangeGroup(get().brandId!, {
-            offers: picked,
-            cell: {
-              role: slot.role,
-              aspect: cell?.aspect ?? 1,
-              width: cell?.width ?? 0.5,
-            },
-            ...(get().arrangeNote.trim() ? { note: get().arrangeNote.trim() } : {}),
-          });
-          const order = new Map(said.order.map((id, index) => [id, index]));
-          seated = [...picked].sort(
-            (a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
-          );
-          arrangement = said.arrangement;
-          by = said.model;
-          if (said.heading) wording = { heading: said.heading, support: said.support };
-        } catch (error) {
-          // The drop lands anyway. A tile that could not be assembled
-          // because an API was unreachable is a worse product than one
-          // that assembles it the plain way and says so.
-          set({ error: `varerne blev sat sammen uden model: ${message(error)}` });
-        }
-        set({ busy: null });
-      }
+      /*
+       * The model no longer stands between the products and the cell.
+       *
+       * It used to: fifteen seconds of "Modellen sætter varerne
+       * sammen…" with the whole toolbar greyed out, in front of an
+       * answer that is an order, one of four stylesheet arrangements
+       * and two lines of Danish. None of the three is needed for the
+       * products to be in the cell and print — the pick order is an
+       * order, the stylesheet has a default, and the tile has the name
+       * `groupOffers` gave it.
+       *
+       * So the drop is instant and free, and the model's opinion is
+       * fetched behind it and applied when it lands — see
+       * `settleGroup`, which writes nothing over anything the editor
+       * has touched in the meantime.
+       */
+      void cell;
 
       /*
        * Named after the cell it fills, so filling the same cell twice
@@ -3282,6 +4200,12 @@ export const useStudio = create<StudioState>((set, get) => {
             ...(cell?.aspect ? { aspect: cell.aspect } : {}),
             ...(get().arrangeNote.trim() ? { note: get().arrangeNote.trim() } : {}),
           });
+          // Same beat as `setTileImage`: a path the dev server has
+          // never served answers 404 for a moment, and a tile that
+          // names it shows a broken image until the next reload.
+          if (!await reachable(drawn.url)) {
+            throw new Error(`${drawn.url} kunne ikke hentes igen`);
+          }
           assembled = { ...assembled, imageUrl: drawn.url, imagePack: [] };
           by = drawn.model;
         } catch (error) {
@@ -3291,16 +4215,17 @@ export const useStudio = create<StudioState>((set, get) => {
         set({ busy: null });
       }
 
-      const overrides: PlacementOverrides = {
-        ...FRESH,
-        arrangement,
-        // Written onto the PLACEMENT rather than into the offer, the
-        // same way every other hand correction is: the assembled record
-        // keeps the feed's own facts, and the page keeps what somebody
-        // decided to print. Rewriting either survives the other.
-        displayName: wording?.heading ?? null,
-        description: wording?.support ?? null,
-      };
+      /*
+       * A placement with nothing decided on it yet.
+       *
+       * The heading and the arrangement are written onto the PLACEMENT
+       * rather than into the offer, the same way every other hand
+       * correction is: the assembled record keeps the feed's own
+       * facts, and the page keeps what somebody decided to print.
+       * `settleGroup` fills them in a moment later, and so can a
+       * person — whichever comes first wins.
+       */
+      const overrides: PlacementOverrides = { ...FRESH, arrangement };
 
       gesture = null;
       mutate((doc) => ({
@@ -3344,9 +4269,166 @@ export const useStudio = create<StudioState>((set, get) => {
           : [
             `${count(seated.length, 'vare', 'varer')} samlet i én plads`,
             options.compose ? 'som ét fotografi' : '',
-            by ? `sat op af ${by}` : 'sat op uden model',
+            by ? `sat op af ${by}` : '',
           ].filter(Boolean).join(' · '),
       });
+
+      /*
+       * The model's opinion, fetched behind the finished tile.
+       *
+       * Not awaited and never load-bearing: the cell is filled, the
+       * page prints, and if this never comes back the tile keeps the
+       * order it was picked in. Skipped for a composed tile, whose
+       * pack is one photograph, and for the compose path, where the
+       * placement call decides the positions a moment later and only
+       * the wording is worth having.
+       */
+      if (seated.length > 1 && !options.compose) {
+        void settleGroup(pageId, slotId, assembled.id, options.arrange !== false);
+      }
+    },
+
+    async composeSlot(pageId, slotId, offerIds) {
+      /*
+       * The cutouts, started before anything else.
+       *
+       * The arrangement cannot begin until the cell holds the products
+       * AND the page has drawn them — see below — and that is two
+       * writes, a render and a frame during which nothing at all is
+       * being fetched. The pictures are the slowest part that does not
+       * need any of it: they are somebody else's image service, one
+       * request per product.
+       *
+       * Fired and dropped. `fetchImages` holds the PROMISE for ten
+       * minutes, not just the answer, so the real call a moment later
+       * joins this one rather than starting a second — see `cached` in
+       * @incitio/decor. A failure here is not reported and must not
+       * be: the call that needs it will fail again, with the tile in
+       * front of the person reading it.
+       */
+      const warming = get().brandId;
+      if (warming) {
+        const pool = [...get().feedOffers, ...(get().document?.offers ?? [])];
+        const chosen = offerIds
+          .map((id) => pool.find((offer) => offer.id === id))
+          .filter((offer): offer is Offer => Boolean(offer));
+        if (chosen.length > 1) {
+          void api.prepareCluster(warming, { offers: chosen }).catch(() => undefined);
+        }
+      }
+
+      /*
+       * Group first, with no model involved.
+       *
+       * The cell has to hold the products, and the page has to have
+       * DRAWN them, before anything can be measured: the arithmetic
+       * that moves a cutout reads where it currently stands from the
+       * browser — see `standUpCluster`. So this is not an optimisation
+       * step that could be folded into the next one; it is what makes
+       * the next one possible.
+       */
+      /*
+       * Seated with no model at all.
+       *
+       * The arrangement call decides three things — the order, one of
+       * four stylesheet arrangements, and the two Danish lines the
+       * tile prints — and the placement that follows a moment later
+       * overwrites every position it chose. So the wait for it is
+       * fifteen seconds of spinner in front of an answer nobody sees.
+       * The wording is the part worth having, and it is fetched
+       * BESIDE the placement rather than in front of it.
+       */
+      await get().fillSlot(pageId, slotId, offerIds, { arrange: false });
+
+      const placed = pageById(pageId)?.placements.find((entry) => entry.slotId === slotId);
+      if (!placed) return;
+
+      // Not awaited: the two lines land when they land, and the
+      // arrangement is already under way.
+      void settleGroup(pageId, slotId, placed.offerId, false);
+
+      /*
+       * One paint before measuring.
+       *
+       * `fillSlot` has only just written the document; React has not
+       * yet put the new tile on the page, and measuring a tile that
+       * is not there yet reports "flisen skal være synlig på siden".
+       *
+       * A frame OR a tick, whichever comes first, and the tick is not
+       * a belt-and-braces: `requestAnimationFrame` does not fire in a
+       * tab that is not being drawn. Measured — in a background tab
+       * this awaited forever, and the button looked like it had done
+       * nothing at all.
+       */
+      await Promise.race([
+        new Promise((ready) => { requestAnimationFrame(() => ready(null)); }),
+        new Promise((ready) => { setTimeout(ready, 60); }),
+      ]);
+
+      /*
+       * Quietly: the products are already in the cell and the page
+       * already prints. What follows improves the arrangement, and
+       * the editor should be able to go on working while it does.
+       */
+      await standUpOn(
+        (get().document?.pages ?? []).filter((page) => page.id === pageId),
+        placed.offerId,
+        true,
+      );
+    },
+
+    async testCluster() {
+      const { brandId } = get();
+      if (!brandId) return;
+
+      // A draft first, when there is nothing to put a tile on. The
+      // plain one: no model, no key, instant.
+      if (!get().document) {
+        if (!get().feed) {
+          set({ error: 'der er intet feed at bygge af' });
+          return;
+        }
+        await get().build({ fresh: true });
+      }
+
+      const document = get().document;
+      const page = document?.pages.find((entry) => entry.kind === 'offers');
+      if (!document || !page) return;
+
+      const slot = get().pageSlots(page.id)[0];
+      if (!slot) {
+        set({ error: 'siden har ingen pladser' });
+        return;
+      }
+
+      /*
+       * Three products with photographs, out of ONE family.
+       *
+       * The family part is not tidiness. A tile holding washing
+       * powder, a pizza and a beer is three offers that happen to
+       * share a cell, and `notOnePhotograph` refuses it — rightly, and
+       * measured: the first version of this button took the first
+       * three products in the feed and was turned down every other
+       * press. So the first category that can field a group is the
+       * one it picks.
+       */
+      const usable = [...get().feedOffers, ...document.offers]
+        .filter((offer) => offer.imageUrl && offer.members.length === 0);
+      const families = new Map<string, Offer[]>();
+      for (const offer of usable) {
+        const family = offer.category || 'uden kategori';
+        families.set(family, [...(families.get(family) ?? []), offer]);
+      }
+      const picked = [...families.values()]
+        .map((group) => group.slice(0, 3))
+        .find((group) => group.length >= 2 && !notOnePhotograph(group));
+      if (!picked) {
+        set({ error: 'ingen varegruppe har to varer med billede, der kan være ét fotografi' });
+        return;
+      }
+
+      set({ activePageId: page.id });
+      await get().composeSlot(page.id, slot.slotId, picked.map((offer) => offer.id));
     },
 
     pageSlots(pageId) {
@@ -3376,6 +4458,16 @@ export const useStudio = create<StudioState>((set, get) => {
     async importPublication() {
       const { brandId, publicationUrl, publicationPages, publicationAppend } = get();
       if (!brandId || !publicationUrl.trim()) return;
+      /*
+       * The one that named fifteen catalogues "Hentet udgivelse".
+       *
+       * The link says nothing about which week it is — it is a
+       * publication id — so without asking there is genuinely nothing
+       * to call the result. Asked here, the name is sent along and the
+       * document arrives already knowing what it is.
+       */
+      if (askingWeek(() => void get().importPublication())) return;
+      const week = get().week;
 
       set({ busy: 'Henter udgivelsen…', error: null, note: null });
       try {
@@ -3384,6 +4476,7 @@ export const useStudio = create<StudioState>((set, get) => {
           url: publicationUrl.trim(),
           withOffers: get().publicationWithOffers,
           ...(pages.length > 0 ? { pages } : {}),
+          ...(week ? { name: weekName(get().brand?.name ?? brandId, week) } : {}),
         });
 
         /*
@@ -3392,8 +4485,10 @@ export const useStudio = create<StudioState>((set, get) => {
          */
         const base = publicationAppend ? get().document : null;
         const document = base
-          ? mergeCatalogDocuments([base, reply.document], { id: base.id, name: base.name })
-          : reply.document;
+          ? withWeek(mergeCatalogDocuments(
+            [base, reply.document], { id: base.id, name: base.name },
+          ))
+          : forWeek(reply.document);
 
         const read = reply.readings.filter((reading) => !reading.skipped).length;
         const skipped = reply.readings.length - read;
@@ -3430,6 +4525,8 @@ export const useStudio = create<StudioState>((set, get) => {
     async generateLayout() {
       const { brandId, feed, layoutCells, layoutNote, layoutAppend } = get();
       if (!brandId || !feed) return;
+      // Two model calls a page. The week is cheaper to ask for first.
+      if (askingWeek(() => void get().generateLayout())) return;
 
       const base = layoutAppend ? get().document : null;
       const spent = base ? base.offers.map((offer) => offer.id) : [];
@@ -3444,8 +4541,10 @@ export const useStudio = create<StudioState>((set, get) => {
         });
 
         const document = base
-          ? mergeCatalogDocuments([base, reply.document], { id: base.id, name: base.name })
-          : reply.document;
+          ? withWeek(mergeCatalogDocuments(
+            [base, reply.document], { id: base.id, name: base.name },
+          ))
+          : forWeek(reply.document);
         const landed = document.pages[document.pages.length - 1];
 
         /*
@@ -3637,3 +4736,87 @@ export const useStudio = create<StudioState>((set, get) => {
     },
   };
 });
+
+/* ------------------------------------------- the work, kept in place */
+
+/**
+ * Where the open catalogue is parked between reloads.
+ *
+ * Per chain, because switching chain is switching document, and a
+ * restored SuperBrugsen page on Netto's sheet would be nonsense.
+ */
+const WORK_KEY = (brandId: string) => `incitio.work.${brandId}`;
+
+/**
+ * How long after the last change the document is written down.
+ *
+ * Long enough that a drag is one write rather than sixty, short
+ * enough that a reload two seconds after an edit still has it.
+ */
+const SAVE_AFTER_MS = 1500;
+
+let saveTimer: number | undefined;
+
+/**
+ * Keep the open catalogue across a reload.
+ *
+ * Not a replacement for `Gem`, which puts a named catalogue in the
+ * database and is what an editor keeps. This is the other thing: the
+ * thing you are in the middle of. The studio reloads all day during a
+ * session — Vite hot-reloads on every save, a stylesheet change, a
+ * crash, a closed laptop — and every one of those used to mean
+ * building the draft again, grouping the products again and running
+ * the arrangement again before you were back where you were.
+ *
+ * In the browser and nowhere else: it is this machine's working
+ * state, it never travels, and `Gem` is still the thing that shares
+ * it.
+ */
+useStudio.subscribe((state, before) => {
+  if (state.document === before.document) return;
+  const { brandId, document } = state;
+  if (!brandId) return;
+  window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => {
+    try {
+      if (document) {
+        window.localStorage.setItem(
+          WORK_KEY(brandId),
+          JSON.stringify({ at: new Date().toISOString(), document }),
+        );
+      } else {
+        window.localStorage.removeItem(WORK_KEY(brandId));
+      }
+    } catch {
+      /*
+       * Out of room, or private browsing. Nothing to do and nothing
+       * to say: the catalogue is on screen and `Gem` still works.
+       */
+    }
+  }, SAVE_AFTER_MS);
+});
+
+/** What was parked for this chain, if anything still parses. */
+export function parkedWork(brandId: string): { at: string; document: CatalogDocument } | null {
+  try {
+    const raw = window.localStorage.getItem(WORK_KEY(brandId));
+    if (!raw) return null;
+    const said = JSON.parse(raw) as { at?: unknown; document?: unknown };
+    const parsed = CatalogDocumentSchema.safeParse(said.document);
+    if (!parsed.success) return null;
+    return {
+      at: typeof said.at === 'string' ? said.at : '',
+      document: parsed.data,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/*
+ * Nothing throws the parked work away on purpose, and nothing needs
+ * to: every way of starting something else — a fresh draft, an
+ * imported publication, a saved catalogue opened — replaces the
+ * document, and the subscription above writes the new one over the
+ * old within a second and a half.
+ */

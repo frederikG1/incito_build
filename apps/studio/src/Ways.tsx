@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useStudio } from './state.js';
 
 /**
@@ -20,47 +19,21 @@ import { useStudio } from './state.js';
  *   own tiles. That is the difference between this and pasting a
  *   generated picture onto a page.
  *
- * A strip that folds, like the mood-artwork one and for the same
- * reason: most sessions use one of the two, and neither is worth
- * permanent chrome above the page you are looking at.
+ * A panel the toolbar folds out, like the mood-artwork one and for the
+ * same reason: most sessions use one of the two, and neither is worth
+ * a permanent strip above the page you are looking at — not even a
+ * folded one, which still costs its line. See `panel`.
  */
-
-const OPEN_KEY = 'incitio.ways.open';
-
-function remembered(): boolean {
-  try {
-    return window.localStorage.getItem(OPEN_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 export function Ways() {
   const s = useStudio();
-  const [shown, setShown] = useState(remembered);
-
-  function show(next: boolean) {
-    setShown(next);
-    try {
-      window.localStorage.setItem(OPEN_KEY, next ? '1' : '0');
-    } catch { /* private browsing; it still folds for this session */ }
-  }
 
   if (!s.brand) return null;
   const busy = Boolean(s.busy);
 
   return (
-    <section className={shown ? 'ways' : 'ways ways--shut'} aria-label="Hent eller tegn sider">
-      <div className="ways__head">
-        <button className="ways__disclose" onClick={() => show(!shown)} aria-expanded={shown}>
-          <span className="ways__caret" aria-hidden="true">{shown ? '▾' : '▸'}</span>
-          <h2 className="ways__title">Hent eller tegn sider</h2>
-        </button>
-        {!shown && <span className="ways__said">link til en udgivelse · tegnet layout</span>}
-      </div>
-
-      {shown && (
-        <div className="ways__row">
+    <section className="ways" aria-label="Hent eller tegn sider">
+      <div className="ways__row">
           {/*
             * The link route.
             *
@@ -193,8 +166,7 @@ export function Ways() {
               og fakturering på Google-projektet. Linket ovenfor virker uden nøgler.
             </p>
           )}
-        </div>
-      )}
+      </div>
     </section>
   );
 }

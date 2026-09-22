@@ -55,6 +55,15 @@ export interface PlacedProduct {
    */
   bottom?: number;
   rotate: number;
+  /**
+   * A step forward or back among the products in the cell.
+   *
+   * Only an arrangement that was ASKED for one carries it — see
+   * `PackOverride.depth`. A composition read out of a picture leaves
+   * it out: the picture has already stacked them, and the cutouts
+   * rebuilt from it stack the same way by themselves.
+   */
+  depth?: number;
 }
 
 /** One product as it stands on the page right now, in page pixels. */
@@ -96,6 +105,15 @@ export interface PackPatch {
   offsetY: number;
   scale: number;
   rotate: number;
+  /**
+   * A step forward or back among the products in the cell.
+   *
+   * Written only when the arrangement said what covers what — see
+   * `PlacedProduct.depth`. A composition read out of a picture leaves
+   * it alone, because the picture has already decided the stacking
+   * and the default reads it correctly.
+   */
+  depth?: number;
 }
 
 /**
@@ -130,6 +148,8 @@ interface Want {
   cy: number;
   width: number;
   height: number;
+  /** Where it stands in the stack, when the arrangement said. */
+  depth?: number;
 }
 
 /**
@@ -195,6 +215,26 @@ export function snapToBaseline(wants: Want[], within = BASELINE_WITHIN): void {
   }
 }
 
+/**
+ * How far out of step with the others a product may be drawn.
+ *
+ * One number for both dimensions, because they are one judgement: at
+ * twice the middle product a thing is either the hero or a mistake,
+ * and past that it is a mistake. Used for height and, at the same
+ * height, for width — see `reviewCluster`.
+ */
+export const OUT_OF_PROPORTION = 2.2;
+
+/**
+ * How close two heights have to be to count as "the same height".
+ *
+ * A quarter. Wide enough that a hero standing a little proud of the
+ * row still counts as being in it, narrow enough that a genuinely
+ * bigger product — which is taller as well as wider — falls outside
+ * and is left alone.
+ */
+export const SAME_HEIGHT = 0.25;
+
 /** Something about the finished arrangement worth saying out loud. */
 export interface Complaint {
   /** Which product, counting from 0 as the pack does. `null` for the group. */
@@ -221,14 +261,41 @@ export function reviewCluster(
 
   const heights = [...wants.map((want) => want.height)].sort((a, b) => a - b);
   const median = heights[Math.floor(heights.length / 2)]!;
+  const widths = [...wants.map((want) => want.width)].sort((a, b) => a - b);
+  const midWidth = widths[Math.floor(widths.length / 2)]!;
 
   for (const want of wants) {
     // A product drawn twice the height of the middle one is either the
     // hero or a mistake, and past that it is a mistake.
-    if (median > 0 && want.height > median * 2.2) {
+    const tall = median > 0 && want.height > median * OUT_OF_PROPORTION;
+    if (tall) {
       complaints.push({
         index: want.index,
         said: `står ${(want.height / median).toFixed(1)}× højere end de andre`,
+      });
+    }
+
+    /*
+     * The one the height rule above cannot see: same height, several
+     * times the bulk.
+     *
+     * A flat cheese tub photographed nearly square, standing beside
+     * three tall cartons, is drawn to the same height and comes out
+     * three times as wide — three times the ink, and it reads as the
+     * biggest thing in the offer. Nothing in the height comparison
+     * notices, because the heights agree; that is the whole point.
+     *
+     * Only when the heights DO agree. A product that is genuinely
+     * bigger is taller as well as wider, and complaining about that
+     * would be complaining about an honest layout — which is how a
+     * warning stops being read.
+     */
+    const sameHeight = median > 0 && Math.abs(want.height - median) <= median * SAME_HEIGHT;
+    if (!tall && sameHeight && midWidth > 0 && want.width > midWidth * OUT_OF_PROPORTION) {
+      complaints.push({
+        index: want.index,
+        said: `er ${(want.width / midWidth).toFixed(1)}× så bred som de andre`
+          + ' og står i samme højde — så den fylder flere gange så meget',
       });
     }
 
@@ -369,7 +436,14 @@ export function planCluster(input: PlanInput): ClusterPlan {
     const cy = product.bottom === undefined
       ? product.cy
       : product.bottom - height / 2;
-    wants.push({ index, cx: product.cx * pictureWidth, cy, width, height });
+    wants.push({
+      index,
+      cx: product.cx * pictureWidth,
+      cy,
+      width,
+      height,
+      ...(typeof product.depth === 'number' ? { depth: product.depth } : {}),
+    });
   }
   if (wants.length === 0) return { patches, frame: null, complaints: [] };
 
@@ -451,6 +525,12 @@ export function planCluster(input: PlanInput): ClusterPlan {
         now.already.rotate + (spin - now.rotate),
         -PACK_LIMITS.rotate, PACK_LIMITS.rotate,
       ),
+      /*
+       * Absolute, not a correction: the arrangement decided the whole
+       * stack, so adding to what was already there would drift a
+       * product forward every time the same arrangement was run.
+       */
+      ...(typeof want.depth === 'number' ? { depth: want.depth } : {}),
     });
   }
 

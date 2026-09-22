@@ -186,6 +186,18 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
   const updatePackItem = useStudio((s) => s.updatePackItem);
   const selectedPack = useStudio((s) => s.selectedPack);
   const selected = useStudio((s) => s.selectedOfferId === offerId && offerId !== undefined);
+  /*
+   * Whether a model is arranging THIS tile right now.
+   *
+   * Said here and no longer in the toolbar: the products are already
+   * in the cell and the page already prints, so the studio stays
+   * usable while the arrangement comes — see `standUpOn`'s quiet
+   * mode. The one thing that then has to be true is that the person
+   * can see which cell is still moving.
+   */
+  const standingUp = useStudio(
+    (s) => offerId !== undefined && s.standingUp.includes(offerId),
+  );
   const selectedPart = useStudio((s) => s.selectedPart);
   const overrides = useStudio((s) => s.document?.pages
     .find((page) => page.id === pageId)
@@ -611,6 +623,7 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
     editing && 'handle--editing',
     over && 'handle--over',
     dragging && 'handle--dragging',
+    standingUp && 'handle--standing',
   ].filter(Boolean).join(' ');
 
   return (
@@ -674,6 +687,14 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
         draggable={selected}
         aria-hidden="true"
       >⠿</span>
+
+      {/* Where the work is, rather than in a banner that greys out
+          the rest of the studio. */}
+      {standingUp && (
+        <span className="handle__working">
+          <i className="spinner" aria-hidden="true" /> stiller op…
+        </span>
+      )}
 
       {/* The box a click would take, and the box already in hand. Drawn
           in the overlay rather than as an outline on the tile itself,

@@ -54,13 +54,36 @@ export interface PlacedProduct {
   bottom: number;
   /** A few degrees, when the composition tilted it. */
   rotate: number;
+  /**
+   * A step forward or back among the products in the cell.
+   *
+   * Only the placing call fills this in, from what it said covers
+   * what — see `toReading`. Reading a composition back out of a
+   * PICTURE cannot answer it: what is in front is exactly what the
+   * picture shows, and the products were already redrawn in that
+   * order. Left out, the stylesheet's own stacking stands.
+   */
+  depth?: number;
 }
 
 export interface LayoutReading {
   products: PlacedProduct[];
   /** Products the model could not find, by index. Left where they were. */
   missing: number[];
+  /**
+   * Whether the group stands on a floor or lies flat, seen from above.
+   *
+   * Only the placing call decides this — it is looking at the cutouts
+   * and choosing the scene. A reading of somebody's photograph does
+   * not need to: the photograph already is one.
+   */
+  view?: 'side' | 'top';
   model: string;
+  /**
+   * The model that was asked for, when it was busy and another
+   * answered instead — see `WHEN_BUSY`. Absent in the ordinary case.
+   */
+  insteadOf?: string;
   usage: { inputTokens: number; outputTokens: number } | null;
 }
 
@@ -174,6 +197,10 @@ export function validateLayout(count: number, answer: unknown): Omit<LayoutReadi
         within(entry['cy'], 0, 1, 0.5),
       ),
       rotate: within(entry['rotate'], -45, 45, 0),
+      // Only the placing call sends one; a reading has no opinion.
+      ...(typeof entry['depth'] === 'number'
+        ? { depth: Math.round(within(entry['depth'], -4, 4, 0)) }
+        : {}),
     });
   }
 
