@@ -118,11 +118,6 @@ export function weekRange(week: CatalogWeek): string {
   return `${day(monday)}.–${day(sunday)}. ${month(sunday)}`;
 }
 
-/** "uge 39 · gælder 22.–28. september", for anywhere with room for it. */
-export function weekSaid(week: CatalogWeek): string {
-  return `uge ${week.week} · gælder ${weekRange(week)}`;
-}
-
 /**
  * What the catalogue is called.
  *

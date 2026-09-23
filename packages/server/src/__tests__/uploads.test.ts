@@ -80,10 +80,77 @@ describe('the chain\'s own pictures', () => {
     const body = await response.json() as { url: string; bytes: number };
 
     expect(body.bytes).toBe(bytes.length);
-    expect(body.url).toMatch(/^\/uploads\/[0-9a-f]{12}\.png$/);
+    // Under the chain's own folder: the file name is the content's
+    // hash, so a flat tree would hand every tenant a URL every other
+    // tenant can reach by uploading the same bytes.
+    expect(body.url).toMatch(/^\/uploads\/superbrugsen\/[0-9a-f]{12}\.png$/);
 
-    const [stored] = readdirSync(join(dir, 'uploads'));
-    expect(readFileSync(join(dir, 'uploads', stored!)).equals(bytes)).toBe(true);
+    const [stored] = readdirSync(join(dir, 'uploads', 'superbrugsen'));
+    expect(readFileSync(join(dir, 'uploads', 'superbrugsen', stored!)).equals(bytes)).toBe(true);
+  });
+
+  it('keeps two chains apart even when the bytes are identical', async () => {
+    // The same picture, uploaded by two chains: one file each, under
+    // its own folder, and neither URL is reachable by guessing from
+    // the other.
+    const dir = mkdtempSync(join(tmpdir(), 'incitio-uploads-'));
+    const bytes = png();
+    const app = createApp(new Store(':memory:'), { assetDir: dir });
+    const post = (brand: string) => app.request('/api/brand/uploads', {
+      method: 'POST',
+      headers: { [BRAND_HEADER]: brand, 'content-type': 'application/json' },
+      body: JSON.stringify({ file: bytes.toString('base64'), name: 'grape.png' }),
+    });
+
+    const mine = await (await post('superbrugsen')).json() as { url: string };
+    const theirs = await (await post('netto')).json() as { url: string };
+
+    expect(mine.url).toContain('/uploads/superbrugsen/');
+    expect(theirs.url).toContain('/uploads/netto/');
+    expect(mine.url).not.toBe(theirs.url);
+  });
+
+  it('lists a chain its own pictures and nobody else\'s', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'incitio-uploads-'));
+    const app = createApp(new Store(':memory:'), { assetDir: dir });
+    const post = (brand: string, name: string) => app.request('/api/brand/uploads', {
+      method: 'POST',
+      headers: { [BRAND_HEADER]: brand, 'content-type': 'application/json' },
+      body: JSON.stringify({ file: png().toString('base64'), name }),
+    });
+    await post('superbrugsen', 'balloner.png');
+    await post('netto', 'flag.png');
+
+    const listed = await app.request('/api/brand/uploads', {
+      headers: { [BRAND_HEADER]: 'superbrugsen' },
+    });
+    const body = await listed.json() as { uploads: { name: string }[] };
+    expect(body.uploads.map((entry) => entry.name)).toEqual(['balloner.png']);
+  });
+
+  it('forgets a picture without deleting the file', async () => {
+    // A catalogue saved last week may still be printing it: a library
+    // says what is on offer, not what exists.
+    const dir = mkdtempSync(join(tmpdir(), 'incitio-uploads-'));
+    const app = createApp(new Store(':memory:'), { assetDir: dir });
+    const put = await app.request('/api/brand/uploads', {
+      method: 'POST',
+      headers: { [BRAND_HEADER]: 'superbrugsen', 'content-type': 'application/json' },
+      body: JSON.stringify({ file: png().toString('base64'), name: 'balloner.png' }),
+    });
+    const { url } = await put.json() as { url: string };
+
+    const gone = await app.request(`/api/brand/uploads?ref=${encodeURIComponent(url)}`, {
+      method: 'DELETE',
+      headers: { [BRAND_HEADER]: 'superbrugsen' },
+    });
+    expect(gone.status).toBe(200);
+
+    const listed = await app.request('/api/brand/uploads', {
+      headers: { [BRAND_HEADER]: 'superbrugsen' },
+    });
+    expect((await listed.json() as { uploads: unknown[] }).uploads).toEqual([]);
+    expect(readdirSync(join(dir, 'uploads', 'superbrugsen'))).toHaveLength(1);
   });
 
   it('keeps the format the bytes actually are, not the name', async () => {

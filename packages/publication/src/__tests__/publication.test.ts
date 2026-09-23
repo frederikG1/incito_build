@@ -370,3 +370,162 @@ describe('a page that is not wrapped at all', () => {
     expect(page.offers).toHaveLength(3);
   });
 });
+
+/*
+ * One offer built the way these publications build every offer: three
+ * positioned boxes — the photograph, the price on a drawn splash, the
+ * words — inside an inner box inset 12pt. Numbers from SuperBrugsen's
+ * own week-39 page 1.
+ */
+const SPLASH = 'https://img.example/?u=s3%3A%2F%2Fa%2Fbusinesses%2Fc1edq%2Fsplash&w=400';
+
+function framedOffer(priceInWords = false) {
+  const words = [
+    view({ view_name: 'HTMLView', style: 'font-size:18px', child_views: [view({ view_name: 'TextView', text: 'Änglamark bananer' })] }),
+    view({ view_name: 'HTMLView', style: 'font-size:12px', child_views: [view({ view_name: 'TextView', text: 'Udenlandske, kl. I. Min. 1,3 kg.' })] }),
+    ...(priceInWords ? [
+      view({ view_name: 'HTMLView', style: 'font-size:11px', child_views: [view({ view_name: 'TextView', text: '1 pose' })] }),
+      view({ view_name: 'HTMLView', style: 'font-size:44px', child_views: [view({ view_name: 'TextView', text: '20,-' })] }),
+    ] : []),
+  ];
+  return view({
+    role: 'offer', id: 'f1', view_name: 'HTMLView', accessibility_label: 'Änglamark bananer, DKK 20',
+    layout_left: 0, layout_top: 0, layout_width: 300, layout_height: 270,
+    child_views: [view({
+      view_name: 'HTMLView', layout_left: 12, layout_top: 12, layout_width: 276, layout_height: 246,
+      child_views: [
+        view({ view_name: 'HTMLView', layout_left: 0, layout_top: 0, layout_width: 276, layout_height: 188,
+          child_views: [view({ view_name: 'HTMLView', background_image: PACKSHOT, layout_left: 0, layout_top: 0, layout_width: 276, layout_height: 188 })] }),
+        ...(priceInWords ? [] : [view({ view_name: 'HTMLView', layout_left: 170, layout_top: 160, layout_width: 128, layout_height: 106,
+          child_views: [view({ view_name: 'HTMLView', background_image: SPLASH, layout_left: 0, layout_top: 0, layout_width: 128, layout_height: 106,
+            child_views: [
+              view({ view_name: 'HTMLView', style: 'color:rgb(0,0,0);font-size:12px', child_views: [view({ view_name: 'TextView', text: '1 pose' })] }),
+              view({ view_name: 'HTMLView', style: 'color:rgb(0,0,0);font-size:48px', child_views: [view({ view_name: 'TextView', text: '20,-' })] }),
+            ] })] })]),
+        view({ view_name: 'HTMLView', layout_left: 0, layout_top: 0, layout_width: 190, layout_height: 246,
+          child_views: [view({ view_name: 'HTMLView', layout_left: 0, layout_top: 0, layout_width: 190, layout_height: 246,
+            style: 'display:flex;flex-direction:column;justify-content:flex-end',
+            child_views: [view({ view_name: 'HTMLView', child_views: [view({ view_name: 'ImageView', src: MARK })] }), ...words] })] }),
+      ],
+    })],
+  });
+}
+
+function onePage(offerView: Record<string, unknown>) {
+  return readIncito({
+    id: 'framed', locale: 'da-DK',
+    root_view: view({ view_name: 'HTMLView', child_views: [view({
+      role: 'section', view_name: 'View', layout_width: 600, layout_height: 1000, child_views: [offerView],
+    })] }),
+  }).pages[0]!;
+}
+
+describe('the inside of a published offer', () => {
+  it('finds the photograph, the price on its splash and the words, as shares of the offer', () => {
+    const frame = onePage(framedOffer()).offers[0]!.frame!;
+    expect(frame.media.x).toBeCloseTo(12 / 300);
+    expect(frame.media.w).toBeCloseTo(276 / 300);
+    expect(frame.price!.x).toBeCloseTo((12 + 170) / 300);
+    expect(frame.splash).toBe(SPLASH);
+    expect(frame.priceInk).toBe('#000000');
+    expect(frame.words!.h).toBeCloseTo(246 / 270);
+    expect(frame.wordsAlign).toBe('end');
+  });
+
+  it('counts the certification marks as part of the words, not as a photograph', () => {
+    expect(onePage(framedOffer()).offers[0]!.frame!.words).not.toBeNull();
+  });
+
+  it('reads the type sizes the page set', () => {
+    const type = onePage(framedOffer()).offers[0]!.frame!.type!;
+    expect(type).toEqual({ name: 18, body: 12, figure: 48, pack: 12 });
+  });
+
+  it('gives a price set inside the words its own box at the foot', () => {
+    const frame = onePage(framedOffer(true)).offers[0]!.frame!;
+    expect(frame.price).not.toBeNull();
+    expect(frame.splash).toBeNull();
+    expect(frame.price!.y + frame.price!.h).toBeCloseTo(frame.words!.y + frame.words!.h + frame.price!.h);
+  });
+
+  it('keeps the measured box and the frame on the template cell', () => {
+    const page = onePage(framedOffer());
+    const slot = pageTemplate({ ...page, offers: [page.offers[0]!] }, 't')!.template.slots[0]!;
+    expect(slot.rect).toEqual({ x: 0, y: 0, w: 0.5, h: 0.27 });
+    expect(slot.frame!.splash).toBe(SPLASH);
+  });
+});
+
+/* A member price: four lines on one roundel, and a separate discount badge. */
+function memberOffer() {
+  const line = (text: string, style: string, extra: Record<string, unknown> = {}) =>
+    view({ view_name: 'HTMLView', style, child_views: [view({ view_name: 'TextView', text, ...extra })] });
+  return view({
+    role: 'offer', id: 'm1', view_name: 'HTMLView', accessibility_label: "M&M's eller Maltesers, DKK 22",
+    layout_left: 0, layout_top: 0, layout_width: 300, layout_height: 300,
+    child_views: [view({
+      view_name: 'HTMLView', layout_left: 12, layout_top: 12, layout_width: 276, layout_height: 276,
+      child_views: [
+        view({ view_name: 'HTMLView', layout_left: 0, layout_top: 0, layout_width: 276, layout_height: 218,
+          child_views: [view({ view_name: 'HTMLView', background_image: PACKSHOT, layout_left: 0, layout_top: 0, layout_width: 276, layout_height: 218 })] }),
+        view({ view_name: 'HTMLView', layout_left: 0, layout_top: 0, layout_width: 147, layout_height: 276,
+          child_views: [view({ view_name: 'HTMLView', layout_left: 0, layout_top: 0, layout_width: 147, layout_height: 276, style: 'justify-content:flex-end',
+            child_views: [
+              line("M&M's eller Maltesers", 'font-size:17px'),
+              line('Flere varianter. 93-125 g. Kg-pris maks. 236,56.', 'font-size:10px'),
+            ] })] }),
+        view({ view_name: 'HTMLView', layout_left: 135, layout_top: 130, layout_width: 141, layout_height: 146,
+          child_views: [view({ view_name: 'HTMLView', background_image: SPLASH, layout_left: 0, layout_top: 0, layout_width: 141, layout_height: 146,
+            style: 'display:flex;align-items:center;justify-content:center',
+            child_views: [
+              line('Medlems-\nrabat', 'color:rgb(135,22,35);margin:-2px 88px 0px 0px;font-size:8px'),
+              line('1595', 'color:rgb(135,22,35);font-size:20px', { spans: [{ start: 2, end: 15, name: 'superscript' }] }),
+              line('22,-', 'color:rgb(255,255,255);font-weight:bold;font-size:48px'),
+              line('Pris ikke-medlem 37,95', 'color:rgb(255,255,255);font-weight:bold;font-size:8px'),
+            ] })] }),
+        view({ view_name: 'HTMLView', layout_left: 150, layout_top: 150, layout_width: 60, layout_height: 56,
+          child_views: [view({ view_name: 'HTMLView', layout_left: 0, layout_top: 0, layout_width: 60, layout_height: 56,
+            child_views: [line('Medlems-\nrabat', 'font-size:10px'), line('595', 'font-size:20px', { spans: [{ start: 1, end: 15, name: 'superscript' }] })] })] }),
+      ],
+    })],
+  });
+}
+
+describe('a member price', () => {
+  const offer = onePage(memberOffer()).offers[0]!;
+
+  it('keeps every line of the price mark, with the live figure marked', () => {
+    const lines = offer.frame!.priceLines!;
+    expect(lines.map((line) => line.role)).toEqual(['note', 'note', 'figure', 'note']);
+    expect(lines[1]!.sup).toEqual({ start: 2, end: 4 });
+    expect(lines[0]!.margin).toEqual([-2, 88, 0, 0]);
+  });
+
+  it('reads the separate discount roundel as a badge', () => {
+    expect(offer.frame!.badges.map((badge) => badge.lines.map((line) => line.text))).toEqual([['Medlems-\nrabat', '595']]);
+  });
+
+  it('takes the fine print from the words, not from the price mark', () => {
+    expect(offer.description).toMatch(/^Flere varianter/);
+    expect(offer.pack).toBe('');
+  });
+});
+
+describe('words on the page outside every offer', () => {
+  it('become notes an editor can move, and an offer wrapper does not', () => {
+    const page = readIncito({
+      id: 'labels', locale: 'da-DK',
+      root_view: view({ view_name: 'HTMLView', child_views: [view({
+        role: 'section', view_name: 'View', layout_width: 600, layout_height: 1000, child_views: [
+          view({ view_name: 'HTMLView', layout_left: 0, layout_top: 0, layout_width: 600, layout_height: 48, style: 'background-color:rgb(195,20,20)' }),
+          view({ view_name: 'HTMLView', layout_left: 59, layout_top: 782, layout_width: 64, layout_height: 60, background_image: MARK,
+            child_views: [view({ view_name: 'HTMLView', style: 'font-size:12px', child_views: [view({ view_name: 'TextView', text: 'Storkøb\nMin.\n1,3 kg' })] })] }),
+          view({ view_name: 'HTMLView', layout_left: 0, layout_top: 300, layout_width: 300, layout_height: 300, child_views: [framedOffer()] }),
+        ],
+      })] }),
+    }).pages[0]!;
+    expect(page.labels.map((label) => label.lines.map((line) => line.text).join('|'))).toEqual(['', 'Storkøb\nMin.\n1,3 kg']);
+    expect(page.labels[0]!.fill).toBe('#c31414');
+    expect(page.offers).toHaveLength(1);
+  });
+});

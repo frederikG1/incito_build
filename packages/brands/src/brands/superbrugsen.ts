@@ -1,7 +1,7 @@
 import { Brand, type OfferLabelInput } from '@incitio/schema';
 import { resolveLabels, type LabelDictionary } from '@incitio/ingest';
 import { template } from '../grid.js';
-import { tjekOffers } from '../tjek.js';
+import { tjekOffers, tjekTransformed } from '../tjek.js';
 import type { BrandDefinition } from '../types.js';
 
 /**
@@ -442,5 +442,11 @@ export const SUPERBRUGSEN: BrandDefinition = {
       },
       },
     },
+  }, {
+    id: 'tjek-transformed',
+    name: 'Tjek transformed offers',
+    format: 'json',
+    signature: { fields: ['membership_price', 'comment_label_1', 'valid_from'], nested: false },
+    mapping: tjekTransformed('superbrugsen', 'transformed-offers.json'),
   }],
 };

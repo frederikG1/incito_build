@@ -6,6 +6,8 @@ import {
 } from '@incitio/schema';
 import { useStudio } from './state.js';
 import { shifted, snap, targetsFrom, type Guide } from './snap.js';
+import { OFFER_MIME } from './Tray.js';
+import { Crowded } from './Crowded.js';
 
 /**
  * The editing overlay on one slot.
@@ -175,6 +177,13 @@ function typeOf(element: Element): CSSProperties {
   return style as CSSProperties;
 }
 
+/** The cell toolbar's shortcuts, in the order a tile is read. */
+const CELL_TOOLS: [TilePart, string][] = [
+  ['media', 'Billede'],
+  ['price', 'Pris'],
+  ['name', 'Tekst'],
+];
+
 export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
   const swapPlacements = useStudio((s) => s.swapPlacements);
   const updateOverrides = useStudio((s) => s.updateOverrides);
@@ -199,6 +208,7 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
     (s) => offerId !== undefined && s.standingUp.includes(offerId),
   );
   const selectedPart = useStudio((s) => s.selectedPart);
+  const fillSlot = useStudio((s) => s.fillSlot);
   const overrides = useStudio((s) => s.document?.pages
     .find((page) => page.id === pageId)
     ?.placements.find((placement) => placement.slotId === slotId)
@@ -667,15 +677,26 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
       onDragOver={(event) => {
         // Without preventDefault the browser refuses the drop entirely,
         // and the tile just springs back with no explanation.
-        if (!event.dataTransfer.types.includes(MIME)) return;
+        const product = event.dataTransfer.types.includes(OFFER_MIME);
+        if (!product && !event.dataTransfer.types.includes(MIME)) return;
         event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
+        event.dataTransfer.dropEffect = product ? 'copy' : 'move';
         setOver(true);
       }}
       onDragLeave={() => setOver(false)}
       onDrop={(event) => {
         event.preventDefault();
         setOver(false);
+        /*
+         * A product from the tray takes this cell. Whatever was in it
+         * goes to the reserve, not the bin — `fillSlot` — so a wrong
+         * drop is one undo, or one drag back.
+         */
+        const product = event.dataTransfer.getData(OFFER_MIME);
+        if (product) {
+          void fillSlot(pageId, slotId, [product]);
+          return;
+        }
         const from = parse(event.dataTransfer.getData(MIME));
         if (!from) return;
         swapPlacements(from, { pageId, slotId });
@@ -687,6 +708,34 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
         draggable={selected}
         aria-hidden="true"
       >⠿</span>
+
+      {/*
+        * The selected cell's own toolbar, floating over its corner.
+        *
+        * The three boxes a person reaches for first — the picture, the
+        * price, the words — one press each, instead of clicking about
+        * inside the tile until the right outline turns up. Nothing
+        * else: the model's errand lives in the inspector.
+        */}
+      {selected && !editing && offerId && (
+        <div
+          className="celltool"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          {CELL_TOOLS.map(([part, name]) => (
+            <button
+              key={part}
+              className={inHand === part ? 'is-on' : ''}
+              onClick={() => selectPart(part === 'media' ? null : part)}
+            >{name}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Too many products for the room: say so, and offer the fixes. */}
+      {offerId && !editing && <Crowded pageId={pageId} slotId={slotId} offerId={offerId} />}
 
       {/* Where the work is, rather than in a banner that greys out
           the rest of the studio. */}

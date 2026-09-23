@@ -253,9 +253,3 @@ export async function sharedBrowser(): Promise<Browser> {
   return shared;
 }
 
-/** Let the process exit. Safe to call when none was ever launched. */
-export async function closeSharedBrowser(): Promise<void> {
-  const browser = shared;
-  shared = null;
-  if (browser) await (await browser).close().catch(() => {});
-}

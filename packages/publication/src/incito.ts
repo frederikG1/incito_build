@@ -40,6 +40,76 @@ export interface PublicationOffer {
   imageUrl: string | null;
   /** Certification marks and other badges printed inside the tile. */
   marks: string[];
+  /**
+   * Where the offer's three boxes sit inside its own rect, in shares of
+   * that rect — the packshot, the price mark, the words. Null when the
+   * subtree is not built that way.
+   */
+  frame: OfferFrame | null;
+}
+
+/** The inside of one published offer — see `PublicationOffer.frame`. */
+export interface OfferFrame {
+  media: Rect;
+  price: Rect | null;
+  words: Rect | null;
+  /** The chain's drawn price shape, printed behind the figure. */
+  splash: string | null;
+  /** The price's type colour, as the page sets it. */
+  priceInk: string | null;
+  /** Whether the words sit at the top of their box or at its foot. */
+  wordsAlign: 'start' | 'end';
+  /** Type sizes as the page sets them, in the page's own points. */
+  type: { name: number; body: number; figure: number; pack: number } | null;
+  /** The pack line the price mark sets above its figure — "1 pose". */
+  pack: string | null;
+  /** The price mark's lines, when it sets more than a figure and a pack. */
+  priceLines: RawLine[] | null;
+  priceStack: RawStack | null;
+  /** Other boxes of words over the tile — a member-discount roundel. */
+  badges: { rect: Rect; lines: RawLine[]; stack: RawStack; image: string | null }[];
+  /** Small drawn marks in the tile. */
+  art: { rect: Rect; image: string }[];
+}
+
+/** One line of type in the page's own points — see `FrameLine`. */
+export interface RawLine {
+  role: 'figure' | 'pack' | 'note';
+  text: string;
+  sup?: { start: number; end: number };
+  size: number;
+  color?: string;
+  bold: boolean;
+  upper: boolean;
+  align?: 'left' | 'center' | 'right';
+  lineHeight?: number;
+  margin?: [number, number, number, number];
+  /** "50%", or points. */
+  width?: string | number;
+}
+
+export interface RawStack {
+  align: 'flex-start' | 'center' | 'flex-end';
+  justify: 'flex-start' | 'center' | 'flex-end';
+}
+
+/** Words or a flat band on the sheet that belong to no offer. */
+export interface PageLabel {
+  rect: Rect;
+  lines: RawLine[];
+  stack: RawStack;
+  /** A drawn shape behind the words. */
+  image: string | null;
+  /** A flat colour behind them — or the whole of a band with no words. */
+  fill: string | null;
+}
+
+/** Artwork on the sheet that belongs to no offer — a splash of fries. */
+export interface PageArtwork {
+  imageUrl: string;
+  rect: Rect;
+  /** Degrees, as the page turns it. */
+  rotate: number;
 }
 
 /** One page of the publication. */
@@ -57,6 +127,13 @@ export interface PublicationPage {
    * rather than as type — "Stærk pris" is a drawing, not a font.
    */
   masthead: { imageUrl: string; rect: Rect } | null;
+  /** Textless artwork outside the offers, in the page's own points. */
+  artwork: PageArtwork[];
+  /**
+   * Words and flat bands outside the offers — "Storkøb min. 1,3 kg" on
+   * its roundel, the red "Gælder fra …" strip — in the page's points.
+   */
+  labels: PageLabel[];
   offers: PublicationOffer[];
 }
 
@@ -175,6 +252,347 @@ function pricedLabel(label: string): { name: string; price: number | null; curre
 /** A price as the page sets it: "49,-", "12,95". */
 const PRICE_TEXT = /^\s*\d+([.,]\d+)?\s*,?-?\s*$/;
 
+/** Every TextView string under a view, in reading order. */
+function textsUnder(view: View): string[] {
+  const found: string[] = [];
+  walk(view, 0, 0, (node) => {
+    if (node.view_name === 'TextView' && node.text) found.push(node.text.trim());
+  });
+  return found;
+}
+
+/**
+ * A product photograph: a PICTURE BOX with a packshot in it. The small
+ * certification marks set above a name are `ImageView`s with a `src`,
+ * and they may live in the same bucket — they are type, not artwork.
+ */
+function photoOf(view: View): string | null {
+  return view.background_image && isPackshot(view.background_image) ? view.background_image : null;
+}
+
+/** Whether an offer lives anywhere under a view — its wrapper is not a label. */
+function offerUnder(view: View): boolean {
+  let any = false;
+  walk(view, 0, 0, (node) => {
+    if (any) return false;
+    if (node.role === 'offer') { any = true; return false; }
+    return;
+  });
+  return any;
+}
+
+/** Whether a product photograph is anywhere under a view. */
+function packshotUnder(view: View): boolean {
+  let any = false;
+  walk(view, 0, 0, (node) => {
+    if (photoOf(node)) any = true;
+  });
+  return any;
+}
+
+/**
+ * The type size of each TextView under a view, in reading order — the
+ * nearest `font-size: Npx` above it, 16 when nothing says.
+ */
+function sizesUnder(view: View): { text: string; size: number }[] {
+  const found: { text: string; size: number }[] = [];
+  const visit = (node: View, size: number) => {
+    const stated = /font-size:\s*([0-9.]+)px/i.exec(node.style ?? '');
+    const here = stated ? Number(stated[1]) : size;
+    if (node.view_name === 'TextView' && node.text) found.push({ text: node.text.trim(), size: here });
+    for (const child of node.child_views ?? []) visit(child, here);
+  };
+  visit(view, 16);
+  return found;
+}
+
+/** Largest `font-size: Npx` set under a view, per text line, summed. */
+function typeHeightUnder(view: View, only: (text: string) => boolean): number {
+  let total = 0;
+  const visit = (node: View, size: number) => {
+    const found = /font-size:\s*([0-9.]+)px/i.exec(node.style ?? '');
+    const here = found ? Number(found[1]) : size;
+    if (node.view_name === 'TextView' && node.text && only(node.text.trim())) total += here * 1.15;
+    for (const child of node.child_views ?? []) visit(child, here);
+  };
+  visit(view, 16);
+  return total;
+}
+
+/** `rotate(12.5deg)` out of a style string; 0 when it says nothing. */
+function rotationOf(style: string | undefined): number {
+  const found = /rotate\(\s*(-?[0-9.]+)deg/i.exec(style ?? '');
+  const value = found ? Number(found[1]) : 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
+/** A number of px out of `name:12px`, or null. */
+function pxOf(style: string | undefined, name: string): number | null {
+  const found = new RegExp(`(?:^|;)\\s*${name}:\\s*(-?[0-9.]+)px`, 'i').exec(style ?? '');
+  return found ? Number(found[1]) : null;
+}
+
+/** `color:` out of a style, as `#rrggbb`. */
+function colorOf(style: string | undefined): string | undefined {
+  const found = /(?:^|;)\s*color:\s*(?:rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)|#([0-9a-f]{6}))/i.exec(style ?? '');
+  if (!found) return undefined;
+  if (found[4]) return `#${found[4].toLowerCase()}`;
+  return `#${found.slice(1, 4).map((part) => Math.min(255, Number(part)).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** How a flex box stacks its lines. */
+function stackOf(style: string | undefined): RawStack {
+  const pick = (name: string): RawStack['align'] => {
+    const found = new RegExp(`${name}:\\s*(flex-start|center|flex-end)`, 'i').exec(style ?? '');
+    return (found?.[1] as RawStack['align'] | undefined) ?? 'center';
+  };
+  return { align: pick('align-items'), justify: pick('justify-content') };
+}
+
+/**
+ * The lines of a box as the page sets them.
+ *
+ * A line is a styled wrapper around one TextView; the wrapper carries
+ * the size, the colour, the margins that push a line off-centre. Read
+ * whole, because a member price is FOUR lines laid out against a drawn
+ * roundel, and a figure alone on top of it is not that price mark.
+ */
+function linesOf(holder: View): RawLine[] {
+  const lines: RawLine[] = [];
+  for (const wrapper of holder.child_views ?? []) {
+    let text: View | null = null;
+    walk(wrapper, 0, 0, (node) => {
+      if (!text && node.view_name === 'TextView' && node.text) text = node;
+    });
+    if (!text) continue;
+    const node = text as View & { spans?: { start: number; end: number; name: string }[] };
+    const style = wrapper.style ?? '';
+    const margin = /(?:^|;)\s*margin:\s*(-?[0-9.]+)px\s+(-?[0-9.]+)px\s+(-?[0-9.]+)px\s+(-?[0-9.]+)px/i.exec(style);
+    const sup = node.spans?.find((span) => span.name === 'superscript');
+    const value = node.text!.trim();
+    const width = wrapper.layout_width;
+    lines.push({
+      role: PRICE_TEXT.test(value) ? 'figure' : 'note',
+      text: value,
+      ...(sup ? { sup: { start: sup.start, end: Math.min(sup.end, value.length) } } : {}),
+      size: pxOf(style, 'font-size') ?? 16,
+      ...(colorOf(style) ? { color: colorOf(style)! } : {}),
+      bold: /font-weight:\s*(bold|[6-9]00)/i.test(style),
+      upper: /text-transform:\s*uppercase/i.test(style),
+      ...(/text-align:\s*(left|center|right)/i.exec(style)
+        ? { align: /text-align:\s*(left|center|right)/i.exec(style)![1] as RawLine['align'] }
+        : {}),
+      ...(/line-height:\s*([0-9.]+)(?!px)/i.exec(style)
+        ? { lineHeight: Number(/line-height:\s*([0-9.]+)(?!px)/i.exec(style)![1]) }
+        : {}),
+      ...(margin ? { margin: margin.slice(1, 5).map(Number) as [number, number, number, number] } : {}),
+      ...(typeof width === 'string' && /%$/.test(width) ? { width } : {}),
+      ...(typeof width === 'number' ? { width } : {}),
+      ...(typeof width === 'string' && /^\d+(\.\d+)?px$/.test(width) ? { width: Number(width.slice(0, -2)) } : {}),
+    });
+  }
+  /*
+   * One figure per mark: the largest price-shaped line without a raised
+   * stretch. "16⁹⁵" beside a member price is the SAVING, set small and
+   * superscripted — a number, not the price.
+   */
+  const figures = lines.filter((line) => line.role === 'figure');
+  const main = figures.filter((line) => !line.sup).sort((a, b) => b.size - a.size)[0] ?? null;
+  for (const line of figures) if (line !== main) line.role = 'note';
+
+  // The short line right before the figure is the pack — "1 pose".
+  const at = lines.findIndex((line) => line.role === 'figure');
+  if (at > 0 && lines[at - 1]!.text.length <= 16 && !/\n/.test(lines[at - 1]!.text)
+    && !lines[at - 1]!.sup) {
+    lines[at - 1]!.role = 'pack';
+  }
+  return lines;
+}
+
+/** The deepest view whose children are the lines — the flex column. */
+function holderOf(view: View): View {
+  let holder = view;
+  for (let depth = 0; depth < 4; depth += 1) {
+    const kids = holder.child_views ?? [];
+    if (kids.length === 1 && textsUnder(kids[0]!).length === textsUnder(holder).length
+      && (kids[0]!.child_views?.length ?? 0) > 0 && textsUnder(kids[0]!).length > 1) {
+      holder = kids[0]!;
+      continue;
+    }
+    // A sized single child that carries the drawn shape is the holder.
+    if (kids.length === 1 && sized(kids[0]!)) { holder = kids[0]!; continue; }
+    break;
+  }
+  return holder;
+}
+
+/**
+ * The boxes an offer is built from, as shares of the offer.
+ *
+ * These publications build every offer the same way: an inner box, and
+ * inside it a handful of positioned boxes — the photograph, the price
+ * mark, the words, and now and then a roundel or a small drawn mark.
+ * Each box is classified by what it HOLDS: the product photograph; the
+ * figure; the most words; words that are neither; a picture with no
+ * words. The tree's nesting is the publisher's business and differs
+ * between templates; what each box holds does not.
+ */
+function frameOf(view: View, name: string): OfferFrame | null {
+  const W = px(view.layout_width);
+  const H = px(view.layout_height);
+  if (W <= 0 || H <= 0) return null;
+
+  // The inner box: the deepest single sized child that holds everything.
+  let inner = view;
+  let ox = 0;
+  let oy = 0;
+  for (let depth = 0; depth < 3; depth += 1) {
+    const kids = (inner.child_views ?? []).filter(sized);
+    if (kids.length !== 1) break;
+    inner = kids[0]!;
+    ox += px(inner.layout_left);
+    oy += px(inner.layout_top);
+  }
+  const boxes = (inner.child_views ?? []).filter(sized);
+  if (boxes.length < 2) return null;
+
+  const share = (x: number, y: number, node: View): Rect => ({
+    x: x / W, y: y / H, w: px(node.layout_width) / W, h: px(node.layout_height) / H,
+  });
+
+  let media: Rect | null = null;
+  let price: Rect | null = null;
+  let priceLines: RawLine[] | null = null;
+  let priceStack: RawStack | null = null;
+  let splash: string | null = null;
+  let words: Rect | null = null;
+  let wordsNode: View | null = null;
+  let wordCount = 0;
+  const badges: OfferFrame['badges'] = [];
+  const art: OfferFrame['art'] = [];
+  const leftover: { rect: Rect; node: View }[] = [];
+
+  for (const box of boxes) {
+    const x = ox + px(box.layout_left);
+    const y = oy + px(box.layout_top);
+    const rect = share(x, y, box);
+    const texts = textsUnder(box);
+
+    if (packshotUnder(box)) {
+      media = media
+        ? {
+          x: Math.min(media.x, rect.x),
+          y: Math.min(media.y, rect.y),
+          w: Math.max(media.x + media.w, rect.x + rect.w) - Math.min(media.x, rect.x),
+          h: Math.max(media.y + media.h, rect.y + rect.h) - Math.min(media.y, rect.y),
+        }
+        : rect;
+      continue;
+    }
+    // The box that carries the offer's name is the words, even when the
+    // page sets the price at its foot.
+    const named = Boolean(name) && texts.some((text) => text.toLowerCase() === name.toLowerCase());
+    if (!price && !named && texts.some((text) => PRICE_TEXT.test(text))
+      && texts.length <= 6) {
+      const holder = holderOf(box);
+      price = rect;
+      priceLines = linesOf(holder);
+      priceStack = stackOf(holder.style);
+      let drawn: string | null = null;
+      walk(box, 0, 0, (node) => {
+        if (!drawn && node.background_image && !photoOf(node)) drawn = node.background_image;
+      });
+      splash = drawn;
+      continue;
+    }
+    if (texts.length === 0) {
+      let drawn: string | null = null;
+      walk(box, 0, 0, (node) => {
+        if (!drawn && node.background_image && !photoOf(node)) drawn = node.background_image;
+      });
+      if (drawn) art.push({ rect, image: drawn });
+      continue;
+    }
+    leftover.push({ rect, node: box });
+  }
+
+  // The words are the box with the name, else the one with the most
+  // text; the rest are badges.
+  const byName = leftover.find((entry) => Boolean(name)
+    && textsUnder(entry.node).some((text) => text.toLowerCase() === name.toLowerCase()));
+  for (const entry of byName ? [byName] : leftover) {
+    const count = textsUnder(entry.node).length;
+    if (count > wordCount) { wordCount = count; words = entry.rect; wordsNode = entry.node; }
+  }
+  for (const entry of leftover) {
+    if (entry.node === wordsNode) continue;
+    const holder = holderOf(entry.node);
+    let drawn: string | null = null;
+    walk(entry.node, 0, 0, (node) => {
+      if (!drawn && node.background_image && !photoOf(node)) drawn = node.background_image;
+    });
+    badges.push({
+      rect: entry.rect,
+      lines: linesOf(holder),
+      stack: stackOf(holder.style),
+      image: drawn,
+    });
+  }
+
+  /*
+   * No box of its own for the price: it is set as the last lines of the
+   * words, at the bottom. Split the words box — the figure takes the
+   * height its own type needs, the words keep the rest.
+   */
+  if (!price && words && wordsNode) {
+    const node = wordsNode as View;
+    const tall = typeHeightUnder(node, (text) => PRICE_TEXT.test(text))
+      + typeHeightUnder(node, (text) => /^\d+\s*\p{L}+\.?$/u.test(text));
+    const box = words as Rect;
+    const cut = Math.min(0.6, tall / (box.h * H || 1));
+    if (cut > 0) {
+      price = { x: box.x, y: box.y + box.h * (1 - cut), w: box.w, h: box.h * cut };
+      words = { ...box, h: box.h * (1 - cut) };
+    }
+  }
+
+  if (!media) return null;
+
+  const wordsHolder = wordsNode ? holderOf(wordsNode as View) : null;
+  const wordsAlign = wordsHolder && /justify-content:\s*flex-end/.test(wordsHolder.style ?? '')
+    ? 'end' as const : 'start' as const;
+
+  /*
+   * The type sizes, so the copy is set as large as the page set it —
+   * not at our own tile's scale, which is tuned for a different grid.
+   */
+  let type: OfferFrame['type'] = null;
+  if (wordsNode) {
+    const lines = sizesUnder(wordsNode as View).filter((line) => !PRICE_TEXT.test(line.text));
+    const figureLine = priceLines?.find((line) => line.role === 'figure');
+    const packLine = priceLines?.find((line) => line.role === 'pack');
+    const inWords = sizesUnder(wordsNode as View);
+    const figure = figureLine?.size ?? inWords.find((line) => PRICE_TEXT.test(line.text))?.size ?? 0;
+    const pack = packLine?.size ?? 0;
+    const name = lines[0]?.size ?? 0;
+    const body = lines.slice(1).sort((a, b) => b.text.length - a.text.length)[0]?.size ?? 0;
+    if (name > 0) type = { name, body, figure, pack };
+  }
+
+  // A plain price mark (a figure and its pack) needs no line-by-line copy.
+  const rich = priceLines && priceLines.some((line) => line.role === 'note');
+
+  return {
+    media, price, words, splash,
+    priceInk: priceLines?.find((line) => line.role === 'figure')?.color ?? null,
+    wordsAlign, type,
+    pack: priceLines?.find((line) => line.role === 'pack')?.text ?? null,
+    priceLines: rich ? priceLines : null,
+    priceStack: rich ? priceStack : null,
+    badges, art,
+  };
+}
+
 /** One offer's text, images and box, read out of its own subtree. */
 function readOffer(view: View, x: number, y: number): PublicationOffer | null {
   if (!sized(view)) return null;
@@ -212,10 +630,26 @@ function readOffer(view: View, x: number, y: number): PublicationOffer | null {
    */
   const at = texts.findIndex((text) => PRICE_TEXT.test(text));
   const before = at > 0 ? texts[at - 1]! : '';
-  const pack = before === name ? '' : before;
+  const frame = frameOf(view, name);
+  /*
+   * The pack, from the price mark itself when the offer's boxes could be
+   * read — reading order puts the words box BEFORE the price box, so
+   * "the line before the figure" is then the fine print, not the pack.
+   */
+  const pack = frame?.price ? (frame.pack ?? '') : (before === name ? '' : before);
 
+  /*
+   * Words the price mark or a roundel sets — "Pris ikke-medlem 37,95",
+   * "Medlemsrabat" — are theirs, not the fine print under the name.
+   */
+  const elsewhere = new Set([
+    ...(frame?.priceLines ?? []).map((line) => line.text),
+    ...(frame?.badges ?? []).flatMap((badge) => badge.lines.map((line) => line.text)),
+  ]);
   const rest = texts.filter(
-    (text, index) => text !== name && !PRICE_TEXT.test(text) && index !== at - 1,
+    (text, index) => text !== name && !PRICE_TEXT.test(text) && text !== pack
+      && (frame?.price ? true : index !== at - 1)
+      && !elsewhere.has(text),
   );
   // What is left is the fine print — the longest of it, because a tile
   // may also carry a line of legal boilerplate nobody needs here.
@@ -233,6 +667,7 @@ function readOffer(view: View, x: number, y: number): PublicationOffer | null {
     currency: label.currency,
     imageUrl: packshots[0] ?? null,
     marks,
+    frame,
   };
 }
 
@@ -309,6 +744,8 @@ function readPage(section: View, number: number): PublicationPage {
   let ground: string | null = null;
   let background: PublicationPage['background'] = null;
   let masthead: PublicationPage['masthead'] = null;
+  const artwork: PageArtwork[] = [];
+  const labels: PageLabel[] = [];
 
   /*
    * Started at the sheet's own origin, not the section's.
@@ -332,6 +769,28 @@ function readPage(section: View, number: number): PublicationPage {
     const sheet = w >= width * 0.98 && h >= height * 0.98;
 
     if (sheet && !ground) ground = groundOf(view.style);
+
+    /*
+     * Words the page sets outside every offer, and flat bands of colour.
+     * Taken whole, like an offer, so their lines keep their own sizes.
+     */
+    const onPaper = x < width && y < height && x + w > 0 && y + h > 0;
+    if (!sheet && onPaper && textsUnder(view).length > 0 && !offerUnder(view)) {
+      const holder = holderOf(view);
+      labels.push({
+        rect: { x, y, w, h },
+        lines: linesOf(holder),
+        stack: stackOf(holder.style),
+        image: view.background_image ?? null,
+        fill: groundOf(view.style),
+      });
+      return false;
+    }
+    if (!sheet && onPaper && !view.background_image && groundOf(view.style)
+      && (view.child_views?.length ?? 0) === 0) {
+      labels.push({ rect: { x, y, w, h }, lines: [], stack: { align: 'center', justify: 'center' }, image: null, fill: groundOf(view.style) });
+      return false;
+    }
     if (sheet && view.background_image && !background) {
       background = { imageUrl: view.background_image, opacity: opacityOf(view.style) };
       return;
@@ -346,11 +805,23 @@ function readPage(section: View, number: number): PublicationPage {
     if (!masthead && view.background_image && !sheet
       && w >= width * 0.4 && h <= height * 0.25 && y <= height * 0.3) {
       masthead = { imageUrl: view.background_image, rect: { x, y, w, h } };
+      return;
+    }
+    /*
+     * Any other picture on the sheet that is not part of an offer — the
+     * splash of fries behind a hero, a sprig of basil. Only textless
+     * ones: a badge with words set on it ("Storkøb min. 1,3 kg") would
+     * come through as an empty blob. And only what is on the paper.
+     */
+    if (view.background_image && !sheet && textsUnder(view).length === 0
+      && x < width && y < height && x + w > 0 && y + h > 0) {
+      artwork.push({ imageUrl: view.background_image, rect: { x, y, w, h }, rotate: rotationOf(view.style) });
+      return false;
     }
     return;
   });
 
-  return { number, width, height, ground, background, masthead, offers };
+  return { number, width, height, ground, background, masthead, artwork, labels, offers };
 }
 
 /**

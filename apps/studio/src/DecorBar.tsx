@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { imagePrompt, normaliseStyle, STYLE_LIMIT } from '@incitio/decor/prompt';
+import { STYLE_LIMIT } from '@incitio/decor/prompt';
+import { backdropPrompt, DEFAULT_BACKDROP_STYLE } from '@incitio/decor/backdrop';
 import { useStudio } from './state.js';
 
 /**
@@ -110,116 +111,128 @@ function KeyField() {
 
 export function DecorBar() {
   const s = useStudio();
+  const [tuning, setTuning] = useState(false);
   const [open, setOpen] = useState(false);
+  const pageNumber = useStudio((state) => {
+    const at = state.document?.pages.findIndex((page) => page.id === state.activePageId) ?? -1;
+    return at >= 0 && state.document?.pages[at]?.kind !== 'image' ? at + 1 : null;
+  });
 
   if (!s.brand) return null;
 
   const style = s.decorStyle.trim();
   const over = style.length > STYLE_LIMIT;
+  const blocked = Boolean(s.busy) || !s.document || !s.decorReady;
+  const pageIds = (s.document?.pages ?? []).filter((page) => page.kind !== 'image').map((page) => page.id);
 
   /*
-   * The prompt as it will actually be sent, built by the SAME function
-   * the server calls — imported rather than reimplemented, or the
-   * preview would drift from the truth on the first edit to either.
-   *
-   * Shown because the request behind this whole strip was "my words, in
-   * addition to the automatic ones", and a field that swallows your
-   * words and shows you nothing cannot answer whether it did.
+   * The brief as it will be sent, built by the same function the server
+   * calls, with the measured parts shown as what they stand for.
    */
-  const preview = imagePrompt(MOTIF_SLOT, {
-    brandName: s.brand.name,
+  const preview = backdropPrompt({
+    aspect: '5:4',
+    colour: '#‹sidens farve›',
+    regions: [{ x0: 0, x1: 100, y0: 0, y1: 100 }],
+    text: ['bottom left', 'bottom right'],
+    offer: '‹sidens overskrift›',
+    products: ['‹varerne på siden›'],
     ...(style ? { style } : {}),
-  });
-  // The editor's own sentence, exactly as it was folded in — so it can
-  // be marked in place rather than merely described.
-  const mine = normaliseStyle(style);
-  const at = mine ? preview.indexOf(mine) : -1;
+  }).replace('from 0 to 100 percent of the width and from 0 to 100 percent of the height', '‹hver vares område›');
 
+  /*
+   * One button, no prompt to write.
+   *
+   * The page gets one background picture in its own colour, with a
+   * motif placed around the products and the words — measured off the
+   * page as it is drawn. The style line and the old corner motif are
+   * folded away under "Tilpas".
+   */
   return (
-    <section className="decor" aria-label="Stemningsbilleder">
-      {/*
-        * The key, and which model is about to be billed.
-        *
-        * The key used to sit in the row that was always on screen, on
-        * the argument that every button which draws is dark without
-        * one and the control that lights them up must not hide. That
-        * job belongs to the toolbar button now — it carries a mark
-        * when nothing can draw — and the key itself belongs here,
-        * with the fields it pays for. The model's name is said once,
-        * in the row at the foot beside the prompt it is sent.
-        */}
-      <div className="decor__head">
-        <KeyField />
-      </div>
+    <section className="decor" aria-label="Motiver med AI">
+      <h3 className="inspector__group">Motiver med AI</h3>
+      <p className="decor__say">
+        Siden får motiver der passer til varerne — fx chili og lime på en mexicansk side —
+        lagt i den frie plads på sidens egen baggrund. Tag dem i hånden under siden for at flytte dem.
+      </p>
 
-      <div className="decor__row">
-        <label className="decor__field">
-          <span className="decor__label">Motiv <em>— hvad skal tegnes?</em></span>
-          <input
-            type="text"
-            value={s.decorNote}
-            onChange={(e) => s.setDecorNote(e.target.value)}
-            placeholder='fx "efterår" eller "grill"'
-            disabled={!s.decorReady}
-          />
-          <span className="decor__hint">Styrer Geminis valg af motiv pr. side.</span>
-        </label>
-
-        <label className="decor__field decor__field--wide">
-          <span className="decor__label">
-            Din prompt <em>— hvordan skal det se ud?</em>
-          </span>
-          <input
-            type="text"
-            value={s.decorStyle}
-            onChange={(e) => s.setDecorStyle(e.target.value)}
-            placeholder='fx "akvarel, dæmpede farver" eller "tæt makro med dugdråber"'
-            disabled={!s.decorReady}
-          />
-          <span className={over ? 'decor__hint decor__hint--warn' : 'decor__hint'}>
-            {over
-              ? `For lang — kun de første ${STYLE_LIMIT} tegn kommer med.`
-              : 'Lægges oven i den faste prompt, på hvert eneste billede.'}
-          </span>
-        </label>
-
-        <button
-          className="primary decor__go"
-          onClick={() => void s.decorate()}
-          disabled={Boolean(s.busy) || !s.document || !s.decorReady}
-          title={s.decorReady
-            ? 'Lad Gemini vælge et motiv pr. side og tegne det bag varerne'
-            : 'Tilføj GEMINI_API_KEY i .env og genstart API-serveren'}
-        >
-          Tegn billeder
-        </button>
-      </div>
-
-      <div className="decor__row decor__row--meta">
-        <button className="decor__toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-          {open ? 'Skjul' : 'Vis'} den fulde prompt
-        </button>
-        {mine && !open && <span className="decor__badge">din tekst er med</span>}
-        {s.decorModel && <code className="decor__model" title="Billedmodellen der kaldes">{s.decorModel}</code>}
-        {!s.decorReady && (
-          <span className="decor__off">
-            Ingen nøgle. Indsæt din egen ovenfor — den bliver i denne browser — eller sæt{' '}
-            <code>GEMINI_API_KEY</code> i <code>.env</code>. Nøgle:{' '}
-            <a href="https://ai.dev" target="_blank" rel="noreferrer">ai.dev</a>
-          </span>
+      <div className="decor__actions">
+        {pageNumber && (
+          <button
+            className="decor__go"
+            disabled={blocked}
+            onClick={() => void s.drawBackdrops([s.activePageId!])}
+            title={s.decorReady ? 'Motiver i sidens frie plads' : 'Kræver en Gemini-nøgle — se herunder'}
+          >
+            Tegn til side {pageNumber}
+          </button>
         )}
+        <button
+          className={pageNumber ? 'decor__second' : 'decor__go'}
+          disabled={blocked}
+          onClick={() => void s.drawBackdrops(pageIds)}
+          title={s.decorReady ? 'Motiver på hver side — op til to billedkald pr. side' : 'Kræver en Gemini-nøgle — se herunder'}
+        >
+          Tegn til alle sider
+        </button>
+        <button className="decor__more" onClick={() => setTuning(!tuning)} aria-expanded={tuning}>
+          {tuning ? 'Skjul' : 'Tilpas'}{style && !tuning ? ' · tilpasset' : ''} {tuning ? '▴' : '▾'}
+        </button>
       </div>
 
-      {open && (
-        <p className="decor__prompt">
-          {at >= 0
-            ? <>
-                {preview.slice(0, at)}
-                <mark>{mine}</mark>
-                {preview.slice(at + mine.length)}
-              </>
-            : preview}
-        </p>
+      {!s.decorReady && (
+        <div className="decor__row decor__row--meta">
+          <span className="decor__off">
+            Billedmodellen mangler en nøgle. Indsæt din egen — den bliver i denne browser.
+          </span>
+          <KeyField />
+        </div>
+      )}
+
+      {tuning && (
+        <div className="decor__tune">
+          <div className="decor__row">
+            <label className="decor__field decor__field--wide">
+              <span className="decor__label">Stil <em>— valgfrit</em></span>
+              <input
+                type="text"
+                value={s.decorStyle}
+                onChange={(e) => s.setDecorStyle(e.target.value)}
+                placeholder={DEFAULT_BACKDROP_STYLE}
+              />
+              <span className={over ? 'decor__hint decor__hint--warn' : 'decor__hint'}>
+                {over ? `For lang — kun de første ${STYLE_LIMIT} tegn kommer med.` : 'Tomt = lys, appetitlig tilbudsavis-fotografi.'}
+              </span>
+            </label>
+          </div>
+
+          <div className="decor__row decor__row--meta">
+            <button className="decor__toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+              {open ? 'Skjul' : 'Vis'} den fulde prompt
+            </button>
+            {s.decorModel && <code className="decor__model" title="Billedmodellen der kaldes">{s.decorModel}</code>}
+            {s.decorReady && <KeyField />}
+          </div>
+          {open && <p className="decor__prompt">{preview}</p>}
+
+          {/* The earlier way: one motif, cut out, pinned in a corner. */}
+          <div className="decor__row decor__row--meta">
+            <input
+              type="text"
+              className="decor__old"
+              value={s.decorNote}
+              onChange={(e) => s.setDecorNote(e.target.value)}
+              placeholder='motiv, fx "efterår" (valgfrit)'
+            />
+            <button
+              className="decor__toggle"
+              disabled={blocked}
+              onClick={() => void (pageNumber ? s.decorate([s.activePageId!]) : s.decorate())}
+              title="Den gamle metode: ét motiv, skåret ud og lagt i et hjørne af siden"
+            >
+              Tegn ét motiv i hjørnet i stedet
+            </button>
+          </div>
+        </div>
       )}
     </section>
   );

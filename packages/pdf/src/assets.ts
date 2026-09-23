@@ -52,6 +52,9 @@ export function withAssetBase(document: CatalogDocument, base: string): CatalogD
       ...(page.background && {
         background: { ...page.background, imageUrl: resolve(page.background.imageUrl) },
       }),
+      ...((page.notes ?? []).some((note) => note.image) && {
+        notes: page.notes.map((note) => (note.image ? { ...note, image: resolve(note.image) } : note)),
+      }),
     })),
   };
 }

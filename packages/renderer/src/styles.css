@@ -89,6 +89,24 @@
   font-style: normal;
 }
 
+/*
+ * COOP the way a Tjek publication declares it — see `.tile--framed`.
+ *
+ * The publication registers its headline face as ONE file, the 700
+ * drawing, at weight normal. Text asking for normal gets that bold
+ * drawing as it is ("Gælder fra …", "Medlems-rabat"); text asking for
+ * bold gets it bolder still, synthesised by the browser (names, prices,
+ * "1 stk."). With COOP's two real weights the first came out thin and
+ * the second a size too light. Declared the same way, a copied page
+ * sets its words exactly as the original does.
+ */
+@font-face {
+  font-family: 'COOP Publication';
+  src: url(./fonts/coop-700.woff2) format('woff2');
+  font-weight: 400;
+  font-style: normal;
+}
+
 @font-face {
   font-family: 'Inter';
   src: url(./fonts/inter.woff2) format('woff2');
@@ -376,7 +394,7 @@
    * tilted axis, and dragging it right would move it diagonally.
    */
   translate: var(--decor-x, 0) var(--decor-y, 0);
-  transform: rotate(var(--decor-rotate, 0deg));
+  transform: rotate(var(--decor-rotate, 0deg)) scaleX(var(--decor-flip, 1));
   pointer-events: none;
   /*
    * Draggable only in the editor. `.page__decor--movable` is added by
@@ -423,6 +441,13 @@
  * decorations: an armed picture took the outline and the cursor and
  * then handed every press to the tile on top of it.
  */
+/*
+ * Laid over the products instead of behind them. Above the tile layers
+ * (which stop at 30) and below the studio's handles (40), and still
+ * `pointer-events: none`, so a tile under it can be clicked as before.
+ */
+.page__decor--front { z-index: 35; }
+
 .page__decor--active {
   pointer-events: auto;
   cursor: grab;
@@ -1865,4 +1890,141 @@
     box-shadow: none;
   }
   .page:last-child { break-after: auto; }
+}
+
+/* ------------------------------------------------ measured pages
+ *
+ * A page read off a published leaflet: every cell in its own measured
+ * box and every tile's packshot, price mark and words in theirs — see
+ * `TemplateSlot.rect` and `.frame`. The grid stays underneath for any
+ * cell without a box (one grown by hand).
+ */
+.page__grid--measured {
+  position: absolute;
+  inset: 0;
+}
+.tile--framed {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.tile--framed .tile__media,
+.tile--framed .tile__words,
+.tile--framed .price {
+  position: absolute;
+  margin: 0;
+  /* The box is stated inline; nothing the chain's own tile rules say
+     about where a price hangs (`bottom`, `align-self: end` in a tight
+     cell) may pull it somewhere else. */
+  right: auto;
+  bottom: auto;
+  place-self: auto;
+  align-self: auto;
+  justify-self: auto;
+}
+.tile--framed .tile__media { overflow: visible; }
+.tile--framed .tile__media > img,
+.tile--framed .tile__pack {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.tile--framed .tile__info { display: contents; }
+.tile--framed .tile__words { display: flex; flex-direction: column; justify-content: flex-start; overflow: visible; }
+.tile--framed .tile__tags { display: none; }
+/*
+ * The price mark on the chain's own drawn shape. Sized by the shape,
+ * not the page: the figure is a share of the splash's height, so it
+ * fills the bubble whether the bubble is a hero's or a filler's.
+ */
+.tile--splashed .price {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: center / contain no-repeat;
+  border-radius: 0;
+  box-shadow: none;
+  /* The plain price's halo in the page's ground colour exists to lift
+     numerals off a photograph; on the chain's own drawn shape it is a
+     yellow glow round white type. The shape is the backing here. */
+  text-shadow: none;
+  padding: 0;
+  transform-origin: center;
+}
+.tile--splashed .price .price__before,
+.tile--splashed .price .price__savings { display: none; }
+/* Without the page's own sizes, the figure is a share of the splash. */
+.tile--splashed:not([style*="--f-figure"]) .price { container-type: size; }
+.tile--splashed:not([style*="--f-figure"]) .price .price__pack { font-size: 14cqh; }
+.tile--splashed:not([style*="--f-figure"]) .price .price__figure { font-size: 46cqh; }
+.tile--splashed .price .price__pack { line-height: 1; margin: 0 0 0.2em; }
+.tile--splashed .price .price__figure { line-height: 0.9; }
+
+/* The page's own type sizes, when the frame carries them. */
+.tile--framed[style*="--f-name"] .tile__name { font-size: calc(var(--f-name) * 100cqw); line-height: 1.08; }
+.tile--framed[style*="--f-body"] .tile__description { font-size: calc(var(--f-body) * 100cqw); line-height: 1.2; }
+.tile--framed[style*="--f-figure"] .price .price__figure { font-size: calc(var(--f-figure) * 100cqw); }
+.tile--framed[style*="--f-pack"] .price .price__pack { font-size: calc(var(--f-pack) * 100cqw); }
+.tile--framed .tile__description { -webkit-line-clamp: unset; display: block; overflow: visible; }
+
+/* A price mark or roundel set line by line, as the page set it. */
+.price--lines .price__lines { width: 100%; height: 100%; }
+/*
+ * Tracking per line, at the line's own size. `.price` closes its
+ * numerals to -0.04em, and an `em` letter-spacing is inherited as the
+ * LENGTH it computed to on the price — about -2.8px at a 71px figure.
+ * On the 11px "Pris ikke-medlem" line that is -0.26em: the letters ran
+ * into one another. Re-stated here, so each line tracks by its own size.
+ */
+.frameline { display: block; white-space: pre-line; line-height: 1.1; letter-spacing: 0; }
+.frameline--figure { letter-spacing: -0.04em; }
+.frameline sup { font-size: 0.55em; vertical-align: 0.7em; line-height: 0; }
+.tile--framed .frameline .price__figure,
+.tile--framed[style*="--f-figure"] .frameline .price__figure { font-size: 1em; line-height: 1; }
+.tile__art,
+.tile__badge { position: absolute; pointer-events: none; z-index: 31; }
+.tile__art { object-fit: contain; }
+.tile__badge { background: center / contain no-repeat; text-align: center; letter-spacing: 0; }
+
+/* ------------------------------------------------------ page notes
+ *
+ * Free text laid on the page — see `PageNote`. Over the tiles (30) and
+ * a front picture (35), under the studio's handles (40). Plain type on
+ * paper; only the editor makes it clickable.
+ */
+.page__note {
+  position: absolute;
+  z-index: 36;
+  display: flex;
+  align-items: center;
+  white-space: pre-line;
+  line-height: 1.1;
+  background: center / contain no-repeat;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+.page__note--editable { pointer-events: auto; cursor: pointer; }
+.page__note--active {
+  cursor: grab;
+  touch-action: none;
+  outline: 0.35cqh dashed var(--brand);
+  outline-offset: 0.4cqh;
+  z-index: 60;
+}
+.page__note--active:active { cursor: grabbing; }
+/* A panel under the products: no stacking of its own, painted in source
+   order before the grid, and never in the way of a click on a tile. */
+.page__note--behind { z-index: auto; }
+.page__note--behind.page__note--editable { pointer-events: none; }
+
+/*
+ * A page copied from a publication sets its headline words in the
+ * publication's own declaration of COOP — see the `@font-face` above.
+ * The descriptions stay in the body face, as the publication sets them.
+ */
+.brand--superbrugsen .tile--framed .tile__name,
+.brand--superbrugsen .tile--framed .price,
+.brand--superbrugsen .page__note--pub {
+  font-family: 'COOP Publication', 'COOP', system-ui, sans-serif;
 }

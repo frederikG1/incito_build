@@ -67,6 +67,7 @@ export async function renderCataloguePdf(
     await page.goto(pathToFileURL(scratch).href, { waitUntil: 'load' });
     await settleType(page);
     await settleImages(page, options.imageTimeoutMs ?? 20_000);
+    await settleBackgrounds(page, options.imageTimeoutMs ?? 20_000);
 
     return await page.pdf({
       width: `${widthMm}mm`,
@@ -93,7 +94,7 @@ export async function renderCataloguePdf(
 export async function renderCataloguePngs(
   document: CatalogDocument,
   brand: Brand,
-  options: PrintOptions & { widthPx?: number } = {},
+  options: PrintOptions & { widthPx?: number; css?: string } = {},
 ): Promise<Buffer[]> {
   const widthPx = options.widthPx ?? 900;
   const html = renderCatalogueHtml(document, brand,
@@ -111,7 +112,10 @@ export async function renderCataloguePngs(
   try {
     await page.goto(pathToFileURL(scratch).href, { waitUntil: 'load' });
     await settleType(page);
+    // Extra rules for a partial proof — the ground alone, say.
+    if (options.css) await page.addStyleTag({ content: options.css });
     await settleImages(page, options.imageTimeoutMs ?? 20_000);
+    await settleBackgrounds(page, options.imageTimeoutMs ?? 20_000);
 
     const shots: Buffer[] = [];
     for (const element of await page.locator('.page').all()) {
@@ -162,4 +166,29 @@ async function settleImages(page: import('playwright').Page, timeoutMs: number):
     // A slow image service must not cost the whole print run. The page
     // still prints; the missing tile shows its placeholder.
     .catch(() => undefined);
+}
+
+/**
+ * Wait for every page's background picture.
+ *
+ * A CSS `background-image` is not an `<img>`, so `settleImages` never
+ * sees it, and a sheet photographed before its picture arrived is the
+ * ground colour alone. Each one is loaded once more as an image and
+ * awaited — the browser serves the second request from its cache.
+ */
+async function settleBackgrounds(page: import('playwright').Page, timeoutMs: number): Promise<void> {
+  await page.evaluate(async (timeout) => {
+    const urls = [...document.querySelectorAll<HTMLElement>('.page__bg')]
+      .map((el) => /url\(["']?(.*?)["']?\)/.exec(getComputedStyle(el).backgroundImage)?.[1])
+      .filter((url): url is string => Boolean(url));
+    await Promise.race([
+      Promise.all(urls.map((url) => new Promise<void>((done) => {
+        const img = new Image();
+        img.onload = () => done();
+        img.onerror = () => done();
+        img.src = url;
+      }))),
+      new Promise<void>((done) => setTimeout(done, timeout)),
+    ]);
+  }, timeoutMs);
 }

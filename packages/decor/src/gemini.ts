@@ -76,6 +76,30 @@ export interface GeminiOptions {
   timeoutMs?: number;
   /** Tries before giving up, for the statuses `retryable` admits. Default 4. */
   attempts?: number;
+  /**
+   * Put the prompt in front of the pictures instead of behind them.
+   *
+   * This API caches a request by its leading tokens, so anything that
+   * is the same call after call has to come FIRST or it is never a
+   * prefix of anything. The standing prompt is the same every time and
+   * the cutouts change per tile, so pictures-first — which is what
+   * this did everywhere — put the variable half in front of the stable
+   * half and made a cache hit impossible by construction.
+   *
+   * Not the default, because for `generateImage` the order is load
+   * bearing in the other direction: a prompt that says "compose the
+   * attached products" with nothing in front of it is a prompt about
+   * nothing. Turned on where it has been measured.
+   */
+  promptFirst?: boolean;
+}
+
+/** What one call cost, as this API reports it. */
+export interface Usage {
+  input: number;
+  output: number;
+  /** Of `input`, how much came from the cache and is billed cheaper. */
+  cached: number;
 }
 
 /** Raised with a message already written for the person running the build. */
@@ -153,7 +177,20 @@ async function once(
 
 interface Payload {
   candidates?: { content?: { parts?: Part[] } }[];
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    /**
+     * How much of the prompt was served from this API's own cache.
+     *
+     * Reported so caching can be SEEN rather than assumed. A cached
+     * token is billed at a fraction of a fresh one, and the only way
+     * to know whether a change to the request actually engaged the
+     * cache is to watch this number — it was not read at all before,
+     * which is why nobody could say.
+     */
+    cachedContentTokenCount?: number;
+  };
   error?: { message?: string };
 }
 
@@ -161,7 +198,7 @@ async function call(
   model: string,
   body: unknown,
   options: GeminiOptions,
-): Promise<{ parts: Part[]; usage?: { input: number; output: number } }> {
+): Promise<{ parts: Part[]; usage?: Usage }> {
   const attempts = Math.max(1, options.attempts ?? 4);
   let last: { status: number; message: string } | null = null;
 
@@ -174,7 +211,13 @@ async function call(
       return {
         parts,
         ...(meta
-          ? { usage: { input: meta.promptTokenCount ?? 0, output: meta.candidatesTokenCount ?? 0 } }
+          ? {
+            usage: {
+              input: meta.promptTokenCount ?? 0,
+              output: meta.candidatesTokenCount ?? 0,
+              cached: meta.cachedContentTokenCount ?? 0,
+            },
+          }
           : {}),
       };
     }
@@ -222,16 +265,18 @@ export async function generateJson<T>(
   schema: unknown,
   options: GeminiOptions = {},
   references: GeneratedImage[] = [],
-): Promise<{ value: T; usage?: { input: number; output: number } }> {
+): Promise<{ value: T; usage?: Usage }> {
   const model = options.model ?? DEFAULT_TEXT_MODEL;
+  const pictures = references.map((image) => ({
+    inline_data: { mime_type: image.mimeType, data: image.bytes.toString('base64') },
+  }));
   const { parts, usage } = await call(model, {
     contents: [{
-      parts: [
-        ...references.map((image) => ({
-          inline_data: { mime_type: image.mimeType, data: image.bytes.toString('base64') },
-        })),
-        { text: prompt },
-      ],
+      // Prompt first when the caller asked: the stable half has to lead
+      // or nothing is ever a cacheable prefix. See `promptFirst`.
+      parts: options.promptFirst
+        ? [{ text: prompt }, ...pictures]
+        : [...pictures, { text: prompt }],
     }],
     generationConfig: {
       responseMimeType: 'application/json',
@@ -271,7 +316,7 @@ export async function generateJson<T>(
  */
 export async function generateImage(
   prompt: string,
-  options: GeminiOptions = {},
+  options: GeminiOptions & { aspectRatio?: string } = {},
   references: GeneratedImage[] = [],
 ): Promise<GeneratedImage> {
   const model = options.model ?? DEFAULT_IMAGE_MODEL;
@@ -284,6 +329,11 @@ export async function generateImage(
         { text: prompt },
       ],
     }],
+    // The picture's shape, when the caller knows the card it is for —
+    // a prompt that says "5:4" is a hope; this is a setting.
+    ...(options.aspectRatio
+      ? { generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: options.aspectRatio } } }
+      : {}),
   }, options);
 
   const image = parts.find((p) => p.inlineData);

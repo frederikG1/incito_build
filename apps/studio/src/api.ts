@@ -167,6 +167,7 @@ export interface DecorResult {
   skipped: number;
   cached: number;
   errors: { pageId: string; message: string }[];
+  subjects?: { pageId: string; subject: string }[];
 }
 
 /**
@@ -182,6 +183,8 @@ export interface DecorDirection {
   brief?: string;
   /** Added to every image prompt. Reaches the image model only. */
   style?: string;
+  /** Only these pages; omitted means every page. */
+  pageIds?: string[];
 }
 
 /**
@@ -204,6 +207,7 @@ export async function decorateDocument(
       document,
       ...(brief ? { brief } : {}),
       ...(style ? { style } : {}),
+      ...(direction.pageIds ? { pageIds: direction.pageIds } : {}),
     }),
   });
   if (!response.ok) await fail(response);
@@ -431,6 +435,29 @@ export async function reproducePage(
  * chain that prints a leaflet already keeps cut-out artwork and the
  * fill was as likely to eat a photograph's sky as to help.
  */
+/** One picture in the chain's own library. */
+export interface LibraryImage {
+  ref: string;
+  name: string;
+  createdAt: string;
+}
+
+/** This chain's uploaded pictures, newest first. */
+export async function fetchUploads(brandId: string): Promise<LibraryImage[]> {
+  const response = await fetch(`${BASE}/brand/uploads`, { headers: headers(brandId) });
+  if (!response.ok) await fail(response);
+  return ((await response.json()) as { uploads: LibraryImage[] }).uploads;
+}
+
+/** Take one out of the library. The file stays; the offer of it goes. */
+export async function forgetUpload(brandId: string, ref: string): Promise<void> {
+  const response = await fetch(
+    `${BASE}/brand/uploads?ref=${encodeURIComponent(ref)}`,
+    { method: 'DELETE', headers: headers(brandId) },
+  );
+  if (!response.ok) await fail(response);
+}
+
 export interface UploadedImage {
   url: string;
   /**
@@ -530,6 +557,48 @@ export async function importPublication(
   if (!response.ok) await fail(response);
   const body = (await response.json()) as PublicationReply;
   return { ...body, document: CatalogDocument.parse(body.document) };
+}
+
+/** The background picture for one page — see `backdropPrompt`. */
+export async function drawBackdrop(
+  brandId: string,
+  brief: {
+    aspect: string; colour: string;
+    regions: { x0: number; x1: number; y0: number; y1: number }[];
+    text: string[]; offer: string; products: string[]; style?: string;
+    ratio?: number;
+    spots?: { x0: number; x1: number; y0: number; y1: number }[];
+  },
+): Promise<{ motifs: DrawnMotif[]; prompt: string }> {
+  const response = await fetch(`${BASE}/brand/backdrop`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(brief),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as { motifs: DrawnMotif[]; prompt: string };
+}
+
+/** One cut-out motif and the free spot it was drawn for, in page percent. */
+export interface DrawnMotif {
+  url: string;
+  spot: { x0: number; x1: number; y0: number; y1: number };
+  width: number;
+  height: number;
+}
+
+/** One packshot of several variants, cut into one picture per variant. */
+export async function splitVariants(
+  brandId: string,
+  imageUrl: string,
+): Promise<{ products: { name: string; ref: string }[] }> {
+  const response = await fetch(`${BASE}/brand/split`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify({ imageUrl }),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as { products: { name: string; ref: string }[] };
 }
 
 /* ------------------------------------------------- et tegnet layout */

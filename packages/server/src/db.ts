@@ -35,6 +35,28 @@ CREATE TABLE IF NOT EXISTS catalog_versions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_catalogs_brand ON catalogs (brand_id);
+
+/*
+ * The chain's own pictures — balloons, birthday flags, a paper
+ * texture — as a list somebody can find again.
+ *
+ * The bytes are on disk and always were; what did not exist was any
+ * record that they had been uploaded, so a file could only be reached
+ * by a document that already pointed at it. Upload a background, undo,
+ * and it was gone for good.
+ *
+ * Keyed by (brand, ref) rather than by the content hash alone: the
+ * same picture uploaded by two chains is one file on disk and two
+ * rows here, which is what lets one chain rename or remove its copy
+ * without touching the other's.
+ */
+CREATE TABLE IF NOT EXISTS uploads (
+  brand_id    TEXT NOT NULL,
+  ref         TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  PRIMARY KEY (brand_id, ref)
+);
 `;
 
 export interface CatalogSummary {
@@ -43,6 +65,13 @@ export interface CatalogSummary {
   name: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** One picture in a chain's own library. */
+export interface UploadSummary {
+  ref: string;
+  name: string;
+  createdAt: string;
 }
 
 export class Store {
@@ -54,6 +83,44 @@ export class Store {
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA foreign_keys = ON');
     this.db.exec(SCHEMA);
+  }
+
+  /**
+   * Remember that this chain uploaded this picture.
+   *
+   * Idempotent on (brand, ref): the same file dropped twice is one
+   * row, and the name is refreshed because the second drop is the
+   * more recent thing the person called it.
+   */
+  rememberUpload(brandId: string, ref: string, name: string): void {
+    this.db.prepare(
+      `INSERT INTO uploads (brand_id, ref, name, created_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (brand_id, ref) DO UPDATE SET name = excluded.name`,
+    ).run(brandId, ref, name, new Date().toISOString());
+  }
+
+  /** This chain's pictures, newest first. Never another chain's. */
+  uploads(brandId: string): UploadSummary[] {
+    return this.db
+      .prepare('SELECT ref, name, created_at FROM uploads WHERE brand_id = ? ORDER BY created_at DESC')
+      .all(brandId)
+      .map((row) => ({
+        ref: row['ref'] as string,
+        name: row['name'] as string,
+        createdAt: row['created_at'] as string,
+      }));
+  }
+
+  /**
+   * Take a picture out of the chain's library.
+   *
+   * The row goes; the file stays. A document saved last week may still
+   * be printing it, and a library is a list of what is offered rather
+   * than a list of what exists.
+   */
+  forgetUpload(brandId: string, ref: string): boolean {
+    return this.db.prepare('DELETE FROM uploads WHERE brand_id = ? AND ref = ?')
+      .run(brandId, ref).changes > 0;
   }
 
   list(brandId: string): CatalogSummary[] {

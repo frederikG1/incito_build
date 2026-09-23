@@ -6,12 +6,58 @@
  * the screen. Everything below is scoped to the editor's own classes.
  */
 
+/*
+ * The editor's own palette.
+ *
+ * Warm neutrals, because the thing on screen is paper: a cool grey
+ * chrome around a yellow leaflet made the leaflet look wrong, and the
+ * chain's own grounds — measured off the week-37 book — are all warm.
+ * Contrast was measured; every label clears 4.5:1 on its own surface,
+ * which is why the old #a2a8b2 and #8b919b greys are gone.
+ */
 :root {
   --chrome: #16181d;
   --chrome-line: #2c3038;
   --chrome-ink: #e8eaed;
-  --paper: #eceef1;
+  --chrome-ink-2: #b8c0cc;
+  --chrome-ink-3: #9aa0a8;
+
+  /* Surfaces, lightest to most sunken. */
+  --surface: #fff;
+  --surface-hover: #faf8f4;
+  --notice: #fffdf8;
+  --paper: #f4f2ee;
+  --paper-sunken: #efece6;
+
+  /* Lines, in the order they get stronger. */
+  --line-soft: #efe9df;
+  --line: #e6e1d9;
+  --line-field: #e0dbd3;
+  --line-strong: #ddd8d0;
+  --line-dashed: #cfc8bc;
+
+  /* Ink. */
+  --ink: #16181d;
+  --ink-2: #4b4740;
+  --muted: #6e675f;
+  --muted-step: #7a736a;
+
+  /* The one primary action, and the colour a model's work wears. */
   --hot: #2d6cdf;
+  --model: #7a5af8;
+  --model-ink: #3b2a8c;
+  --model-field: #f5f2ff;
+
+  /* What a finding weighs. */
+  --stop: #b4401f;
+  --stop-ink: #8c3418;
+  --warn: #fdf5e0;
+  --warn-line: #e0cf9a;
+  --warn-ink: #6b5312;
+  --ok: #e8f4ec;
+  --ok-line: #c5e2d0;
+  --ok-ink: #1c5c34;
+
   color-scheme: light;
 }
 
@@ -21,7 +67,7 @@ body {
   margin: 0;
   font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   background: var(--paper);
-  color: #16181d;
+  color: var(--ink);
 }
 
 .app { display: flex; flex-direction: column; height: 100vh; }
@@ -102,7 +148,6 @@ body {
   color: var(--chrome-ink);
 }
 .field input[type='number'] { width: 60px; }
-.field--brief { flex: 1 1 240px; max-width: 380px; }
 
 
 .bar button {
@@ -264,37 +309,15 @@ body {
 }
 
 /* Folded, the strip is one row and should read as a line, not a panel. */
-.decor--shut { padding: 5px 18px; }
 
 .decor__head { display: flex; align-items: center; gap: 10px; }
-.decor--shut .decor__head { min-height: 20px; }
 
 /* The whole name is the hit target, not a 12px triangle. */
-.decor__disclose {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font: inherit;
-  padding: 2px 0;
-  border: none;
-  background: none;
-  color: #33363d;
-  cursor: pointer;
-}
-.decor__disclose:hover .decor__title { opacity: 1; }
-.decor__caret { font-size: 10px; opacity: 0.55; width: 9px; }
 
 .decor__row { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
 .decor__row { margin-top: 8px; }
 .decor__row--meta { align-items: center; gap: 10px; }
 
-.decor__title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  opacity: 0.88;
-}
 
 .decor__field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 240px; max-width: 340px; }
 .decor__field--wide { flex: 2 1 340px; max-width: 520px; }
@@ -542,7 +565,6 @@ body {
 .sheet__title:hover { border-color: #d3d7dd; background: #fff; }
 .sheet__title:focus { border-color: var(--hot); background: #fff; outline: none; }
 
-.sheet__meta { font-size: 12px; color: #6b7280; }
 
 /*
  * The right-hand half of the bar, grouped.
@@ -952,15 +974,6 @@ body {
 
 /* A label with its buttons on one line — the depth control, where the
    answer is a choice and not a number on a track. */
-.inspector__row {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 14px;
-  font-size: 12px;
-  color: #4b5563;
-}
-.inspector__row > span { margin-right: auto; }
 /* The one dropdown in this panel. Matched to the text field above it
    rather than to the toolbar's dark selects: this is the white panel. */
 .inspector__field select {
@@ -1696,25 +1709,8 @@ body {
   color: #33363d;
   border-bottom: 1px solid #e3e6ea;
 }
-.ways--shut { padding: 5px 18px; }
 
-.ways__head { display: flex; align-items: center; gap: 10px; }
-.ways--shut .ways__head { min-height: 20px; }
 
-.ways__disclose {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font: inherit;
-  padding: 2px 0;
-  border: none;
-  background: none;
-  color: #33363d;
-  cursor: pointer;
-}
-.ways__caret { font-size: 10px; opacity: 0.55; width: 9px; }
-.ways__title { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; opacity: 0.88; }
-.ways__said { font-size: 11px; opacity: 0.45; }
 
 .ways__row { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 
@@ -2587,3 +2583,1178 @@ body {
  * been made by the same reserve model.
  */
 .way__swap { color: #b4401f; font-weight: 600; }
+
+/* The two ways to put one backdrop under more than one sheet. */
+.inspector__spread {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: -4px 0 14px;
+}
+
+/* ------------------------------------------- kædens egne billeder */
+
+.library__tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 12px 6px;
+}
+.library__tabs button {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8b919b;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.library__tabs button:hover { background: #f2f4f7; color: #33363d; }
+.library__tabs button.is-on { color: #16181d; background: #eef1f5; }
+.library__tabs .library__close { margin-left: auto; font-weight: 400; }
+
+.pics__add { display: block; margin: 0 12px 10px; }
+.pics__add input { display: none; }
+.pics__add span {
+  display: block;
+  text-align: center;
+  padding: 9px;
+  border: 1px dashed #c8ccd3;
+  border-radius: 7px;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+}
+.pics__add span:hover { border-color: var(--hot); color: var(--hot); }
+.pics__add--busy { opacity: 0.4; pointer-events: none; }
+
+.pics { list-style: none; margin: 0; padding: 0 6px 12px; overflow: auto; flex: 1 1 auto; }
+.pic-card {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  grid-template-areas: 'shot name' 'shot does';
+  gap: 2px 8px;
+  align-items: center;
+  padding: 5px 6px;
+  border-radius: 7px;
+}
+.pic-card:hover { background: #f2f4f7; }
+.pic-card__shot {
+  grid-area: shot;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  /* A chequer, so a cut-out on transparency reads as cut out rather
+     than as a picture with a white box round it. */
+  background:
+    linear-gradient(45deg, #e9ecf0 25%, transparent 25%, transparent 75%, #e9ecf0 75%) 0 0/10px 10px,
+    linear-gradient(45deg, #e9ecf0 25%, transparent 25%, transparent 75%, #e9ecf0 75%) 5px 5px/10px 10px,
+    #fff;
+  border: 1px solid #e3e6ea;
+  border-radius: 5px;
+}
+.pic-card__shot img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.pic-card__name {
+  grid-area: name;
+  font-size: 12px;
+  color: #33363d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pic-card__does { grid-area: does; display: flex; align-items: center; gap: 4px; }
+.pic-card__does button {
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 7px;
+  color: #4b5563;
+  cursor: pointer;
+}
+.pic-card__does button:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.pic-card__does button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pic-card__drop { margin-left: auto; padding: 2px 6px !important; }
+.pic-card__drop:hover { border-color: #b4401f !important; color: #b4401f !important; }
+
+/*
+ * A route in the "Nye sider" panel that is not for a customer.
+ *
+ * Set apart rather than hidden: it is a developer's shortcut, it is
+ * useful, and it spent months in the toolbar looking like something
+ * somebody was meant to press.
+ */
+.ways__way--aside {
+  opacity: 0.6;
+  border-top: 1px dashed #dfe3e8;
+  padding-top: 12px;
+  margin-top: 2px;
+}
+.ways__way--aside:hover { opacity: 1; }
+
+/* ============================================ studioets to skærme */
+
+/*
+ * The shell.
+ *
+ * Two screens, one chrome: the book — the whole avis as printed
+ * spreads — and one page of it, large. The editor used to have only
+ * the second, as a single scrolling column of sheets, so seeing
+ * whether the BOOK worked meant scrolling it and comparing page three
+ * with page four was not possible at all.
+ *
+ * Everything below styles editor chrome only. The catalogue sheet is
+ * `packages/renderer/src/styles.css` and the two must stay separable,
+ * or the PDF stops matching the screen.
+ */
+.shell { display: flex; flex-direction: column; height: 100vh; min-width: 1180px; }
+
+/* ------------------------------------------------------- toplinjen */
+
+.top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.top__mark { font-size: 16px; letter-spacing: -0.01em; font-weight: 700; }
+.top__rule { width: 1px; height: 26px; background: var(--line); flex: 0 0 auto; }
+.top__gap { flex: 1 1 auto; }
+.top__saved { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/*
+ * The avis, as one hit target.
+ *
+ * Chain, week and "open another" were three separate controls in the
+ * toolbar answering one question — which avis am I in — so they are
+ * one button with the answer on it and the three ways to change it
+ * behind it.
+ */
+.doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  text-align: left;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+.doc:hover { background: var(--surface-hover); border-color: var(--line); }
+.docwrap { position: relative; flex: 0 1 auto; min-width: 0; }
+.doc { max-width: 100%; }
+.doc__lines { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.doc__name,
+.doc__said { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc__name { font-size: 15px; line-height: 1.2; font-weight: 600; }
+.doc__said { font-size: 12px; color: var(--muted); }
+/* Inside a page the header belongs to the page: the avis shrinks to one
+   line so the stepper and the title get the room. */
+.top--side { gap: 12px; }
+.top--side .docwrap { flex: 0 1 200px; min-width: 120px; }
+.top--side .pagetheme { flex: 0 1 150px; min-width: 70px; }
+.top--side .pagenote { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.top--side .doc__said { display: none; }
+.doc__caret { color: var(--muted); }
+
+.quiet {
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.quiet:hover:not(:disabled) { background: var(--surface-hover); }
+.quiet:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* The only filled button on the screen. */
+.go {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border: 1px solid var(--hot);
+  border-radius: 7px;
+  background: var(--hot);
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.go:hover:not(:disabled) { filter: brightness(1.07); }
+.go:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* An outline button, the studio's ordinary one. */
+.thin {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.thin:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.thin:disabled { opacity: 0.45; cursor: not-allowed; }
+.thin--drop:hover:not(:disabled) { border-color: var(--stop); color: var(--stop); }
+
+/* ----------------------------------------------- hvad er næste skridt */
+
+/*
+ * One line that says where you are and what is in the way.
+ *
+ * It replaces the four-step strip AND the checklist panel: the steps
+ * are a breadcrumb nobody has to open, the sentence is the first
+ * finding written out, and the button goes there. Both are derived
+ * from `findings.ts` on every render — the same rule as `stepOf`,
+ * which is that a stored step can disagree with the document.
+ */
+.next {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 24px;
+  background: var(--notice);
+  border-bottom: 1px solid #eee7da;
+}
+.crumbs { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+.crumbs b { font-weight: 600; color: var(--ink-2); }
+.crumbs .is-now { font-weight: 700; color: #26365e; }
+.crumbs .is-later { font-weight: 400; color: var(--muted-step); }
+.crumbs i { font-style: normal; opacity: 0.4; }
+.next__rule { width: 1px; height: 22px; background: #eee7da; flex: 0 0 auto; }
+.next__said { margin: 0; font-size: 13.5px; color: var(--ink-2); flex: 1 1 auto; }
+.next__said b { font-weight: 600; }
+.next__go {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border: 1px solid #d8ccae;
+  border-radius: 7px;
+  background: var(--warn);
+  color: var(--warn-ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.next__go:hover { filter: brightness(0.98); }
+
+/* ------------------------------------------------------------ bogen */
+
+.book { flex: 1 1 auto; overflow: auto; padding: 22px 24px 0; display: flex; flex-direction: column; gap: 16px; }
+.book__head { display: flex; align-items: center; gap: 12px; }
+.book__head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.book__said { font-size: 12.5px; color: var(--muted); }
+.book__gap { flex: 1 1 auto; }
+
+.seg { display: flex; border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; background: var(--surface); }
+.seg button {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 12px;
+  border: none;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--line-strong); }
+.seg button.is-on { background: var(--ink); color: #fff; }
+
+.book__row { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; padding-bottom: 22px; }
+
+/*
+ * One page, at the size a whole book fits on screen in.
+ *
+ * 176 × 249 is the chain's own `pageAspect` at a size where six
+ * spreads sit side by side. The inside is a stand-in drawn from the
+ * page's OWN `template.areas` — not a render: rendering 37 real sheets
+ * to look at the book would cost 37 pages of images for a glance.
+ */
+.leaf { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+.leaf__pair { display: flex; box-shadow: 0 4px 14px rgb(16 20 26 / 0.09); border-radius: 4px; overflow: hidden; }
+.leaf__pair .card { box-shadow: none; border-radius: 0; }
+.leaf__pair .card:first-child { border-right: none; }
+
+.card {
+  position: relative;
+  width: 176px;
+  height: 249px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgb(16 20 26 / 0.09);
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+  overflow: hidden;
+}
+/*
+ * The page itself, rendered at 500px and scaled to the card's 176 —
+ * scaled rather than rendered small, so nothing sized in pixels inside
+ * the page (hairlines, minimum type) comes out thicker than printed.
+ */
+.card__live {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 500px;
+  transform: scale(0.352);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.card__live .page { max-width: none; }
+.card__pill { z-index: 1; }
+.card:hover { border-color: var(--hot); }
+.card__cell { background: rgb(255 255 255 / 0.45); border-radius: 2px; }
+.card__cell--empty {
+  border: 1.5px dashed var(--stop);
+  background: none;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--stop-ink);
+}
+.card--stop { border: 2px solid var(--stop); }
+.card--warn { border: 1px solid var(--warn-line); }
+.card__pill {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--stop);
+  color: #fff;
+}
+.card__pill--warn { background: var(--warn); border: 1px solid var(--warn-line); color: var(--warn-ink); }
+/* A whole-sheet picture has no grid to stand in for. */
+.card--image { padding: 0; display: block; background-size: cover; background-position: center; }
+
+.leaf__caps { display: flex; gap: 20px; }
+.leaf__cap { display: flex; flex-direction: column; gap: 1px; width: 176px; }
+.leaf__cap b { font-size: 12.5px; font-weight: 600; }
+.leaf__cap span { font-size: 11.5px; color: var(--muted); }
+.leaf__cap span.is-stop { color: var(--stop-ink); }
+.leaf__cap span.is-warn { color: var(--warn-ink); }
+
+/* Where the pointer would drop a page being dragged. */
+.leaf--over { box-shadow: -3px 0 0 var(--hot); }
+.leaf--lifted { opacity: 0.4; }
+
+/* ------------------------------------------------- de fire veje ind */
+
+.add { position: relative; display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+.add__card {
+  width: 176px;
+  height: 249px;
+  border: 1.5px dashed var(--line-dashed);
+  border-radius: 4px;
+  background: var(--notice);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.add__card:hover { border-color: var(--hot); color: var(--hot); }
+.add__card span { font-size: 22px; font-weight: 400; line-height: 1; }
+.add__said { font-size: 11.5px; color: var(--muted); }
+
+.ways2 {
+  position: absolute;
+  top: 0;
+  right: 190px;
+  width: 330px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgb(16 20 26 / 0.18);
+  padding: 10px;
+  z-index: 5;
+}
+.ways2--right { right: auto; left: 190px; }
+.ways2__head {
+  margin: 4px 8px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.ways2__way {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.ways2__way:last-child { margin-bottom: 0; }
+.ways2__way:hover:not(:disabled) { border-color: var(--hot); }
+.ways2__way--model:hover:not(:disabled) { border-color: var(--model); }
+.ways2__way:disabled { opacity: 0.45; cursor: not-allowed; }
+.ways2__what { flex: 1 1 auto; }
+.ways2__what b { display: block; font-size: 13px; font-weight: 600; }
+.ways2__what span { font-size: 11.5px; color: var(--muted); }
+/* The point of the control: nothing costs money without the price
+   being on the button that spends it. */
+.ways2__price { flex: 0 0 auto; font-size: 11px; font-weight: 600; }
+.ways2__price--free { color: var(--ok-ink); }
+.ways2__price--paid { color: var(--warn-ink); }
+.ways2__price--model { color: var(--model-ink); }
+
+/* ------------------------------------------------------------ bakken */
+
+/*
+ * What has not been placed, along the bottom.
+ *
+ * It was a sidebar, which took width from the two things that need it
+ * — the sheet and the products — and hid one behind the other. Along
+ * the bottom both are on screen at once, which is what makes dragging
+ * a product onto a page a gesture rather than a plan.
+ */
+.tray {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 24px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.tray--slim { flex-direction: row; align-items: center; gap: 12px; padding: 12px 24px; }
+.tray__head { display: flex; align-items: center; gap: 12px; }
+.tray__head b { font-size: 13px; font-weight: 600; flex: 0 0 auto; }
+.tray__said { font-size: 12px; color: var(--muted); }
+.tray__gap { flex: 1 1 auto; }
+.tray__find {
+  font: inherit;
+  font-size: 12.5px;
+  width: 200px;
+  padding: 6px 9px;
+  border: 1px solid var(--line-field);
+  border-radius: 7px;
+}
+.tray__find--slim { width: 150px; flex: 0 0 auto; }
+.tray__row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; }
+.tray__row--slim { flex: 1 1 auto; gap: 8px; }
+.tray__empty { margin: 0; font-size: 12px; color: var(--muted); }
+
+.good {
+  flex: 0 0 auto;
+  width: 112px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  cursor: grab;
+  font: inherit;
+  text-align: left;
+}
+.good:hover { border-color: var(--hot); }
+.good--picked { border-color: var(--hot); background: #f2f6fe; }
+.good__shot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 58px;
+  border-radius: 6px;
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+.good--picked .good__shot { background: #fff; }
+.good__shot img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.good__shot span { font-size: 9px; color: var(--muted); }
+.good__name { font-size: 11.5px; line-height: 1.25; height: 29px; overflow: hidden; }
+.good__price { font-size: 13px; font-weight: 700; }
+
+/* The same product as a chip, for the page view where the sheet needs
+   the height. */
+.good--chip {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  padding: 6px 10px 6px 6px;
+}
+.good--chip .good__shot { width: 40px; height: 38px; flex: 0 0 auto; }
+.good--chip .good__name {
+  height: auto;
+  font-size: 12px;
+  max-width: 140px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.good--chip .good__price { font-size: 12.5px; }
+
+/*
+ * The answer to a selection, where the selection is.
+ *
+ * Only on screen while something is picked: a permanently visible
+ * "add 0 products" is the kind of disabled control people stop
+ * reading.
+ */
+.picked {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  margin-left: 6px;
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+  width: 250px;
+}
+.picked p { margin: 0; font-size: 12px; color: var(--ink-2); }
+.picked p b { font-weight: 600; }
+.picked__share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--model);
+  border-radius: 8px;
+  background: var(--model-field);
+  cursor: pointer;
+}
+.picked__share:disabled { opacity: 0.45; cursor: not-allowed; }
+.picked__share b { display: block; font-size: 12.5px; font-weight: 600; color: var(--model-ink); }
+.picked__share span { font-size: 11px; color: #4a3a92; }
+.picked__share em { flex: 0 0 auto; font-style: normal; font-size: 11px; font-weight: 600; color: var(--model-ink); }
+.picked__clear {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+}
+.picked__clear:hover { border-color: var(--hot); color: var(--hot); }
+
+/* Menu behind the document button, and the layer that shuts it. */
+.sheetaway { position: fixed; inset: 0; z-index: 9; }
+.docmenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  width: 260px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgb(16 20 26 / 0.18);
+}
+.docmenu__field { display: block; margin-bottom: 10px; font-size: 12px; color: var(--ink-2); }
+.docmenu__field > span { display: block; margin-bottom: 4px; }
+.docmenu__field select,
+.docmenu__field input {
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line-field);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.docmenu__do {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.docmenu__do:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.docmenu__do:disabled { opacity: 0.45; cursor: not-allowed; }
+.docmenu__do i { font-style: normal; color: var(--muted); margin-left: 4px; }
+
+/* ------------------------------------------------- inde på en side */
+
+.page2 { flex: 1 1 auto; display: flex; min-height: 0; }
+.page2__canvas {
+  flex: 1 1 auto;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 28px;
+  background: var(--paper-sunken);
+}
+
+/* The page's own shape, in one pill above the sheet. */
+.pagebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  flex: 0 0 auto;
+}
+.pagebar label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.pagebar select {
+  font: inherit;
+  font-size: 12px;
+  color: #33363d;
+  border: 1px solid var(--line-field);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 3px 5px;
+  max-width: 150px;
+}
+.pagebar__rule { width: 1px; height: 16px; background: var(--line); }
+.pagebar button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.pagebar button:hover:not(:disabled) { background: var(--paper); }
+.pagebar button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pagebar button.is-on { background: var(--paper); color: #33363d; }
+.pagebar__file { display: contents; }
+.pagebar__file input { display: none; }
+.pagebar__btn {
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.pagebar__btn:hover { background: var(--paper); }
+.pagebar__btn.is-on { background: var(--paper); color: #33363d; }
+.pagebar button.pagebar__model { color: var(--model-ink); }
+.pagebar button.pagebar__model:hover:not(:disabled) { background: var(--model-field); }
+
+/* The page's rarer errands. */
+.more { position: relative; }
+.more__away { position: fixed; inset: 0; z-index: 40; }
+.more__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 41;
+  width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgb(16 20 26 / 0.18);
+}
+.pagebar .more__menu button,
+.more__menu .insert {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.pagebar .more__menu button:hover:not(:disabled),
+.more__menu .insert:hover { background: var(--surface-hover); color: var(--ink-2); }
+.pagebar .more__menu button.more__drop:hover { color: var(--stop); }
+
+.pagestep { display: flex; align-items: center; gap: 8px; }
+.pagestep strong { font-size: 15px; white-space: nowrap; }
+.pagestep button { font-size: 14px; line-height: 1; padding: 6px 9px; }
+
+.pagetitle {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  width: 210px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+}
+.pagetitle:hover, .pagetitle:focus { border-color: var(--line-field); background: var(--surface-hover); outline: none; }
+.pagetheme {
+  font: inherit;
+  font-size: 12.5px;
+  width: 150px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+}
+.pagetheme:hover, .pagetheme:focus { border-color: var(--line-field); background: var(--surface-hover); outline: none; }
+
+.pagenote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--warn-ink);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--warn);
+  border: 1px solid var(--warn-line);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------ inspector, 2b dress */
+
+/*
+ * The inspector holds only what is selected, split three ways. The
+ * older rules above still shape the fields; this is the warm chrome and
+ * the tabs laid over them.
+ */
+.inspector { flex-basis: 312px; padding: 18px; border-left-color: var(--line); }
+.inspector__head h2 { margin-bottom: 4px; }
+.inspector__close { color: var(--muted); }
+.inspector__meta { margin: 0 0 14px; font-size: 12px; color: var(--muted); }
+.inspector__tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+.inspector__tabs button {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.inspector__tabs button:hover:not(.is-on) { background: var(--surface-hover); }
+.inspector__tabs button.is-on { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+/* The first heading in a tab sits right under the tabs, not under a rule. */
+.inspector__tabs + .inspector__group { margin-top: 0; padding-top: 0; border-top: 0; }
+.inspector__field { color: var(--ink-2); }
+.inspector__field input[type='text'] { padding: 7px 9px; border-color: var(--line-field); }
+.inspector__promote,
+.inspector__drop { padding: 8px 10px; border-radius: 7px; border-color: var(--line-strong); }
+.inspector__drop:hover { border-color: var(--stop); color: var(--stop); }
+.inspector__group { color: var(--muted); border-top-color: var(--line-soft); }
+.inspector__keys { color: var(--muted); border-top-color: var(--line-soft); }
+.inspector__keys b { color: var(--ink-2); }
+.inspector__check { color: var(--ink-2); margin-top: 12px; }
+.inspector--empty { color: var(--muted); }
+
+/* ------------------------------------------------------ cell toolbar */
+
+.celltool {
+  position: absolute;
+  left: 0;
+  top: -40px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--chrome, #16181d);
+  border-radius: 9px;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.3);
+  white-space: nowrap;
+  cursor: default;
+}
+.celltool button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #b8c0cc;
+  cursor: pointer;
+}
+.celltool button:hover,
+.celltool button.is-on { background: #2b3038; color: #fff; }
+
+/*
+ * The page's empty cells, laid over the sheet by `EmptyCells`. The grid
+ * tracks are copied off the printed page at runtime; nothing here
+ * reaches into the page itself.
+ */
+.empties {
+  position: absolute;
+  display: grid;
+  pointer-events: none;
+  z-index: 5;
+}
+.empties__cell {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+  border: 2px dashed var(--hot);
+  border-radius: 4px;
+  background: rgb(45 108 223 / 0.08);
+  color: var(--busy-ink, #26365e);
+  font-size: 11.5px;
+}
+.empties__cell b { font-size: 13px; font-weight: 600; }
+.empties__cell.is-over { background: rgb(45 108 223 / 0.2); }
+
+/* A book page a tray product is being held over. */
+.card--taking { outline: 2px solid var(--hot); outline-offset: 2px; }
+.sheet__paper { position: relative; }
+
+/* ------------------------------------------------------------- shelf */
+
+.shelf {
+  flex: 0 0 272px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+.shelf__head { display: flex; align-items: baseline; gap: 8px; padding: 14px 14px 8px; }
+.shelf__head b { font-size: 13px; font-weight: 600; }
+.shelf__count { font-size: 12px; color: var(--muted); }
+.shelf__tools { display: flex; gap: 6px; padding: 0 14px; }
+.shelf__find,
+.shelf__filter,
+.shelf__row select {
+  font: inherit;
+  font-size: 12.5px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-field);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+}
+.shelf__find { flex: 1 1 auto; }
+.shelf__filter { flex: 0 1 96px; }
+.shelf__hint { margin: 8px 14px 6px; font-size: 11.5px; color: var(--muted); }
+.shelf__grid {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-content: start;
+  gap: 8px;
+  padding: 4px 14px 14px;
+}
+.shelf__grid .good { width: auto; min-width: 0; }
+.shelf__empty { grid-column: 1 / -1; margin: 8px 0; font-size: 12px; color: var(--muted); }
+.shelf__picked {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--notice);
+}
+.shelf__pickedhead { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; }
+.shelf__row { display: flex; gap: 6px; }
+.shelf__row select { flex: 1 1 auto; }
+.shelf__do,
+.shelf__model {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.shelf__do:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.shelf__model { border-color: var(--model, #7a5af8); background: #f5f2ff; color: #3b2a8c; }
+.shelf__do i,
+.shelf__model i { font-style: normal; font-weight: 400; font-size: 11px; color: var(--muted); margin-left: 4px; }
+.shelf__do:disabled,
+.shelf__model:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* One page and the way in after it, in the page view's single column. */
+.stack { width: 100%; max-width: 720px; display: flex; flex-direction: column; align-items: center; gap: 14px; scroll-margin-top: 12px; }
+.stack + .stack { margin-top: 10px; }
+.page2__canvas .insert {
+  margin: 0;
+  max-width: 720px;
+  padding: 10px 0;
+  border: 1.5px dashed var(--line-dashed);
+  background: var(--notice);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.page2__canvas .insert:hover { border-color: var(--hot); color: var(--hot); }
+
+/* The page's one door to pictures: an outline button, so it reads as
+   the thing to press on a bar of quiet ones. */
+.pagebar button.pagebar__pics {
+  font-weight: 600;
+  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+.pagebar button.pagebar__pics:hover { border-color: var(--hot); color: var(--hot); background: var(--surface); }
+.pagebar button.pagebar__pics.is-on { border-color: var(--ok-line, #c5e2d0); background: var(--ok, #e8f4ec); color: var(--ok-ink, #1c5c34); }
+
+/* "Til side N" — the two one-step uploads at the top of the picture panel. */
+.pics__here { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line-soft); }
+.pics__here b { font-size: 13px; font-weight: 600; flex: 0 0 auto; }
+.pics__uploads { display: flex; gap: 8px; flex-wrap: wrap; }
+.pics__up { cursor: pointer; }
+.pics__up input { display: none; }
+.pics__up span {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.pics__up em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--muted); }
+.pics__up:hover span { border-color: var(--hot); color: var(--hot); }
+
+/* The page's own words, directly above the sheet. */
+.pagehead { width: 100%; max-width: 720px; display: flex; align-items: center; gap: 10px; }
+.pagehead__no { font-size: 12px; font-weight: 600; color: var(--muted); flex: 0 0 auto; }
+.pagehead input {
+  font: inherit;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+}
+.pagehead input:hover,
+.pagehead input:focus { border-color: var(--line-field); background: var(--surface); outline: none; }
+.pagehead__title { flex: 1 1 60%; font-size: 17px; font-weight: 600; }
+.pagehead__theme { flex: 1 1 40%; font-size: 13px; color: var(--ink-2) !important; }
+.pagehead input::placeholder { color: var(--muted); font-weight: 400; }
+.pagestep__title { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+
+.top__save {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.top__save:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.top__save:disabled { opacity: 0.45; cursor: not-allowed; }
+.top__save i { font-style: normal; font-weight: 400; color: var(--muted); }
+
+/* The mood artwork, as one sentence and one button. */
+.decor__say { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); max-width: 640px; }
+.decor__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.decor__more {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.decor__more:hover { color: var(--hot); }
+.decor__tune { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.decor__second {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.decor__second:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.decor__second:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* A picture's own panel. */
+.decorpanel__shot { display: grid; place-items: center; height: 110px; margin-bottom: 14px; border-radius: 8px; background: var(--surface-hover); }
+.decorpanel__shot img { max-width: 90%; max-height: 96px; object-fit: contain; }
+.decorpanel__row { display: flex; gap: 6px; }
+.decorpanel__row .inspector__promote { flex: 1 1 0; }
+.pic__name { font-size: 12px; color: var(--ink-2); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A note's own panel. */
+.notepanel__text {
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line-field);
+  border-radius: 6px;
+  resize: vertical;
+}
+.notepanel__swatches { display: flex; gap: 6px; align-items: center; }
+.notepanel__swatches button {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--line-strong); cursor: pointer; padding: 0;
+}
+.notepanel__swatches button.is-on { outline: 2px solid var(--hot); outline-offset: 2px; }
+.notepanel__swatches input[type=color] { width: 30px; height: 26px; border: 0; padding: 0; background: none; cursor: pointer; }
+.decor__old { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--line-field); border-radius: 7px; }
+
+/* ------------------------------------------------ editing the layout */
+
+.pagebar button.pagebar__pics.is-editing { background: var(--hot); border-color: var(--hot); color: #fff; }
+.celledit { position: absolute; inset: 0; z-index: 80; }
+.celledit__cell {
+  position: absolute;
+  border: 2px solid var(--hot);
+  border-radius: 4px;
+  background: rgb(45 108 223 / 0.08);
+  cursor: move;
+  touch-action: none;
+}
+.celledit__cell.is-empty { border-style: dashed; }
+.celledit__cell.is-held { background: rgb(45 108 223 / 0.16); box-shadow: 0 0 0 3px rgb(45 108 223 / 0.25); }
+.celledit__name {
+  position: absolute; left: 6px; top: 6px; max-width: calc(100% - 12px);
+  font-size: 11px; font-weight: 600; color: #fff; background: var(--hot);
+  padding: 2px 6px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+.celledit__grip { position: absolute; width: 12px; height: 12px; background: #fff; border: 2px solid var(--hot); border-radius: 3px; }
+.celledit__grip--n { top: -7px; left: calc(50% - 6px); cursor: ns-resize; }
+.celledit__grip--s { bottom: -7px; left: calc(50% - 6px); cursor: ns-resize; }
+.celledit__grip--e { right: -7px; top: calc(50% - 6px); cursor: ew-resize; }
+.celledit__grip--w { left: -7px; top: calc(50% - 6px); cursor: ew-resize; }
+.celledit__grip--ne { right: -7px; top: -7px; cursor: nesw-resize; }
+.celledit__grip--sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+.celledit__grip--nw { left: -7px; top: -7px; cursor: nwse-resize; }
+.celledit__grip--se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.celledit__drop {
+  position: absolute; right: 6px; bottom: 6px;
+  font: inherit; font-size: 12px; font-weight: 600;
+  padding: 5px 10px; border-radius: 6px; border: 1px solid var(--stop);
+  background: #fff; color: var(--stop); cursor: pointer;
+}
+
+/* ---------------------------------------------------- layout gallery */
+
+.gallery { position: relative; }
+.gallery__open {
+  display: flex; align-items: center; gap: 8px;
+  font: inherit; font-size: 12px; font-weight: 600;
+  padding: 3px 9px 3px 4px; border: 1px solid var(--line-strong); border-radius: 7px;
+  background: var(--surface); color: var(--ink-2); cursor: pointer;
+}
+.gallery__open:hover { border-color: var(--hot); color: var(--hot); }
+.gallery__away { position: fixed; inset: 0; z-index: 90; }
+.gallery__card {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 91;
+  width: 420px; max-height: 70vh; overflow: auto;
+  padding: 12px; background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; box-shadow: 0 20px 50px rgb(16 20 26 / 0.18);
+}
+.gallery__row { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.gallery__row:first-child { border-top: 0; padding-top: 0; }
+.gallery__row b { flex: 0 0 54px; font-size: 12px; font-weight: 600; color: var(--ink-2); padding-top: 4px; }
+.gallery__options { display: flex; flex-wrap: wrap; gap: 8px; }
+.gallery__option {
+  padding: 4px; border: 1px solid var(--line-strong); border-radius: 7px;
+  background: var(--surface); cursor: pointer;
+}
+.gallery__option:hover:not(:disabled) { border-color: var(--hot); }
+.gallery__option.is-on { border: 2px solid var(--hot); padding: 3px; }
+.gallery__option:disabled { opacity: 0.35; cursor: not-allowed; }
+.gallery__hint { margin: 8px 0 0; font-size: 11.5px; color: var(--muted); }
+.thumb {
+  display: grid; gap: 2px; width: 40px; aspect-ratio: 0.707; padding: 3px;
+  background: var(--paper, #f4f2ee); border-radius: 3px; position: relative; box-sizing: border-box;
+}
+.gallery__open .thumb { width: 22px; padding: 2px; gap: 1px; }
+.thumb i { background: #a9b8d6; border-radius: 1px; }
+.gallery__option.is-on .thumb i { background: var(--hot); }
+.thumb--free { display: block; }
+.thumb--free i { position: absolute; }
+
+/* A tile with more products than room. */
+.crowd { position: absolute; left: 6px; top: 6px; z-index: 3; }
+.crowd__chip {
+  font: inherit; font-size: 11px; font-weight: 600;
+  padding: 3px 8px; border-radius: 999px;
+  border: 1px solid var(--warn-line); background: var(--warn); color: var(--warn-ink);
+  cursor: pointer; white-space: nowrap;
+}
+.crowd__chip:hover { border-color: var(--hot); color: var(--hot); }
+.crowd__menu {
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 4; width: 250px;
+  display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 9px;
+  box-shadow: 0 14px 34px rgb(16 20 26 / 0.18);
+}
+.crowd__menu button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  font: inherit; font-size: 12.5px; font-weight: 600; text-align: left;
+  padding: 7px 9px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--surface); color: var(--ink-2); cursor: pointer;
+}
+.crowd__menu button:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.crowd__menu button:disabled { opacity: 0.5; cursor: default; }
+.crowd__menu em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--muted); }

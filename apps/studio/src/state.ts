@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import type {
-  Brand, CatalogDocument, CatalogWeek, DecorAnchor, Offer, PageBackground, PageDecoration,
+  Brand, CatalogDocument, CatalogWeek, DecorAnchor, Offer, PageBackground, PageDecoration, PageNote,
   PagePart, PageTemplate, PageTextOverride,
-  PackOverride, Placement, PartOverride, PlacementOverrides, TileArrangement, TilePart,
+  FrameLine, PackOverride, Placement, PartOverride, PlacementOverrides, SlotRole, TemplateSlot, TileArrangement, TilePart,
 } from '@incitio/schema';
 import {
   CatalogDocument as CatalogDocumentSchema,
@@ -14,6 +14,7 @@ import { groupOffers, notOnePhotograph, readPackSize } from '@incitio/schema';
 import { nextWeek, weekName, weekOf } from '@incitio/schema';
 import { bySeverity, measureFindings, readFindings, type Finding } from './findings.js';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
+import { packStyle } from '@incitio/renderer';
 import { freeSlots, growTemplate, grownId } from './grid.js';
 import * as api from './api.js';
 import { countPages } from './pdf.js';
@@ -23,6 +24,8 @@ import {
 } from './cluster-layout.js';
 import { inkOf, onWhite, WHOLE, type InkBox } from './ink.js';
 import { pool } from './pool.js';
+import { MOTIF_SUBJECT, measurePage, motifDecoration } from './backdropMeasure.js';
+import { chooseBackdrop, measureBackdrop } from './backdrop.js';
 import { placePrompt, type PlacePromptId } from '@incitio/curator/place-prompt';
 
 /**
@@ -233,6 +236,24 @@ export function referenceJobs(references: ReferenceFile[]): ReferenceJob[] {
 /** The three things that used to be strips above the page. */
 export type PanelKey = 'trin' | 'stemning' | 'sider';
 
+/**
+ * Which of the two screens is showing.
+ *
+ * `bog` is the whole avis as printed spreads — where you land, where
+ * problems are marked on the page they belong to, and where pages are
+ * reordered by dragging. `side` is one sheet, large, with the tray
+ * still docked so filling an empty cell is the same gesture it was on
+ * the overview.
+ *
+ * The editor had only the second view before, as one long column of
+ * sheets: to see whether the book worked you scrolled, and to compare
+ * page three with page four you could not.
+ */
+export type StudioView = 'bog' | 'side';
+
+/** Spreads, the way it prints — or one page at a time. */
+export type BookView = 'opslag' | 'sider';
+
 export interface StudioState {
   brands: api.BrandSummary[];
   brandId: string | null;
@@ -296,6 +317,36 @@ export interface StudioState {
    * meant to remove.
    */
   panel: PanelKey | null;
+  /** Which screen: the whole avis, or one page of it. */
+  view: StudioView;
+  /** The page `view: 'side'` is showing. */
+  openPageId: string | null;
+  /** Open a page, or go back to the book with null. */
+  openPage: (pageId: string | null) => void;
+  /**
+   * The page the canvas should scroll to, once. Set by `openPage` and
+   * the stepper; cleared by the canvas when it has scrolled there.
+   */
+  scrollToPageId: string | null;
+  clearScrollTo: () => void;
+  /**
+   * The page scrolled into view — the header follows it, but nothing
+   * scrolls, because the person already did.
+   */
+  seePage: (pageId: string) => void;
+  /** Step to the page before or after the open one. */
+  stepPage: (delta: number) => void;
+  /** Spreads or singles, in the book view. */
+  bookView: BookView;
+  setBookView: (bookView: BookView) => void;
+  /** Whether the four ways into a page are showing. */
+  addPagesOpen: boolean;
+  setAddPagesOpen: (open: boolean) => void;
+  /** The category the tray is filtered to, or null for all of them. */
+  trayFilter: string | null;
+  setTrayFilter: (category: string | null) => void;
+  /** When the open avis was last saved, for the header's quiet line. */
+  savedAt: string | null;
   /** Open it, or close it if it is the one already open. */
   togglePanel: (panel: PanelKey) => void;
   closePanel: () => void;
@@ -542,6 +593,29 @@ export interface StudioState {
    * its parts, and for the same reason.
    */
   selectedDecorId: string | null;
+  /** The free text on a page that is in hand — see `PageNote`. */
+  selectedNoteId: string | null;
+  /** The page whose cells are being dragged to size, if any. */
+  layoutEditPageId: string | null;
+  setLayoutEdit: (pageId: string | null) => void;
+  /**
+   * Give a page a layout of its own, with every cell in a box of its own
+   * — the boxes measured off the page as it is drawn, so nothing moves
+   * when editing begins. A layout the chain owns is copied, never
+   * changed: other pages and other weeks use it.
+   */
+  ownLayout: (pageId: string, rects: Record<string, { x: number; y: number; w: number; h: number }>) => void;
+  setCellRect: (pageId: string, slotId: string, rect: { x: number; y: number; w: number; h: number }, gesture?: string) => void;
+  /** A new empty cell on the page, where there is room. */
+  addCell: (pageId: string, rect: { x: number; y: number; w: number; h: number }) => void;
+  /** Take a cell off the page; its product goes to the reserve. */
+  removeCell: (pageId: string, slotId: string) => void;
+  /**
+   * Give a crowded cell the room of an empty neighbour: the two boxes
+   * become one and the empty cell goes. Needs the page's cells in boxes
+   * — see `ownLayout`, which the caller runs first.
+   */
+  mergeCells: (pageId: string, slotId: string, emptyId: string) => void;
   /**
    * Which single box of the selected tile is in hand.
    *
@@ -641,7 +715,19 @@ export interface StudioState {
    * with the key is not the person who started the server.
    */
   setImageKey: (key: string) => void;
-  decorate: () => Promise<void>;
+  /**
+   * Draw mood artwork. The motif is chosen from each page's own
+   * products by a text model — nobody has to write a prompt. Pass page
+   * ids to draw only those.
+   */
+  decorate: (pageIds?: string[]) => Promise<void>;
+  /**
+   * Paint each page's background picture — the page's own colour, a
+   * motif around the products and the words — and lay it under the
+   * whole sheet. Measured off the page as drawn, so the pages must be
+   * open. One undo for the lot.
+   */
+  drawBackdrops: (pageIds: string[]) => Promise<void>;
 
   setLibraryOpen: (open: boolean) => void;
   setLibrarySearch: (query: string) => void;
@@ -666,6 +752,33 @@ export interface StudioState {
   clearLibraryPicks: () => void;
   /** Fold one group of the library away, or open it again. */
   toggleLibraryGroup: (name: string) => void;
+  /**
+   * The chain's own pictures — balloons, flags, a paper texture.
+   *
+   * Uploaded by whoever makes this chain's avis and kept for the next
+   * one. Not brand data: nothing here is the chain's IDENTITY in the
+   * sense `CatalogDocument` refuses to copy, it is a drawer of files
+   * somebody put there, scoped to the chain that put them there.
+   */
+  uploads: api.LibraryImage[];
+  /** Which drawer the left panel is showing. */
+  drawer: 'varer' | 'billeder';
+  setDrawer: (drawer: 'varer' | 'billeder') => void;
+  refreshUploads: () => Promise<void>;
+  /** Put a file in the drawer without putting it on a page. */
+  addToLibrary: (file: File) => Promise<void>;
+  /** Take one out of the drawer. The file stays; pages keep printing it. */
+  removeFromLibrary: (ref: string) => Promise<void>;
+  /**
+   * Put a picture from the drawer on a page.
+   *
+   * `hvor` is chosen before the click, not after: a background and a
+   * picture lying on the sheet are two different things — one is under
+   * everything and fills the page, the other is pinned in a corner at
+   * a quarter of its width — and a control that landed the file and
+   * then asked would be asking too late.
+   */
+  placeFromLibrary: (pageId: string, ref: string, hvor: 'baggrund' | 'på siden') => void;
   /** Which page the next products land on. */
   setActivePage: (pageId: string | null) => void;
   /**
@@ -802,6 +915,12 @@ export interface StudioState {
   select: (offerId: string | null) => void;
   /** Arm a picture for dragging, or put it back down. */
   selectDecor: (decorId: string | null) => void;
+  /** Take a note in hand, or put it down. */
+  selectNote: (noteId: string | null) => void;
+  /** Lay a new note on a page, in the middle, and take it in hand. */
+  addNote: (pageId: string) => void;
+  updateNote: (pageId: string, noteId: string, patch: Partial<PageNote>, gesture?: string) => void;
+  removeNote: (pageId: string, noteId: string) => void;
   selectPart: (part: TilePart | null) => void;
   /**
    * Stand the tile's own cutouts up the way a composed picture stands.
@@ -844,6 +963,14 @@ export interface StudioState {
    * round trip, look again.
    */
   standUpOneCluster: (offerId: string) => Promise<void>;
+  /**
+   * One packshot of several variants — three bottles in one picture —
+   * cut into one product per variant, then stood up like any cluster.
+   * The variants become members of the offer, so nothing about its
+   * price or its place on the page changes; only the artwork can now
+   * be arranged product by product.
+   */
+  splitAndStandUp: (offerId: string) => Promise<void>;
   /**
    * Put one picture on a tile as its whole artwork.
    *
@@ -994,6 +1121,20 @@ export interface StudioState {
    * a gesture for the same reason `updatePageImage` does: dragging a
    * slider fires on every pixel and must be one undo step.
    */
+  /**
+   * Put this page's backdrop under other pages too.
+   *
+   * The thing that makes a background a page setting rather than a
+   * chore: an avis has one look, and setting it a page at a time is a
+   * file picker, four sliders and a scroll, six times over. Copies the
+   * whole record — the picture AND what was decided about it — so the
+   * other pages get the fit and the strength that were tuned here.
+   *
+   * Never onto an image page: there `background` IS the page's own
+   * artwork, and writing over it would replace the picture somebody
+   * put in the book rather than decorating it.
+   */
+  spreadBackground: (pageId: string, reach: 'alle' | 'resten') => void;
   setPageBackground: (
     pageId: string,
     patch: Partial<PageBackground> | null,
@@ -1037,7 +1178,13 @@ export interface StudioState {
    * `benched` below — so nothing is destroyed by turning a six-up page
    * into a three-up one, and turning it back finds them again.
    */
-  setPageCount: (pageId: string, count: number) => void;
+  setPageCount: (pageId: string, count: number, templateId?: string) => void;
+  /**
+   * Put a page on one of the standard layouts — see `standardLayouts`.
+   * The layout travels with the document, like any layout it uses that
+   * the chain does not own.
+   */
+  applyLayout: (pageId: string, template: PageTemplate) => void;
   /** Move an offer into this page's leading slot. */
   focusOffer: (pageId: string, offerId: string) => void;
   /** Offers built into this document that no page is currently showing. */
@@ -1059,6 +1206,16 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
  *
  * First wins, so a run's own layouts resolve before the chain's.
  */
+/**
+ * A variant cut out of, or taken from, one offer's pictures so the tile
+ * can be stood up — see `splitAndStandUp`. It is part of that offer's
+ * artwork, never a product of its own: it has no page, no reserve and no
+ * place in the list.
+ */
+export function isVariantPiece(offerId: string): boolean {
+  return /~v\d+$/.test(offerId);
+}
+
 function withTemplates(brand: Brand, templates: PageTemplate[]): Brand {
   const all = new Map<string, PageTemplate>();
   for (const template of [...templates, ...brand.templates]) {
@@ -1724,11 +1881,314 @@ function seatOrder(page: CatalogPage, brand: Brand): Placement[] {
  * Corrections travel with the offer. Someone who nudged a packshot and
  * then tried three layouts should not lose the nudge to the second one.
  */
-function reseat(page: CatalogPage, brand: Brand, next: PageTemplate): Placement[] {
+/** A cell's size on the page, in shares of it, and what it is for. */
+export type CellSize = { w: number; h: number; role: SlotRole };
+
+function cellSize(brand: Brand, templates: PageTemplate[], templateId: string, slotId: string): CellSize | null {
+  const template = templates.find((t) => t.id === templateId) ?? resolveTemplate(brand, templateId);
+  const slot = template?.slots.find((entry) => entry.id === slotId);
+  if (!template || !slot) return null;
+  if (slot.rect) return { w: slot.rect.w, h: slot.rect.h, role: slot.role };
+  const cell = slotCells(template, brand.pageAspect).get(slotId);
+  if (!cell) return null;
+  return { w: cell.width, h: (cell.width * brand.pageAspect) / cell.aspect, role: slot.role };
+}
+
+/**
+ * A tile's own corrections, carried into a cell of another size.
+ *
+ * The products in a cluster are nudged in PAGE percent while the
+ * pictures themselves grow and shrink with the cell — so a tile moved to
+ * a bigger cell kept its nudges and lost its arrangement: the products
+ * grew, their offsets did not, and they slid over each other. Scaling
+ * the offsets by the change in the cell's size keeps every product where
+ * it was relative to the tile.
+ *
+ * The base arrangement is pinned for the same reason. Left to itself it
+ * is picked by the cell's ROLE, so a tile moved from a hero cell to an
+ * ordinary one changed its whole arrangement under the nudges laid on it.
+ */
+export function carryOverrides(
+  overrides: Placement['overrides'],
+  offer: Offer | undefined,
+  from: CellSize | null,
+  to: CellSize | null,
+): Placement['overrides'] {
+  if (!from || !to || from.w <= 0 || from.h <= 0) return overrides;
+  const sx = to.w / from.w;
+  const sy = to.h / from.h;
+  const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
+  const pack = Object.fromEntries(Object.entries(overrides.pack ?? {}).map(([key, item]) => [key, {
+    ...item, offsetX: clamp(item.offsetX * sx, 100), offsetY: clamp(item.offsetY * sy, 100),
+  }]));
+  const parts = Object.fromEntries(Object.entries(overrides.parts ?? {}).map(([key, part]) => [key, {
+    ...part, offsetX: clamp(part.offsetX * sx, 25), offsetY: clamp(part.offsetY * sy, 25),
+  }]));
+  const touched = Object.keys(overrides.pack ?? {}).length > 0;
+  const count = offer?.imagePack.length ?? 0;
+  const arrangement = overrides.arrangement
+    ?? (touched && offer && count > 1 ? packStyle(offer.id, count, from.role) : null);
+  return { ...overrides, pack, parts, arrangement } as Placement['overrides'];
+}
+
+/**
+ * A chain layout laid into a page that was read off a publication.
+ *
+ * Such a page has its cells in measured boxes, under the publication's
+ * own headline and banner, and each cell carries the publication's own
+ * design for the tile in it — where the packshot, the price mark and the
+ * words sit (`TemplateSlot.frame`). Swapped for a chain layout as it
+ * stands, the grid started at the top of the sheet, over the headline,
+ * every tile fell back to the chain's own design, and the lead became
+ * the chain's red feature band — the page stopped looking like itself.
+ *
+ * So the chain's layout is drawn INTO the area the page's cells already
+ * use, and every product takes its own design with it: a frame is in
+ * shares of its cell, so it fits a cell of any size. A product arriving
+ * in a cell with no frame of its own borrows the page's commonest one.
+ * The result is a layout of the page's own, like one shaped by hand.
+ */
+function fitLayout(
+  document: CatalogDocument,
+  brand: Brand,
+  page: CatalogPage,
+  next: PageTemplate,
+  placements: Placement[],
+): { template: PageTemplate; placements: Placement[]; notes: CatalogPage['notes']; decorations: CatalogPage['decorations'] } | null {
+  const current = document.templates.find((t) => t.id === page.templateId);
+  if (!current || !current.slots.every((slot) => slot.rect)) return null;
+  const rects = current.slots.map((slot) => slot.rect!);
+  const x0 = Math.min(...rects.map((r) => r.x));
+  const y0 = Math.min(...rects.map((r) => r.y));
+  const x1 = Math.max(...rects.map((r) => r.x + r.w));
+  const y1 = Math.max(...rects.map((r) => r.y + r.h));
+  // Kept on the paper even when a measured hero ran off it.
+  const box = { x: Math.max(0.02, x0), y: Math.max(0.02, y0), w: 0, h: 0 };
+  box.w = Math.min(0.98, x1) - box.x;
+  box.h = Math.min(0.98, y1) - box.y;
+
+  const columns = next.areas[0]!.split(' ').length;
+  const rows = next.areas.length;
+  const gap = 0.014;
+  const cw = (box.w - gap * (columns - 1)) / columns;
+  const rh = (box.h - gap * (rows - 1)) / rows;
+  const grid = next.areas.map((row) => row.split(' '));
+
+  // Frames by the product that wore them — with the cell they were
+  // measured in — and the page's commonest one.
+  type Worn = { frame: NonNullable<TemplateSlot['frame']>; rect: NonNullable<TemplateSlot['rect']> };
+  const worn = (slot: TemplateSlot | undefined): Worn | undefined =>
+    slot?.frame && slot.rect ? { frame: slot.frame, rect: slot.rect } : undefined;
+  const frameOf = new Map(page.placements.map((placement) => [
+    placement.offerId,
+    worn(current.slots.find((slot) => slot.id === placement.slotId)),
+  ]));
+  // Every frame the document's own layouts carry — this page's first, then
+  // the rest of the publication's, which share its design.
+  const frames = [
+    ...current.slots.map(worn),
+    ...document.templates.filter((t) => t.id !== current.id).flatMap((t) => t.slots.map(worn)),
+  ].filter((entry): entry is Worn => Boolean(entry));
+  const common = frames[Math.floor(Math.min(frames.length, current.slots.length) / 2)];
+
+  /*
+   * A frame is drawn for a SHAPE. A hero's — packshot on the left, words in
+   * a narrow column on the right — squeezed into a square cell put the
+   * words in a sliver and the products in a corner. So a product keeps its
+   * own frame only while the new cell is roughly the shape it was made
+   * for; otherwise it borrows the page's frame whose cell is the nearest
+   * shape, which is how that page lays out a cell like this one.
+   */
+  // Width over height as printed, for a cell in shares of the page.
+  const printed = (rect: { w: number; h: number }) => (rect.w / rect.h) * brand.pageAspect;
+  // The shape a frame was drawn for: stated, or read off its words — set
+  // beside the packshot is a frame for a wide cell, beneath it a square one.
+  const designed = (entry: Worn) => {
+    const f = entry.frame;
+    if (f.shape) return f.shape;
+    const beside = f.words && f.words.x >= f.media.x + f.media.w * 0.7;
+    return beside ? 2 : 1.1;
+  };
+  const shapeGap = (entry: Worn, rect: { w: number; h: number }) =>
+    Math.abs(Math.log(designed(entry) / printed(rect)));
+  const frameFor = (own: Worn | undefined, rect: { w: number; h: number }): Worn | undefined => {
+    if (own && shapeGap(own, rect) < Math.log(1.35)) return own;
+    const nearest = [...frames].sort((a, b) => shapeGap(a, rect) - shapeGap(b, rect))[0];
+    if (!nearest) return own ?? common;
+    if (own && shapeGap(own, rect) <= shapeGap(nearest, rect)) return own;
+    return nearest;
+  };
+
+  /*
+   * The frame's type is set in shares of the PAGE, so in a smaller cell
+   * the price and the words stayed their old size and burst out of it.
+   * Scaled by the change in the cell's area — not its tighter side, which
+   * shrank the copy a little further at every change of layout — the
+   * copy keeps its proportion to the tile, and grows back with it.
+   */
+  const resized = (entry: Worn, rect: { w: number; h: number }): Worn['frame'] => {
+    const k = Math.max(0.45, Math.min(1.6, Math.sqrt((rect.w * rect.h) / (entry.rect.w * entry.rect.h))));
+    if (Math.abs(k - 1) < 0.02) return entry.frame;
+    const line = (l: FrameLine): FrameLine => ({
+      ...l,
+      size: Math.min(0.5, l.size * k),
+      ...(l.margin ? { margin: l.margin.map((m) => m * k) } : {}),
+      ...(typeof l.width === 'number' ? { width: Math.min(1, l.width * k) } : {}),
+    });
+    const f = entry.frame;
+    return {
+      ...f,
+      ...(f.type ? { type: { name: f.type.name * k, body: f.type.body * k, figure: Math.min(0.5, f.type.figure * k), pack: f.type.pack * k } } : {}),
+      ...(f.priceLines ? { priceLines: f.priceLines.map(line) } : {}),
+      ...(f.badges ? { badges: f.badges.map((b) => ({ ...b, lines: b.lines.map(line) })) } : {}),
+    };
+  };
+
+  const slots = next.slots.map((slot) => {
+    let c0 = Infinity; let c1 = -1; let r0 = Infinity; let r1 = -1;
+    grid.forEach((row, r) => row.forEach((id, c) => {
+      if (id !== slot.id) return;
+      c0 = Math.min(c0, c); c1 = Math.max(c1, c); r0 = Math.min(r0, r); r1 = Math.max(r1, r);
+    }));
+    const rect = {
+      x: box.x + c0 * (cw + gap),
+      y: box.y + r0 * (rh + gap),
+      w: (c1 - c0 + 1) * cw + (c1 - c0) * gap,
+      h: (r1 - r0 + 1) * rh + (r1 - r0) * gap,
+    };
+    const offerId = placements.find((placement) => placement.slotId === slot.id)?.offerId;
+    const own = offerId ? frameOf.get(offerId) : undefined;
+    const borrowed = frameFor(own, rect);
+    /*
+     * A borrowed frame lends its LAYOUT; the price mark stays the
+     * product's own — "Ugens køb" on its red roundel is what the offer
+     * is, and it should not turn into the next cell's white bubble.
+     */
+    const source = borrowed && own && borrowed !== own
+      ? {
+        ...borrowed,
+        frame: {
+          ...borrowed.frame,
+          splash: own.frame.splash,
+          priceInk: own.frame.priceInk,
+          priceLines: own.frame.priceLines,
+          priceStack: own.frame.priceStack,
+          ...(own.frame.type && borrowed.frame.type
+            ? { type: { ...borrowed.frame.type, figure: own.frame.type.figure * Math.sqrt((borrowed.rect.w * borrowed.rect.h) / (own.rect.w * own.rect.h)), pack: own.frame.type.pack * Math.sqrt((borrowed.rect.w * borrowed.rect.h) / (own.rect.w * own.rect.h)) } }
+            : {}),
+        },
+      }
+      : borrowed;
+    const frame = source ? { ...resized(source, rect), shape: designed(borrowed!) } : undefined;
+    return {
+      ...slot,
+      // The chain's red band is its own furniture, not this page's.
+      role: slot.role === 'feature' ? 'hero' as const : slot.role,
+      rect,
+      ...(frame ? { frame } : {}),
+    };
+  });
+
+  /*
+   * What the page laid ON a product goes with it: "Storkøb min. 1,3 kg"
+   * belongs to the bananas, the splash of fries to the potatoes. A note
+   * or a picture whose middle sat in a product's old cell keeps its place
+   * relative to that cell in the product's new one; everything else — the
+   * headline, the banner — stays where the page put it.
+   */
+  const moves = page.placements.map((placement) => {
+    const from = current.slots.find((slot) => slot.id === placement.slotId)?.rect;
+    const to = slots.find((slot) => slot.id === placements.find((p) => p.offerId === placement.offerId)?.slotId)?.rect;
+    return from && to ? { from, to } : null;
+  }).filter((move): move is NonNullable<typeof move> => Boolean(move));
+  const carrierOf = (cx: number, cy: number) => moves.find(({ from }) =>
+    cx >= from.x && cx <= from.x + from.w && cy >= from.y && cy <= from.y + from.h);
+  const clampPos = (v: number) => Math.min(1.5, Math.max(-0.5, v));
+  const notes = (page.notes ?? []).map((note) => {
+    if (note.behind) return note;
+    const h = note.h ?? 0.03;
+    const move = carrierOf(note.x + note.w / 2, note.y + h / 2);
+    if (!move) return note;
+    const sx = move.to.w / move.from.w;
+    const sy = move.to.h / move.from.h;
+    const k = Math.sqrt(sx * sy);
+    return {
+      ...note,
+      x: clampPos(move.to.x + (note.x - move.from.x) * sx),
+      y: clampPos(move.to.y + (note.y - move.from.y) * sy),
+      w: Math.min(2, Math.max(0.02, note.w * k)),
+      ...(note.h !== null ? { h: Math.min(2, Math.max(0.01, note.h * k)) } : {}),
+      size: Math.min(0.3, Math.max(0.005, note.size * k)),
+    };
+  });
+  const decorations = page.decorations.map((decor) => {
+    if (!decor.rect || decor.id.startsWith('pub-masthead')) return decor;
+    const r = decor.rect;
+    const move = carrierOf(r.x + r.w / 2, r.y + r.h / 2);
+    if (!move) return decor;
+    const sx = move.to.w / move.from.w;
+    const sy = move.to.h / move.from.h;
+    const k = Math.sqrt(sx * sy);
+    return {
+      ...decor,
+      rect: {
+        x: clampPos(move.to.x + (r.x - move.from.x) * sx),
+        y: clampPos(move.to.y + (r.y - move.from.y) * sy),
+        w: Math.min(2, Math.max(0.01, r.w * k)),
+        h: Math.min(2, Math.max(0.01, r.h * k)),
+      },
+    };
+  });
+
+  const id = `own/${page.id}`;
+  const template: PageTemplate = { ...next, id, name: `${next.name} — i sidens egen stil`, slots };
+  const templates = [...document.templates.filter((t) => t.id !== id), template];
+  return {
+    template,
+    notes,
+    decorations,
+    placements: placements.map((placement) => {
+      const before = page.placements.find((entry) => entry.offerId === placement.offerId);
+      return {
+        ...placement,
+        overrides: before
+          ? carryOverrides(
+            before.overrides,
+            document.offers.find((offer) => offer.id === placement.offerId),
+            cellSize(brand, document.templates, page.templateId, before.slotId),
+            cellSize(brand, templates, id, placement.slotId),
+          )
+          : placement.overrides,
+      };
+    }),
+  };
+}
+
+function reseat(
+  page: CatalogPage,
+  brand: Brand,
+  next: PageTemplate,
+  document?: CatalogDocument,
+): Placement[] {
   const slots = slotAssignmentOrder(next);
+  const templates = [...(document?.templates ?? []), next];
   return seatOrder(page, brand)
     .slice(0, slots.length)
-    .map((placement, index) => ({ ...placement, slotId: slots[index]!.id }));
+    .map((placement, index) => {
+      const slotId = slots[index]!.id;
+      if (!document) return { ...placement, slotId };
+      const offer = document.offers.find((entry) => entry.id === placement.offerId);
+      return {
+        ...placement,
+        slotId,
+        overrides: carryOverrides(
+          placement.overrides,
+          offer,
+          cellSize(brand, templates, page.templateId, placement.slotId),
+          cellSize(brand, templates, next.id, slotId),
+        ),
+      };
+    });
 }
 
 export const useStudio = create<StudioState>((set, get) => {
@@ -1831,10 +2291,25 @@ export const useStudio = create<StudioState>((set, get) => {
     if (!document) return;
     const continues = name !== undefined && name === gesture;
     gesture = name ?? null;
+    const next = change(document);
     set({
       ...(continues ? {} : { past: [...past.slice(-29), document], future: [] }),
-      document: change(document),
+      document: next,
+      ...templatesFollow(document, next),
     });
+  }
+
+  /*
+   * The chain carries the document's own layouts folded in — that is
+   * how a page on one of them renders at all — and the fold is a copy.
+   * When an edit changes the document's layouts (a cell dragged to a
+   * new size), the chain's copy has to follow or the page keeps drawing
+   * the old one.
+   */
+  function templatesFollow(before: CatalogDocument, after: CatalogDocument): Partial<StudioState> {
+    const brand = get().brand;
+    if (!brand || before.templates === after.templates) return {};
+    return { brand: withTemplates(brand, after.templates) };
   }
 
   /**
@@ -2207,7 +2682,9 @@ export const useStudio = create<StudioState>((set, get) => {
       }
 
       if (stoodUp.length === 0) {
-        set({ busy: null, error: notes.join(' · ') || 'ingen af klyngerne kunne stilles op' });
+        // The spinner on each tile goes too — a failed run that leaves
+        // "stiller op…" behind looks like one still going.
+        set({ busy: null, standingUp: [], error: notes.join(' · ') || 'ingen af klyngerne kunne stilles op' });
         return;
       }
 
@@ -2351,7 +2828,16 @@ export const useStudio = create<StudioState>((set, get) => {
     document: null,
     week: rememberedWeek(),
     askWeek: null,
-    weekOnly: true,
+    weekOnly: false,
+    view: 'bog',
+    openPageId: null,
+    scrollToPageId: null,
+    bookView: 'opslag',
+    addPagesOpen: false,
+    trayFilter: null,
+    savedAt: null,
+    uploads: [],
+    drawer: 'varer',
     panel: null,
     standingUp: [],
     findings: [],
@@ -2397,6 +2883,8 @@ export const useStudio = create<StudioState>((set, get) => {
     layoutAppend: false,
     selectedOfferId: null,
     selectedDecorId: null,
+    selectedNoteId: null,
+    layoutEditPageId: null,
     selectedPart: null,
     selectedPack: null,
     ghosts: [],
@@ -2431,6 +2919,34 @@ export const useStudio = create<StudioState>((set, get) => {
       pending?.then();
       get().refreshFindings();
     },
+
+    clearScrollTo: () => set({ scrollToPageId: null }),
+    seePage: (pageId) => {
+      if (get().openPageId === pageId) return;
+      set({ openPageId: pageId, activePageId: pageId });
+    },
+
+    openPage: (pageId) => set({
+      view: pageId ? 'side' : 'bog',
+      openPageId: pageId,
+      scrollToPageId: pageId,
+      // The page you opened is the page the tray deals onto. One idea,
+      // not two — see `setActivePage`.
+      ...(pageId ? { activePageId: pageId } : {}),
+      addPagesOpen: false,
+    }),
+
+    stepPage(delta) {
+      const { document, openPageId } = get();
+      const pages = document?.pages ?? [];
+      const at = pages.findIndex((page) => page.id === openPageId);
+      const next = pages[at + delta];
+      if (next) get().openPage(next.id);
+    },
+
+    setBookView: (bookView) => set({ bookView }),
+    setAddPagesOpen: (addPagesOpen) => set({ addPagesOpen }),
+    setTrayFilter: (trayFilter) => set({ trayFilter }),
 
     togglePanel: (panel) => set({ panel: get().panel === panel ? null : panel }),
     closePanel: () => set({ panel: null }),
@@ -2607,6 +3123,7 @@ export const useStudio = create<StudioState>((set, get) => {
           sample?.path ? api.fetchFeed(sample.path) : Promise.resolve(null),
         ]);
         void get().refreshCatalogues();
+        void get().refreshUploads();
         const parked = parkedWork(brandId);
         set({
           brandId,
@@ -2698,7 +3215,9 @@ export const useStudio = create<StudioState>((set, get) => {
           feed: feed.text,
           maxPages,
           skipCuration: true,
-          ...(week ? { week } : {}),
+          // The server drops offers outside the week it is given. While
+          // the week filter is off (testing), every product goes in.
+          ...(week && get().weekOnly ? { week } : {}),
           // A fresh seed on every click: pressing the button again is a
           // request for another take, and with a fixed seed the second
           // click returns the first click's pages.
@@ -2764,7 +3283,7 @@ export const useStudio = create<StudioState>((set, get) => {
       set({ busy: 'Gemmer…', error: null });
       try {
         await api.saveCatalogue(brandId, document, 'manuel');
-        set({ busy: null, note: 'Gemt' });
+        set({ busy: null, note: 'Gemt', savedAt: new Date().toISOString() });
         await get().refreshCatalogues();
       } catch (error) {
         set({ busy: null, error: message(error) });
@@ -3213,25 +3732,150 @@ export const useStudio = create<StudioState>((set, get) => {
      * failure and is usually the model correctly refusing to put a
      * photograph of toilet paper behind the toilet paper.
      */
-    async decorate() {
+    async drawBackdrops(pageIds) {
+      const { brandId, document, decorStyle } = get();
+      if (!brandId || !document) return;
+
+      const empty: number[] = [];
+      const tasks = pageIds.map((pageId) => {
+        const page = document.pages.find((entry) => entry.id === pageId);
+        if (!page || page.kind === 'image') return null;
+        const measure = measurePage(pageId, page.ground);
+        if (!measure) return null;
+        const offers = page.placements
+          .map((placement) => document.offers.find((entry) => entry.id === placement.offerId))
+          .filter((offer): offer is Offer => Boolean(offer));
+        if (!measure.spots || measure.spots.length === 0) {
+          empty.push(document.pages.indexOf(page) + 1);
+          return null;
+        }
+        return { page, measure, offers };
+      }).filter((task): task is NonNullable<typeof task> => Boolean(task));
+      if (tasks.length === 0) {
+        set({
+          error: empty.length > 0
+            ? `Side ${empty.join(', ')} har ingen fri plads at tegne i — gør en flise mindre eller fjern en vare`
+            : 'fandt ingen sider at tegne til — åbn siden først',
+        });
+        return;
+      }
+
+      let finished = 0;
+      set({ busy: `Tegner motiver… 0/${tasks.length}`, error: null, note: null });
+      const failures: string[] = [];
+      const drawn = await pool(tasks, 3, async (task) => {
+        const number = document.pages.indexOf(task.page) + 1;
+        // What the page is about: its heading, else its leading offer.
+        const about = task.page.title.trim() || task.offers[0]?.name || 'tilbud';
+        try {
+          const reply = await api.drawBackdrop(brandId, {
+            ...task.measure,
+            offer: about,
+            /*
+             * The page's lead product only. Every name on the page made
+             * the model show every product — schnitzel, meatballs and a
+             * plate of mash on one freezer page. One motif is the point.
+             */
+            products: task.offers[0] ? [task.offers[0].name] : [],
+            ...(decorStyle.trim() ? { style: decorStyle.trim() } : {}),
+          });
+          const stamp = Date.now().toString(36);
+          const under = reply.motifs.length;
+          const result = {
+            pageId: task.page.id,
+            /*
+             * Each motif exactly where the model put it — except one
+             * that landed under a product anyway, which nobody would see.
+             */
+            decorations: reply.motifs
+              .filter((motif) => {
+                const m = motif.spot;
+                const area = Math.max(1e-6, (m.x1 - m.x0) * (m.y1 - m.y0));
+                const hidden = task.measure.productBoxes.reduce((sum, r) => sum
+                  + Math.max(0, Math.min(m.x1, r.x1) - Math.max(m.x0, r.x0))
+                  * Math.max(0, Math.min(m.y1, r.y1) - Math.max(m.y0, r.y0)), 0);
+                return hidden / area < 0.5;
+              })
+              .map((motif, index) => motifDecoration(
+                motif, task.measure.ratio, `motif-${stamp}-${index}`, `${MOTIF_SUBJECT} ${about}`, 0,
+              )),
+          };
+          // Said, not reported as done: nothing landed where it can be seen.
+          if (result.decorations.length === 0) {
+            failures.push(`Side ${number}: ${under > 0 ? 'motivet landede under varerne' : 'intet motiv'} — prøv igen`);
+            return null;
+          }
+          return result;
+        } catch (error) {
+          failures.push(`Side ${number}: ${message(error)}`);
+          return null;
+        } finally {
+          finished += 1;
+          set({ busy: `Tegner motiver… ${finished}/${tasks.length}` });
+        }
+      });
+
+      const done = drawn
+        .map((entry) => (entry.ok ? entry.value : null))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+      if (done.length > 0) {
+        gesture = null;
+        /*
+         * Laid on the page as decorations — movable like every other
+         * picture. Drawing again replaces the page's earlier motifs
+         * rather than piling new ones on them.
+         */
+        mutate((doc) => ({
+          ...doc,
+          pages: doc.pages.map((page) => {
+            const mine = done.find((entry) => entry.pageId === page.id);
+            if (!mine) return page;
+            // First in the list, so the page's own pictures — its logo,
+            // its heading artwork — are painted over them.
+            const kept = page.decorations.filter((decor) => !decor.id.startsWith('motif-'));
+            return { ...page, decorations: [...mine.decorations, ...kept].slice(0, 12) };
+          }),
+        }));
+      }
+      set({
+        busy: null,
+        note: done.length > 0
+          ? `${count(done.length, 'side', 'sider')} fik motiver — tag dem i hånden under siden for at flytte dem`
+          : null,
+        error: failures.length > 0 ? failures.slice(0, 3).join(' · ') : null,
+      });
+    },
+
+    async decorate(pageIds) {
       const { brandId, document, decorNote, decorStyle, past } = get();
       if (!brandId || !document) return;
 
-      set({ busy: 'Gemini tegner…', error: null, note: null });
+      set({ busy: 'Finder et motiv i sidens varer og tegner det…', error: null, note: null });
       try {
         const reply = await api.decorateDocument(brandId, document, {
           brief: decorNote,
           style: decorStyle,
+          ...(pageIds ? { pageIds } : {}),
         });
+        const number = (pageId: string) =>
+          reply.document.pages.findIndex((page) => page.id === pageId) + 1;
         set({
           document: reply.document,
           past: [...past.slice(-29), document],
           future: [],
           busy: null,
           note: [
-            `${count(reply.drawn, 'side', 'sider')} fik et stemningsbillede`,
+            // What was drawn, by name — "Side 3: kaffebønner" says why the
+            // picture is there; a count does not.
+            reply.subjects && reply.subjects.length > 0 && reply.subjects.length <= 4
+              ? reply.subjects.map((entry) => `Side ${number(entry.pageId)}: ${entry.subject}`).join(' · ')
+              : `${count(reply.drawn, 'side', 'sider')} fik et stemningsbillede`,
             ...(reply.cached > 0 ? [`${reply.cached} fra cache`] : []),
-            ...(reply.skipped > 0 ? [`${reply.skipped} bevidst uden`] : []),
+            ...(reply.skipped > 0
+              ? [pageIds?.length === 1 && reply.drawn === 0
+                ? 'intet oplagt motiv i sidens varer'
+                : `${reply.skipped} bevidst uden`]
+              : []),
           ].join(' · '),
           // Reported, not thrown: pages that DID get artwork are kept.
           ...(reply.errors.length > 0
@@ -3255,7 +3899,7 @@ export const useStudio = create<StudioState>((set, get) => {
         // A picture and a tile are never both in hand: the arrow keys
         // would have two things to move and the inspector two things to
         // describe.
-        ? { selectedOfferId: offerId, selectedDecorId: null, selectedText: null }
+        ? { selectedOfferId: offerId, selectedDecorId: null, selectedText: null, selectedNoteId: null }
         : {
           selectedOfferId: offerId,
           selectedPart: null,
@@ -3263,15 +3907,213 @@ export const useStudio = create<StudioState>((set, get) => {
           selectedPack: null,
           selectedDecorId: null,
           selectedText: null,
+          selectedNoteId: null,
         },
     ),
 
     selectDecor: (decorId) => set({
       selectedDecorId: decorId,
       ...(decorId
-        ? { selectedOfferId: null, selectedPart: null, selectedPack: null, selectedText: null }
+        ? { selectedOfferId: null, selectedPart: null, selectedPack: null, selectedText: null, selectedNoteId: null }
         : {}),
     }),
+
+    setLayoutEdit: (pageId) => set({
+      layoutEditPageId: pageId,
+      ...(pageId ? { selectedOfferId: null, selectedPart: null, selectedPack: null, selectedDecorId: null, selectedNoteId: null } : {}),
+    }),
+
+    ownLayout(pageId, rects) {
+      const { document, brand } = get();
+      const page = document?.pages.find((entry) => entry.id === pageId);
+      if (!document || !brand || !page) return;
+      const template = document.templates.find((t) => t.id === page.templateId)
+        ?? resolveTemplate(brand, page.templateId);
+      if (!template) return;
+      const owned = document.templates.some((t) => t.id === template.id);
+      const complete = template.slots.every((slot) => slot.rect);
+      if (owned && complete) return;
+
+      const withRects = {
+        ...template,
+        slots: template.slots.map((slot) => (slot.rect ? slot : rects[slot.id] ? { ...slot, rect: rects[slot.id]! } : slot)),
+      };
+      if (owned) {
+        mutate((doc) => ({ ...doc, templates: doc.templates.map((t) => (t.id === template.id ? withRects : t)) }));
+        return;
+      }
+      const id = `own/${pageId}`;
+      const number = document.pages.indexOf(page) + 1;
+      const copy = { ...withRects, id, name: `Side ${number} — egen opsætning` };
+      mutate((doc) => ({
+        ...doc,
+        templates: [...doc.templates.filter((t) => t.id !== id), copy],
+        pages: doc.pages.map((entry) => (entry.id === pageId ? { ...entry, templateId: id } : entry)),
+      }));
+    },
+
+    setCellRect(pageId, slotId, rect, name) {
+      const page = get().document?.pages.find((entry) => entry.id === pageId);
+      if (!page) return;
+      const was = get().document?.templates.find((t) => t.id === page.templateId)
+        ?.slots.find((slot) => slot.id === slotId);
+      mutate((doc) => ({
+        ...doc,
+        templates: doc.templates.map((t) => (t.id === page.templateId
+          ? { ...t, slots: t.slots.map((slot) => (slot.id === slotId ? { ...slot, rect } : slot)) }
+          : t)),
+        // The tile in the cell keeps its arrangement as the cell grows.
+        pages: doc.pages.map((entry) => (entry.id === pageId && was?.rect
+          ? {
+            ...entry,
+            placements: entry.placements.map((placement) => (placement.slotId === slotId
+              ? {
+                ...placement,
+                overrides: carryOverrides(
+                  placement.overrides,
+                  doc.offers.find((offer) => offer.id === placement.offerId),
+                  { w: was.rect!.w, h: was.rect!.h, role: was.role },
+                  { w: rect.w, h: rect.h, role: was.role },
+                ),
+              }
+              : placement)),
+          }
+          : entry)),
+      }), name ?? `cell:${pageId}:${slotId}`);
+    },
+
+    addCell(pageId, rect) {
+      const page = get().document?.pages.find((entry) => entry.id === pageId);
+      const template = get().document?.templates.find((t) => t.id === page?.templateId);
+      if (!page || !template) return;
+      const used = new Set(template.slots.map((slot) => slot.id));
+      const id = [...'abcdefghijklmnopqrstuvwxyz'].map((c) => c)
+        .concat([...'abcdefghijklmnopqrstuvwxyz'].map((c) => `x${c}`))
+        .find((candidate) => !used.has(candidate));
+      if (!id) return;
+      const width = template.areas[0]!.split(' ').length;
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        templates: doc.templates.map((t) => (t.id === template.id
+          ? {
+            ...t,
+            // A row of its own in the grid underneath, so the layout stays
+            // one a grid can describe; the box is what places it.
+            areas: [...t.areas, new Array(width).fill(id).join(' ')],
+            slots: [...t.slots, { id, role: 'standard' as const, bleed: 1, rect }],
+          }
+          : t)),
+      }));
+    },
+
+    removeCell(pageId, slotId) {
+      const page = get().document?.pages.find((entry) => entry.id === pageId);
+      const template = get().document?.templates.find((t) => t.id === page?.templateId);
+      if (!page || !template || template.slots.length <= 1) return;
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        templates: doc.templates.map((t) => (t.id === template.id
+          ? {
+            ...t,
+            areas: t.areas.map((row) => row.split(' ').map((cell) => (cell === slotId ? '.' : cell)).join(' ')),
+            slots: t.slots.filter((slot) => slot.id !== slotId),
+          }
+          : t)),
+        pages: doc.pages.map((entry) => (entry.id === pageId
+          ? { ...entry, placements: entry.placements.filter((placement) => placement.slotId !== slotId) }
+          : entry)),
+      }));
+    },
+
+    mergeCells(pageId, slotId, emptyId) {
+      const page = get().document?.pages.find((entry) => entry.id === pageId);
+      const template = get().document?.templates.find((t) => t.id === page?.templateId);
+      const a = template?.slots.find((slot) => slot.id === slotId)?.rect;
+      const b = template?.slots.find((slot) => slot.id === emptyId)?.rect;
+      if (!page || !template || !a || !b) return;
+      const x = Math.min(a.x, b.x);
+      const y = Math.min(a.y, b.y);
+      const union = { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+      const role = template.slots.find((slot) => slot.id === slotId)!.role;
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        pages: doc.pages.map((entry) => (entry.id === pageId
+          ? {
+            ...entry,
+            placements: entry.placements.map((placement) => (placement.slotId === slotId
+              ? {
+                ...placement,
+                overrides: carryOverrides(
+                  placement.overrides,
+                  doc.offers.find((offer) => offer.id === placement.offerId),
+                  { w: a.w, h: a.h, role }, { w: union.w, h: union.h, role },
+                ),
+              }
+              : placement)),
+          }
+          : entry)),
+        templates: doc.templates.map((t) => (t.id === template.id
+          ? {
+            ...t,
+            areas: t.areas.map((row) => row.split(' ').map((cell) => (cell === emptyId ? '.' : cell)).join(' ')),
+            slots: t.slots
+              .filter((slot) => slot.id !== emptyId)
+              .map((slot) => (slot.id === slotId ? { ...slot, rect: union } : slot)),
+          }
+          : t)),
+      }));
+    },
+
+    // One thing in hand at a time: a note, a picture and a tile are
+    // never selected together, so the panel and the keys have one owner.
+    selectNote: (noteId) => set({
+      selectedNoteId: noteId,
+      ...(noteId
+        ? { selectedOfferId: null, selectedPart: null, selectedPack: null, selectedText: null, selectedDecorId: null }
+        : {}),
+    }),
+
+    addNote(pageId) {
+      const id = `note-${Date.now().toString(36)}`;
+      gesture = null;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId
+          ? {
+            ...page,
+            notes: [...(page.notes ?? []), {
+              id, text: 'Skriv din tekst', x: 0.25, y: 0.45, w: 0.5, size: 0.045,
+              color: '#16181d', bold: true, align: 'center' as const, rotate: 0,
+              background: null, image: null, h: null, behind: false,
+            }].slice(-24),
+          }
+          : page)),
+      }));
+      get().selectNote(id);
+    },
+
+    updateNote(pageId, noteId, patch, name) {
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId
+          ? { ...page, notes: (page.notes ?? []).map((note) => (note.id === noteId ? { ...note, ...patch } : note)) }
+          : page)),
+      }), name ?? `note:${noteId}`);
+    },
+
+    removeNote(pageId, noteId) {
+      gesture = null;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId
+          ? { ...page, notes: (page.notes ?? []).filter((note) => note.id !== noteId) }
+          : page)),
+      }));
+      if (get().selectedNoteId === noteId) set({ selectedNoteId: null });
+    },
 
     selectPart: (part) => set({
       selectedPart: part,
@@ -3307,7 +4149,20 @@ export const useStudio = create<StudioState>((set, get) => {
     swapPlacements(from, to) {
       if (from.pageId === to.pageId && from.slotId === to.slotId) return;
 
+      const brand = get().brand;
+      /* Each tile keeps its arrangement in the other's cell. */
+      const size = (document: CatalogDocument, at: { pageId: string; slotId: string }) => {
+        const page = document.pages.find((entry) => entry.id === at.pageId);
+        return brand && page ? cellSize(brand, document.templates, page.templateId, at.slotId) : null;
+      };
       mutate((document) => {
+        const carry = (placement: Placement, into: { pageId: string; slotId: string }, out: { pageId: string; slotId: string }) =>
+          carryOverrides(
+            placement.overrides,
+            document.offers.find((offer) => offer.id === placement.offerId),
+            size(document, out),
+            size(document, into),
+          );
         const find = (at: { pageId: string; slotId: string }) =>
           document.pages
             .find((page) => page.id === at.pageId)
@@ -3327,11 +4182,11 @@ export const useStudio = create<StudioState>((set, get) => {
                 // Nothing to take back from an empty target: this slot
                 // is emptied, and the filter below removes it.
                 return target
-                  ? { ...placement, offerId: target.offerId, overrides: target.overrides }
+                  ? { ...placement, offerId: target.offerId, overrides: carry(target, from, to) }
                   : null;
               }
               if (here.pageId === to.pageId && here.slotId === to.slotId) {
-                return { ...placement, offerId: source.offerId, overrides: source.overrides };
+                return { ...placement, offerId: source.offerId, overrides: carry(source, to, from) };
               }
               return placement;
             })
@@ -3342,7 +4197,7 @@ export const useStudio = create<StudioState>((set, get) => {
             placements.push({
               offerId: source.offerId,
               slotId: to.slotId,
-              overrides: source.overrides,
+              overrides: carry(source, to, from),
             });
           }
           return { ...page, placements };
@@ -3438,6 +4293,54 @@ export const useStudio = create<StudioState>((set, get) => {
     standUpAllClusters: () => standUpOn(get().document?.pages ?? []),
 
     standUpOneCluster: (offerId: string) => standUpOn(get().document?.pages ?? [], offerId),
+
+    async splitAndStandUp(offerId) {
+      const { brandId, document } = get();
+      const offer = document?.offers.find((entry) => entry.id === offerId);
+      if (!brandId || !document || !offer || !(offer.imageUrl || offer.imagePack.length > 1)) return;
+
+      /*
+       * A product the feed already photographs one variant at a time —
+       * several pictures, no members — needs nothing cut: each picture
+       * is a variant. Only a single picture of several packages goes to
+       * the server to be taken apart.
+       */
+      let products: { name: string; ref: string }[];
+      if (offer.imagePack.length > 1) {
+        products = offer.imagePack.map((ref) => ({ name: '', ref }));
+      } else {
+        set({ busy: 'Finder varerne i billedet…', error: null, note: null });
+        try {
+          ({ products } = await api.splitVariants(brandId, offer.imageUrl!));
+        } catch (error) {
+          set({ busy: null, error: message(error) });
+          return;
+        }
+      }
+
+      const children = products.map((product, index) => ({
+        ...offer,
+        id: `${offer.id}~v${index + 1}`,
+        name: product.name || `${offer.name} ${index + 1}`,
+        imageUrl: product.ref,
+        imagePack: [],
+        members: [],
+      }));
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        offers: [
+          ...doc.offers
+            .filter((entry) => !entry.id.startsWith(`${offerId}~v`))
+            .map((entry) => (entry.id === offerId
+              ? { ...entry, imagePack: children.map((child) => child.imageUrl!), members: children.map((child) => child.id) }
+              : entry)),
+          ...children,
+        ],
+      }));
+      set({ busy: null, note: `${count(children.length, 'vare', 'varer')} fundet i billedet — stiller dem op` });
+      await get().standUpOneCluster(offerId);
+    },
 
     toggleGhost: (offerId) => set((state) => ({
       ghosts: state.ghosts.map((entry) => (entry.offerId === offerId
@@ -3751,6 +4654,122 @@ export const useStudio = create<StudioState>((set, get) => {
       });
     },
 
+    setDrawer: (drawer) => set({ drawer }),
+
+    async refreshUploads() {
+      const { brandId } = get();
+      if (!brandId) return;
+      try {
+        set({ uploads: await api.fetchUploads(brandId) });
+      } catch {
+        // A drawer that cannot be listed is not worth interrupting
+        // anyone over; the next upload refreshes it.
+      }
+    },
+
+    async addToLibrary(file) {
+      const { brandId } = get();
+      if (!brandId) return;
+      set({ busy: `Lægger ${file.name} i biblioteket…`, error: null });
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { url } = await api.uploadImage(brandId, toBase64(bytes), file.name);
+        if (!await reachable(url)) throw new Error(`${url} kunne ikke hentes igen`);
+        set({ busy: null, note: `${file.name} lagt i biblioteket`, drawer: 'billeder' });
+        await get().refreshUploads();
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    async removeFromLibrary(ref) {
+      const { brandId } = get();
+      if (!brandId) return;
+      try {
+        await api.forgetUpload(brandId, ref);
+        set({ uploads: get().uploads.filter((entry) => entry.ref !== ref) });
+      } catch (error) {
+        set({ error: message(error) });
+      }
+    },
+
+    placeFromLibrary(pageId, ref, hvor) {
+      const { document, brand } = get();
+      const page = document?.pages.find((entry) => entry.id === pageId);
+      if (!document || !page) return;
+      const picture = get().uploads.find((entry) => entry.ref === ref);
+      const subject = picture?.name.replace(/\.[a-z0-9]+$/i, '') ?? '';
+
+      gesture = null;
+
+      if (hvor === 'baggrund') {
+        /*
+         * Under the whole sheet, with the same reading the upload path
+         * does — see `chooseBackdrop`. A picture out of the drawer is
+         * the same picture it was when it was dropped, so it deserves
+         * the same judgement about fit and strength rather than the
+         * flat guess the drawer would otherwise apply.
+         *
+         * Measured from the file on disk, which is same-origin here,
+         * so the canvas will hand back its pixels. Failing that it
+         * lands as it always did and the sliders are one click away.
+         */
+        void (async () => {
+          const measured = await measureBackdrop(
+            await fetch(ref).then((r) => r.blob()).then((b) => new File([b], subject)),
+          ).catch(() => null);
+          const chosen = measured
+            ? chooseBackdrop(measured, brand?.pageAspect ?? 0.707)
+            : { fit: 'cover' as const, opacity: 1, focusX: 50, focusY: 50, why: '' };
+          mutate((doc) => ({
+            ...doc,
+            pages: doc.pages.map((entry) => (entry.id === pageId
+              ? {
+                ...entry,
+                background: {
+                  imageUrl: ref,
+                  subject,
+                  fit: chosen.fit,
+                  opacity: chosen.opacity,
+                  focusX: chosen.focusX,
+                  focusY: chosen.focusY,
+                },
+              }
+              : entry)),
+          }));
+          set({
+            note: [`${subject} lagt bag siden`, chosen.why].filter(Boolean).join(' · '),
+          });
+        })();
+        return;
+      }
+
+      mutate((doc) => ({
+        ...doc,
+        pages: doc.pages.map((entry) => (entry.id === pageId
+          ? {
+            ...entry,
+            // Capped at three by the schema — see `addPageImage`.
+            decorations: [...entry.decorations, {
+              id: `img-${Date.now().toString(36)}`,
+              imageUrl: ref,
+              subject,
+              offerId: null,
+              anchor: 'bottom-right' as DecorAnchor,
+              scale: 0.26,
+              rotate: 0,
+              opacity: 1,
+              offsetX: 0,
+              offsetY: 0,
+              flip: false,
+              front: false,
+            }].slice(-3),
+          }
+          : entry)),
+      }));
+      set({ note: `${subject} lagt på siden` });
+    },
+
     async addPageImage(pageId, file) {
       const { brandId } = get();
       if (!brandId) return;
@@ -3784,6 +4803,8 @@ export const useStudio = create<StudioState>((set, get) => {
                 opacity: 1,
                 offsetX: 0,
                 offsetY: 0,
+                flip: false,
+                front: false,
               }].slice(-3),
             }
             : page)),
@@ -3816,15 +4837,34 @@ export const useStudio = create<StudioState>((set, get) => {
     },
 
     async addPageBackground(pageId, file) {
-      const { brandId } = get();
+      const { brandId, brand } = get();
       if (!brandId) return;
       set({ busy: `Lægger ${file.name} bag siden…`, error: null });
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
+        /*
+         * Measured before it is uploaded, off the file itself.
+         *
+         * Every upload used to land as `cover` at full strength,
+         * centred — a guess, and the wrong one for the commonest file
+         * there is: a square graphic, which an A4 sheet then crops by
+         * 29 % on each side. See `chooseBackdrop`, which decides the
+         * four settings from the picture and says why.
+         */
+        const measured = await measureBackdrop(file);
+        const chosen = measured
+          ? chooseBackdrop(measured, brand?.pageAspect ?? 0.707)
+          : { fit: 'cover' as const, opacity: 1, focusX: 50, focusY: 50, why: '' };
+
         const { url } = await api.uploadImage(brandId, toBase64(bytes), file.name);
         if (!await reachable(url)) throw new Error(`${url} kunne ikke hentes igen`);
 
-        set({ busy: null, note: `${file.name} lagt bag siden` });
+        set({
+          busy: null,
+          // What was chosen AND why, because a setting that arrives
+          // without a reason is the guess this replaced.
+          note: [`${file.name} lagt bag siden`, chosen.why].filter(Boolean).join(' · '),
+        });
         mutate((document) => ({
           ...document,
           pages: document.pages.map((page) => (page.id === pageId
@@ -3833,10 +4873,10 @@ export const useStudio = create<StudioState>((set, get) => {
               background: {
                 imageUrl: url,
                 subject: file.name.replace(/\.[a-z0-9]+$/i, ''),
-                fit: 'cover' as const,
-                opacity: 1,
-                focusX: 50,
-                focusY: 50,
+                fit: chosen.fit,
+                opacity: chosen.opacity,
+                focusX: chosen.focusX,
+                focusY: chosen.focusY,
               },
             }
             : page)),
@@ -3873,6 +4913,36 @@ export const useStudio = create<StudioState>((set, get) => {
         ...document,
         pages: document.pages.map((page) => (page.id === pageId ? { ...page, subtitle } : page)),
       }));
+    },
+
+    spreadBackground(pageId, reach) {
+      const { document } = get();
+      const from = document?.pages.find((page) => page.id === pageId);
+      if (!document || !from?.background) return;
+
+      const at = document.pages.findIndex((page) => page.id === pageId);
+      const backdrop = from.background;
+      let touched = 0;
+
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        pages: doc.pages.map((page, index) => {
+          if (page.id === pageId) return page;
+          // An image page's `background` is its own artwork, not a
+          // decoration under a grid — see the note on the action.
+          if (page.kind === 'image') return page;
+          if (reach === 'resten' && index <= at) return page;
+          touched += 1;
+          return { ...page, background: { ...backdrop } };
+        }),
+      }));
+
+      set({
+        note: touched === 0
+          ? 'Ingen andre sider at lægge den under'
+          : `Baggrunden lagt under ${count(touched, 'side mere', 'sider mere')}`,
+      });
     },
 
     setPageGround(pageId, ground) {
@@ -4501,6 +5571,9 @@ export const useStudio = create<StudioState>((set, get) => {
           past: [],
           future: [],
           activePageId: document.pages[0]?.id ?? null,
+          // Done: the panel that asked for the link has nothing left to
+          // say, and it was covering the pages that just arrived.
+          panel: null,
           selectedOfferId: null,
           selectedPart: null,
           selectedPack: null,
@@ -4610,7 +5683,7 @@ export const useStudio = create<StudioState>((set, get) => {
         .filter((offer) => placed.has(offer.id))
         .flatMap((offer) => offer.members));
       return document.offers.filter(
-        (offer) => !placed.has(offer.id) && !shown.has(offer.id),
+        (offer) => !placed.has(offer.id) && !shown.has(offer.id) && !isVariantPiece(offer.id),
       );
     },
 
@@ -4619,12 +5692,27 @@ export const useStudio = create<StudioState>((set, get) => {
       const next = brand ? resolveTemplate(brand, templateId) : null;
       if (!brand || !next) return;
       gesture = null;
-      mutate((document) => ({
-        ...document,
-        pages: document.pages.map((page) => (page.id === pageId
-          ? { ...page, templateId: next.id, placements: reseat(page, brand, next) }
-          : page)),
-      }));
+      mutate((document) => {
+        const page = document.pages.find((entry) => entry.id === pageId);
+        if (!page) return document;
+        const seated = reseat(page, brand, next, document);
+        // A page in its own style keeps it — see `fitLayout`.
+        const fitted = next.id.startsWith('own/') ? null : fitLayout(document, brand, page, next, seated);
+        return {
+          ...document,
+          templates: fitted
+            ? [...document.templates.filter((t) => t.id !== fitted.template.id), fitted.template]
+            : document.templates,
+          pages: document.pages.map((entry) => (entry.id === pageId
+            ? {
+              ...entry,
+              templateId: fitted?.template.id ?? next.id,
+              placements: fitted?.placements ?? seated,
+              ...(fitted ? { notes: fitted.notes, decorations: fitted.decorations } : {}),
+            }
+            : entry)),
+        };
+      });
     },
 
     /*
@@ -4646,10 +5734,12 @@ export const useStudio = create<StudioState>((set, get) => {
       if (next) get().setPageTemplate(pageId, next.id);
     },
 
-    setPageCount(pageId, count) {
+    setPageCount(pageId, count, templateId) {
       const { brand, document } = get();
       const page = document?.pages.find((p) => p.id === pageId);
       if (!brand || !document || !page) return;
+      // A specific layout, chosen from the gallery, when one was named.
+      const chosen = templateId ? resolveTemplate(brand, templateId) : null;
 
       /*
        * A layout at the new count, preferring one whose shape is
@@ -4659,7 +5749,8 @@ export const useStudio = create<StudioState>((set, get) => {
        */
       const options = templatesForCount(brand, count);
       const here = resolveTemplate(brand, page.templateId);
-      const next = options.find((t) => t.slots[0]?.role === here?.slots[0]?.role) ?? options[0];
+      const next = chosen
+        ?? options.find((t) => t.slots[0]?.role === here?.slots[0]?.role) ?? options[0];
       if (!next) return;
 
       const bench = get().benched();
@@ -4677,22 +5768,60 @@ export const useStudio = create<StudioState>((set, get) => {
       const kept = new Map(page.placements.map((p) => [p.offerId, p]));
       const slots = slotAssignmentOrder(next).slice(0, offers.length);
 
-      mutate((doc) => ({
-        ...doc,
-        pages: doc.pages.map((p) => (p.id === pageId ? {
-          ...p,
-          templateId: next.id,
-          placements: slots.map((slot, index) => {
+      mutate((doc) => {
+        const seated = slots.map((slot, index) => {
             const offerId = offers[index]!;
             const before = kept.get(offerId);
             // An offer coming off the bench has no corrections yet;
             // one that was already here keeps the ones it has.
             return before
-              ? { ...before, slotId: slot.id }
+              ? {
+                ...before,
+                slotId: slot.id,
+                overrides: carryOverrides(
+                  before.overrides,
+                  doc.offers.find((entry) => entry.id === offerId),
+                  cellSize(brand, doc.templates, page.templateId, before.slotId),
+                  cellSize(brand, [...doc.templates, next], next.id, slot.id),
+                ),
+              }
               : { offerId, slotId: slot.id, overrides: FRESH };
-          }),
-        } : p)),
-      }));
+          });
+        // A page in its own style keeps it — see `fitLayout`. The
+        // corrections are already carried; fitting only moves the cells.
+        const fitted = fitLayout(doc, brand, page, next, seated.map((placement) => {
+          const before = kept.get(placement.offerId);
+          return before ? { ...placement, overrides: before.overrides } : placement;
+        }));
+        return {
+          ...doc,
+          templates: fitted
+            ? [...doc.templates.filter((t) => t.id !== fitted.template.id), fitted.template]
+            : doc.templates,
+          pages: doc.pages.map((p) => (p.id === pageId
+            ? {
+              ...p,
+              templateId: fitted?.template.id ?? next.id,
+              placements: fitted?.placements ?? seated,
+              ...(fitted ? { notes: fitted.notes, decorations: fitted.decorations } : {}),
+            }
+            : p)),
+        };
+      });
+    },
+
+    applyLayout(pageId, template) {
+      const { document, brand } = get();
+      const page = document?.pages.find((entry) => entry.id === pageId);
+      if (!document || !brand || !page) return;
+      // Known to the document before it is used — outside history: a
+      // layout on the list is not an edit.
+      if (!document.templates.some((t) => t.id === template.id)) {
+        const next = { ...document, templates: [...document.templates, template] };
+        set({ document: next, brand: withTemplates(brand, next.templates) });
+      }
+      if (template.slots.length === page.placements.length) get().setPageTemplate(pageId, template.id);
+      else get().setPageCount(pageId, template.slots.length, template.id);
     },
 
     focusOffer(pageId, offerId) {
@@ -4724,7 +5853,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const { past, future, document } = get();
       const previous = past[past.length - 1];
       if (!previous || !document) return;
-      set({ past: past.slice(0, -1), document: previous, future: [document, ...future] });
+      set({ past: past.slice(0, -1), document: previous, future: [document, ...future], ...templatesFollow(document, previous) });
     },
 
     redo() {
@@ -4732,7 +5861,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const { past, future, document } = get();
       const next = future[0];
       if (!next || !document) return;
-      set({ past: [...past, document], document: next, future: future.slice(1) });
+      set({ past: [...past, document], document: next, future: future.slice(1), ...templatesFollow(document, next) });
     },
   };
 });

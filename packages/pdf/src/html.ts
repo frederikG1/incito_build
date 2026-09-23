@@ -56,7 +56,8 @@ function inlineFonts(css: string, base: string, families: Set<string>): string {
     const family = block.match(/font-family:\s*'([^']+)'/)?.[1];
     const file = block.match(/url\(\.\/fonts\/([\w.-]+\.woff2)\)/)?.[1];
     if (!family || !file) return block;
-    if (!families.has(family)) return '';
+    // A face's own variants travel with it — 'COOP Publication' with COOP.
+    if (!families.has(family) && ![...families].some((own) => family.startsWith(`${own} `))) return '';
     try {
       const data = readFileSync(join(base, 'fonts', file)).toString('base64');
       return block.replace(

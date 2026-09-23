@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImagePage, PageView } from "@incitio/renderer";
 import {
   brandCapacities,
@@ -7,16 +7,22 @@ import {
 } from "@incitio/brands";
 import { packLimits, pageTextLimits, partLimits } from "@incitio/schema";
 import { useStudio } from "./state.js";
-import { StepChip, Steps, stepOf } from "./Steps.js";
+
 import { Inspector } from "./Inspector.js";
 import { TileEditor } from "./TileEditor.js";
+import { EmptyCells } from "./EmptyCells.js";
+import { LayoutEditor } from "./LayoutEditor.js";
+import { LayoutGallery } from "./LayoutGallery.js";
 import { PageTextEditor } from "./PageTextEditor.js";
 import { Comparison, Reproduce } from "./Reproduce.js";
 import { DecorBar } from "./DecorBar.js";
 import { Ways } from "./Ways.js";
-import { Library } from "./Library.js";
-import { Checklist, ChecklistButton } from "./Checklist.js";
-import { AskWeek, WeekField } from "./Week.js";
+import { Book } from "./Book.js";
+import { Pictures } from "./Pictures.js";
+import { Tray } from "./Tray.js";
+import { Top } from "./Shell.js";
+import { Checklist } from "./Checklist.js";
+import { AskWeek } from "./Week.js";
 
 /**
  * Put a whole-sheet picture into the book here.
@@ -49,8 +55,87 @@ function InsertImage({ at }: { at: number }) {
   );
 }
 
+/**
+ * The page's rarer errands, behind ⋯.
+ *
+ * Order, a picture page after this one, and taking the page out. They
+ * used to be arrows and a cross on every sheet; inside a page they are
+ * a menu, because none of them is what you came to the page to do.
+ */
+function PageMore({ pageId, index }: { pageId: string; index: number }) {
+  const [open, setOpen] = useState(false);
+  const count = useStudio((s) => s.document?.pages.length ?? 0);
+  const movePage = useStudio((s) => s.movePage);
+  const removePage = useStudio((s) => s.removePage);
+
+  return (
+    <div className="more">
+      <button onClick={() => setOpen(!open)} aria-expanded={open} title="Mere">
+        ⋯
+      </button>
+      {open && (
+        <>
+          <div className="more__away" onPointerDown={() => setOpen(false)} />
+          <div className="more__menu" onClick={() => setOpen(false)}>
+            <button disabled={index === 0} onClick={() => movePage(pageId, -1)}>
+              ↑ Tidligere i avisen
+            </button>
+            <button disabled={index === count - 1} onClick={() => movePage(pageId, 1)}>
+              ↓ Senere i avisen
+            </button>
+            <button className="more__drop" onClick={() => removePage(pageId)}>
+              × Tag siden ud af avisen
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function App() {
   const s = useStudio();
+  const canvasRef = useRef<HTMLElement>(null);
+
+  /*
+   * The page asked for — opened from the book, or stepped to — is
+   * scrolled into view. Instant the first time the canvas appears (a
+   * glide from page 1 to page 30 is a wait), smooth for a step.
+   */
+  const wasScrolled = useRef(false);
+  useEffect(() => {
+    const target = s.scrollToPageId;
+    const canvas = canvasRef.current;
+    if (!target || !canvas || s.view !== "side") {
+      if (s.view !== "side") wasScrolled.current = false;
+      return;
+    }
+    const element = canvas.querySelector<HTMLElement>(`[data-page-id="${CSS.escape(target)}"]`);
+    if (!element) return;
+    canvas.scrollTo({
+      top: element.offsetTop - canvas.offsetTop - 12,
+      behavior: wasScrolled.current ? "smooth" : "auto",
+    });
+    wasScrolled.current = true;
+    // Held until the glide has landed, so the scroll it causes is not
+    // read back as the person scrolling somewhere else.
+    const done = window.setTimeout(() => s.clearScrollTo(), 600);
+    return () => window.clearTimeout(done);
+  }, [s.scrollToPageId, s.view]);
+
+  /* The header's page follows the page that fills the top of the canvas. */
+  const followScroll = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || useStudio.getState().scrollToPageId) return;
+    const line = canvas.getBoundingClientRect().top + canvas.clientHeight * 0.35;
+    for (const element of canvas.querySelectorAll<HTMLElement>("[data-page-id]")) {
+      const box = element.getBoundingClientRect();
+      if (box.top <= line && box.bottom > line) {
+        s.seePage(element.dataset.pageId!);
+        return;
+      }
+    }
+  };
 
   useEffect(() => {
     void s.start();
@@ -98,6 +183,12 @@ export function App() {
       if (event.key === "Escape" && useStudio.getState().panel) {
         event.preventDefault();
         useStudio.getState().closePanel();
+        return;
+      }
+
+      if (event.key === "Escape" && useStudio.getState().layoutEditPageId) {
+        event.preventDefault();
+        useStudio.getState().setLayoutEdit(null);
         return;
       }
 
@@ -163,8 +254,91 @@ export function App() {
         return;
       }
 
+      /*
+       * A picture in hand answers the same keys as everything else:
+       * arrows move it (shift further), + / − resize, [ ] turn, 0 puts
+       * it square again, ⌫ takes it off the page, Esc lets go.
+       */
+      const decorId = s.selectedDecorId;
+      if (decorId) {
+        const page = s.document?.pages.find((entry) => entry.decorations.some((d) => d.id === decorId));
+        const decor = page?.decorations.find((d) => d.id === decorId);
+        if (!page || !decor) return;
+        const gesture = `decor-key:${decorId}`;
+        const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+        if (event.key === "Escape") { event.preventDefault(); s.selectDecor(null); return; }
+        if (event.key === "Backspace" || event.key === "Delete") {
+          event.preventDefault();
+          s.removePageImage(page.id, decorId);
+          s.selectDecor(null);
+          return;
+        }
+        const far = event.shiftKey ? 3 : 0.5;
+        const moves: Record<string, [number, number]> = {
+          ArrowLeft: [-far, 0], ArrowRight: [far, 0], ArrowUp: [0, -far], ArrowDown: [0, far],
+        };
+        const move = moves[event.key];
+        if (move) {
+          event.preventDefault();
+          s.updatePageImage(page.id, decorId, {
+            offsetX: clamp(decor.offsetX + move[0], -75, 75),
+            offsetY: clamp(decor.offsetY + move[1], -75, 75),
+          }, gesture);
+          return;
+        }
+        if (event.key === "+" || event.key === "=" || event.key === "-") {
+          event.preventDefault();
+          const by = event.key === "-" ? -0.02 : 0.02;
+          s.updatePageImage(page.id, decorId, { scale: clamp(decor.scale + by, 0.05, 0.6) }, gesture);
+          return;
+        }
+        if (event.key === "[" || event.key === "]") {
+          event.preventDefault();
+          s.updatePageImage(page.id, decorId, {
+            rotate: clamp(decor.rotate + (event.key === "]" ? 2 : -2), -30, 30),
+          }, gesture);
+          return;
+        }
+        if (event.key === "0") {
+          event.preventDefault();
+          s.updatePageImage(page.id, decorId, { rotate: 0 }, gesture);
+        }
+        return;
+      }
+
+      /* A note in hand: Esc puts it down, ⌫ takes it off, arrows nudge. */
+      const noteId = s.selectedNoteId;
+      if (noteId) {
+        const page = s.document?.pages.find((entry) => (entry.notes ?? []).some((n) => n.id === noteId));
+        const note = page?.notes.find((n) => n.id === noteId);
+        if (!page || !note) return;
+        if (event.key === "Escape") { event.preventDefault(); s.selectNote(null); return; }
+        if (event.key === "Backspace" || event.key === "Delete") {
+          event.preventDefault();
+          s.removeNote(page.id, noteId);
+          return;
+        }
+        const far = event.shiftKey ? 0.02 : 0.004;
+        const moves: Record<string, [number, number]> = {
+          ArrowLeft: [-far, 0], ArrowRight: [far, 0], ArrowUp: [0, -far], ArrowDown: [0, far],
+        };
+        const move = moves[event.key];
+        if (move) {
+          event.preventDefault();
+          s.updateNote(page.id, noteId, { x: note.x + move[0], y: note.y + move[1] }, `note-key:${noteId}`);
+        }
+        return;
+      }
+
       const offerId = s.selectedOfferId;
-      if (!offerId) return;
+      if (!offerId) {
+        // Nothing left in hand: Escape gives back the page itself.
+        if (event.key === "Escape" && s.view === "side" && !s.selectedDecorId) {
+          event.preventDefault();
+          s.openPage(null);
+        }
+        return;
+      }
 
       /*
        * The keys act on whichever box is in hand, and the artwork is
@@ -196,6 +370,10 @@ export function App() {
         if (offer && offer.members.length > 1 && !s.busy) {
           event.preventDefault();
           void s.standUpOneCluster(offerId);
+        } else if (offer && (offer.imageUrl || offer.imagePack.length > 1) && !s.busy) {
+          // One picture of several variants: cut it up first.
+          event.preventDefault();
+          void s.splitAndStandUp(offerId);
         }
         return;
       }
@@ -389,270 +567,16 @@ export function App() {
     .filter((tiles) => tiles > 0);
   const clusterTiles = clusterPages.reduce((total, tiles) => total + tiles, 0);
 
-  /*
-   * Which step the toolbar should be shouting about.
-   *
-   * Read from the same function the step strip uses — see `stepOf`. Two
-   * places working it out separately is two places that can disagree,
-   * and the whole point of one highlighted button is that it agrees
-   * with the lit step.
-   */
-  const step = stepOf({
-    feed: s.feed,
-    pages: s.document?.pages.length ?? 0,
-    touched: s.past.length > 0,
-  });
-
   return (
-    <div className="app">
-      <header className="bar">
-        <strong className="bar__mark">Incitio</strong>
-
-        {/*
-         * Grouped in the order the work happens.
-         *
-         * Ten controls on one line is a wall: nothing in it said that
-         * the feed comes before the pages, or that undo belongs to
-         * neither. Three groups with a rule between them say it
-         * without a word of explanation — the avis you are in, what
-         * goes on its pages, and the way out. Exactly one button is
-         * lit at a time, and it is the one the step strip below is
-         * talking about.
-         */}
-        {/* Where you are, in four characters. What used to be a strip
-            the width of the screen — see `StepChip`. */}
-        <StepChip />
-
-        <div className="bar__group" role="group" aria-label="Avisen">
-          {/* Stands in for signing in. Everything below is scoped to it. */}
-          <label className="field">
-            <span>Kæde</span>
-            <select
-              value={s.brandId ?? ""}
-              onChange={(e) => void s.signInAs(e.target.value)}
-              disabled={Boolean(s.busy)}
-            >
-              {s.brands.map((brand) => (
-                <option key={brand.id} value={brand.id}>
-                  {brand.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {/* Which week this is. Everything below is named after it —
-              see `AskWeek`, which is where it gets answered. */}
-          <WeekField />
-
-          {/*
-           * Yesterday's work, reopened for nothing.
-           *
-           * Every rebuilt page cost a model call and every run is saved
-           * the moment it finishes, so this is the difference between
-           * checking what a change did to last week's avis and paying to
-           * find out. It is a picker rather than a button because the
-           * question is always "which one".
-           */}
-          {s.catalogues.length > 0 && (
-            <label
-              className="field"
-              title="Åbn en gemt avis — koster ingenting"
-            >
-              <span>Åbn</span>
-              <select
-                value=""
-                disabled={Boolean(s.busy)}
-                onChange={(e) => {
-                  void s.openCatalogue(e.target.value);
-                }}
-              >
-                <option value="">{s.catalogues.length} gemte…</option>
-                {s.catalogues.map((saved) => (
-                  <option key={saved.id} value={saved.id}>
-                    {saved.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <button
-            onClick={() => void s.save()}
-            disabled={!s.document || Boolean(s.busy)}
-          >
-            Gem
-          </button>
-        </div>
-
-        <div className="bar__rule" aria-hidden="true" />
-
-        <div className="bar__group" role="group" aria-label="Indhold">
-          <label
-            className={`upload${step === "varer" ? " upload--accent" : ""}`}
-            title="Upload denne uges feed"
-          >
-            <input
-              type="file"
-              accept=".csv,.json,.txt"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) await s.uploadFeed(file.name, await file.text());
-              }}
-            />
-            <span>Upload feed</span>
-          </label>
-
-          {/* The way a catalogue is made: hand in the pages you want.
-              Kept beside the feed upload because it takes the same feed. */}
-          <button
-            className={
-              s.reproduceOpen ? "primary" : step === "sider" ? "accent" : ""
-            }
-            onClick={() => s.setReproduceOpen(!s.reproduceOpen)}
-            title="Genskab trykte sider med denne uges varer"
-          >
-            Genskab sider
-          </button>
-
-          {/*
-           * "Generér med AI" used to stand here: a brief in, a whole
-           * book out, planned by the model from nothing but the feed.
-           * It is gone. Pages made that way were generically correct
-           * and never looked like the chain, because the model was
-           * asked to invent a design instead of being shown one —
-           * which is exactly what `Genskab sider` does instead.
-           *
-           * What is left is the plain draft: category order into the
-           * chain's own layouts, no model, no key, instant. It is the
-           * fast look at a feed, not the way to a page worth printing.
-           */}
-          <button
-            onClick={() => void s.build({ fresh: true })}
-            disabled={Boolean(s.busy) || !s.feed}
-            title="Hurtigt udkast direkte fra feedet — kategorisortering, ingen model"
-          >
-            Hurtigt udkast
-          </button>
-
-          {/*
-           * The two strips that used to stand between the toolbar and
-           * the first sheet, as buttons. Here rather than anywhere
-           * else because both are ways into a page, which is what this
-           * group is — see `panel` for why they stopped being strips.
-           */}
-          <button
-            className={s.panel === "sider" ? "primary" : ""}
-            onClick={() => s.togglePanel("sider")}
-            aria-expanded={s.panel === "sider"}
-            title="Hent en trykt avis fra et link, eller lad modellen tegne et layout"
-          >
-            Hent/tegn
-          </button>
-
-          <button
-            className={s.panel === "stemning" ? "primary" : ""}
-            onClick={() => s.togglePanel("stemning")}
-            aria-expanded={s.panel === "stemning"}
-            title={
-              s.decorReady
-                ? "Stemningsbilleder bag varerne — motiv, prompt og nøgle"
-                : "Stemningsbilleder — der mangler en nøgle til billedmodellen"
-            }
-          >
-            Stemning
-            {/* A mark rather than a sentence: every button that draws
-                is dark without a key, and this is where the key is. */}
-            {!s.decorReady && <span className="bar__dot" aria-hidden="true" />}
-          </button>
-
-          {/* The whole book's clusters, composed in one run and written
-              as one undo step. Here rather than on a page bar because
-              it is one fact about the document, and because the point
-              of it is not having to come back per page. */}
-          {clusterPages.length > 1 && (
-            <button
-              onClick={() => void s.standUpAllClusters()}
-              disabled={Boolean(s.busy) || !s.decorReady}
-              title={
-                s.decorReady
-                  ? `Lad Gemini stille alle ${clusterTiles} sammensatte fliser i avisen op — flere ad gangen`
-                  : "Kræver en Gemini-nøgle"
-              }
-            >
-              Stil alle klynger op ({clusterTiles})
-            </button>
-          )}
-
-          {/* The five steps every test of the cluster feature starts
-              with, as one press — see `testCluster`. */}
-          <button
-            onClick={() => void s.testCluster()}
-            disabled={Boolean(s.busy) || (!s.feed && !s.document)}
-            title="Byg et udkast om nødvendigt, saml de tre første varer med billede i første plads, og lad Gemini stille dem op"
-          >
-            Testflise
-          </button>
-
-          <label className="field" title="Hvor mange sider avisen må fylde">
-            <span>Sider</span>
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={s.maxPages}
-              onChange={(e) => s.setMaxPages(Number(e.target.value))}
-            />
-          </label>
-
-          {/* Said once, where the count is set, rather than on every page
-              bar: it is one fact about the document, not six. */}
-          {bench.length > 0 && (
-            <span
-              className="bar__note"
-              title={bench.map((o) => o.name).join("\n")}
-            >
-              {bench.length} i reserve
-            </span>
-          )}
-        </div>
-
-        <div className="bar__gap" />
-
-        {/* Neither a step nor a stage: the two that undo one. Drawn as
-            marks rather than words so they stop competing with the
-            things a person is meant to press. */}
-        <div className="bar__group bar__group--quiet">
-          <button
-            onClick={s.undo}
-            disabled={s.past.length === 0}
-            title="Fortryd (⌘Z)"
-          >
-            ↶
-          </button>
-          <button
-            onClick={s.redo}
-            disabled={s.future.length === 0}
-            title="Gentag (⇧⌘Z)"
-          >
-            ↷
-          </button>
-        </div>
-
-        <div className="bar__rule" aria-hidden="true" />
-
-        {/* What stands between this avis and the PDF, counted. Beside
-            the print button because that is the question it answers. */}
-        <ChecklistButton />
-
-        <button
-          className={step === "pdf" ? "accent" : ""}
-          onClick={() => void s.downloadPdf()}
-          disabled={!s.document || Boolean(s.busy)}
-        >
-          Hent PDF
-        </button>
-      </header>
+    <div className="shell">
+      {/*
+       * Everything the sixteen-control toolbar carried, rearranged
+       * rather than reduced: the chain, the week and the open-another
+       * picker are one document menu; save is a line that says when;
+       * the four ways into a page live on the card that makes pages;
+       * the step strip and the checklist are the next-step bar.
+       */}
+      <Top />
 
       {/*
        * One panel at a time, lying OVER the canvas.
@@ -677,9 +601,18 @@ export function App() {
             >
               ×
             </button>
-            {s.panel === "trin" && <Steps />}
             {s.panel === "sider" && <Ways />}
-            {s.panel === "stemning" && <DecorBar />}
+            {s.panel === "stemning" && (
+              <>
+                {/* Your own pictures first — uploading one is the common
+                    errand; having a model draw one is the rarer. */}
+                <section className="decor">
+                  <h3 className="inspector__group">Billeder</h3>
+                  <Pictures />
+                </section>
+                <DecorBar />
+              </>
+            )}
           </div>
         </div>
       )}
@@ -723,16 +656,29 @@ export function App() {
 
       <Reproduce />
 
-      <div className="app__body">
-        <Library />
+      {/*
+       * Two screens. The book is the whole avis as printed spreads —
+       * where you land, and what the editor never had. A page is one
+       * sheet, large, with the tray still docked so filling an empty
+       * cell is the same gesture it was on the overview.
+       */}
+      {s.view === "bog" && s.brand && <Book />}
+
+      {s.view === "side" && (
+      <div className="page2">
+        {/* The products without a page, beside the page they go on. */}
+        <Tray />
         <main
-          className="canvas"
+          className="page2__canvas"
+          ref={canvasRef}
+          onScroll={followScroll}
           // Clicking the paper around the pages drops the selection, the
           // way clicking the canvas does in a drawing tool.
           onPointerDown={(event) => {
             if (event.target !== event.currentTarget) return;
             s.select(null);
             s.selectDecor(null);
+            s.selectNote(null);
           }}
         >
           {/*
@@ -757,7 +703,17 @@ export function App() {
 
           {s.document &&
             s.brand &&
-            s.document.pages.map((page, index) => {
+            s.document.pages
+              /*
+               * Every page, one scrolling column — the page you opened
+               * is scrolled to, and the header follows whichever page
+               * is in view. Between each pair, the way to put a picture
+               * page in, in plain sight.
+               */
+              .map((page, at) => (
+              <div className="stack" key={page.id} data-page-id={page.id}>
+              {(() => {
+              const index = s.document!.pages.findIndex((entry) => entry.id === page.id);
               const brand = s.brand!;
               if (page.kind === "image") {
                 return (
@@ -811,7 +767,6 @@ export function App() {
                       pageIndex={index}
                       pageNumber={index + 1}
                     />
-                    <InsertImage at={index + 1} />
                   </div>
                 );
               }
@@ -835,6 +790,15 @@ export function App() {
               // How this page was read, when it was rebuilt from one. A
               // page from the plain draft simply has none.
               const run = s.reproductions.find((r) => r.pageId === page.id);
+              /*
+               * The sheet the pointer last landed on.
+               *
+               * It decides which sheet shows its full bar — see the
+               * note there. Already the thing that decides where the
+               * library deals, so there is nothing new to learn: the
+               * sheet you are working on is the one with the tools.
+               */
+              const here = s.activePageId === page.id;
 
               /*
                * The two pickers have to describe THIS page, not only the
@@ -900,199 +864,111 @@ export function App() {
                 >
                   {run && <Comparison run={run} />}
                   {/*
-                   * The page's own bar, in two halves.
+                   * The page's shape, in one pill above the sheet.
                    *
-                   * Left is what the page SAYS and grows with the window;
-                   * right is what it IS — how many offers, in what shape,
-                   * where it sits in the book — and keeps its width, so
-                   * the controls do not move sideways from sheet to
-                   * sheet with the length of a heading.
-                   *
-                   * "Sæt i fokus" used to sit here and does not any more.
-                   * It acts on the SELECTED offer, so it was disabled on
-                   * every sheet but one and wrapped onto two lines while
-                   * doing nothing; it lives in the inspector now, beside
-                   * everything else that acts on the selection.
+                   * What the page is called and where it sits moved up
+                   * into the header — see `PageHead`. What is left here
+                   * is what it IS: how many offers, in which layout,
+                   * what it is printed on. Order, image pages and
+                   * removal are rarer and sit behind ⋯; nothing the
+                   * old bar held is gone.
                    */}
-                  <div className="sheet__bar">
-                    <div className="sheet__said">
-                      <input
-                        className="sheet__title"
-                        value={page.title}
-                        placeholder="overskrift"
-                        onChange={(e) =>
-                          s.setPageTitle(page.id, e.target.value)
-                        }
-                      />
+                  {/*
+                    * What the page SAYS, right above it: its number, the
+                    * heading and the theme line. They sat in the header,
+                    * far from the sheet they are printed on.
+                    */}
+                  <div className="pagehead">
+                    <span className="pagehead__no">Side {index + 1}</span>
+                    <input
+                      className="pagehead__title"
+                      value={page.title}
+                      placeholder="Overskrift"
+                      onChange={(event) => s.setPageTitle(page.id, event.target.value)}
+                    />
+                    <input
+                      className="pagehead__theme"
+                      value={page.subtitle}
+                      placeholder="Stemningslinje (valgfri)"
+                      onChange={(event) => s.setPageSubtitle(page.id, event.target.value)}
+                    />
+                  </div>
+                  <div className="pagebar">
+                    {/* How many products, in which shape — drawn, one
+                        click; see `LayoutGallery`. */}
+                    <LayoutGallery page={page} template={template} counts={counts} spare={bench.length} />
+                    <div className="pagebar__rule" />
 
-                      {/* The theme line, beside the heading because that is
-                      where it prints. Placeholder rather than a label:
-                      most pages carry none, and an empty labelled field
-                      on every sheet reads as something missing. */}
-                      <input
-                        className="sheet__subtitle"
-                        value={page.subtitle}
-                        placeholder="stemningslinje"
-                        onChange={(e) =>
-                          s.setPageSubtitle(page.id, e.target.value)
-                        }
-                      />
-                    </div>
+                    {/*
+                      * Everything that is a picture rather than a
+                      * product — the chain's library, a picture on the
+                      * page, a picture under it, the mood artwork — in
+                      * one panel addressed to this page. It was two
+                      * file pickers here plus a third button up in the
+                      * header; one clearly named door is easier.
+                      */}
+                    <button
+                      className={`pagebar__pics${page.background ? " is-on" : ""}`}
+                      title="Billeder på siden, baggrund og kædens billedbibliotek"
+                      onClick={() => {
+                        s.setActivePage(page.id);
+                        s.togglePanel("stemning");
+                      }}
+                    >
+                      Billeder{page.background ? " · baggrund ✓" : ""}
+                    </button>
 
-                    <div className="sheet__does">
-                      <div className="sheet__tools">
-                        {/* How many offers this page carries. A count the
-                        bench cannot fill is offered but disabled, so the
-                        reason a page will not grow is visible rather
-                        than being a click that does nothing. */}
-                        <label className="sheet__pick">
-                          <span>Varer</span>
-                          <select
-                            value={page.placements.length}
-                            onChange={(e) =>
-                              s.setPageCount(page.id, Number(e.target.value))
-                            }
-                          >
-                            {counts.map((count) => (
-                              <option
-                                key={count}
-                                value={count}
-                                disabled={
-                                  count > page.placements.length + bench.length
-                                }
-                              >
-                                {count}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <label className="sheet__pick">
-                          <span>Layout</span>
-                          <select
-                            value={page.templateId}
-                            onChange={(e) =>
-                              s.setPageTemplate(page.id, e.target.value)
-                            }
-                          >
-                            {layouts.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <button
-                          title="Næste layout med lige så mange varer"
-                          onClick={() => s.shufflePage(page.id)}
-                          disabled={
-                            templatesForCount(brand, page.placements.length)
-                              .length < 2
-                          }
-                        >
-                          ⟳
-                        </button>
-                      </div>
-
-                      {/* The chain's own artwork. A label rather than a
-                      button because it opens a file picker, and the
-                      same files can simply be dropped on the sheet. */}
-                      <label
-                        className="sheet__image"
-                        title="Læg et af kædens egne billeder på siden"
+                    {/*
+                      * The page's shape by hand: every cell a box to drag
+                      * and resize. Off again with Færdig or Esc.
+                      */}
+                    <button
+                      className={`pagebar__pics${s.layoutEditPageId === page.id ? " is-editing" : ""}`}
+                      title="Træk i felterne for at gøre dem større, mindre eller flytte dem"
+                      onClick={() => s.setLayoutEdit(s.layoutEditPageId === page.id ? null : page.id)}
+                    >
+                      {s.layoutEditPageId === page.id ? "Færdig" : "Rediger layout"}
+                    </button>
+                    {s.layoutEditPageId === page.id && (
+                      <button
+                        className="pagebar__pics"
+                        title="Et nyt, tomt felt midt på siden"
+                        onClick={() => s.addCell(page.id, { x: 0.3, y: 0.4, w: 0.4, h: 0.25 })}
                       >
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp,image/gif"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            e.target.value = "";
-                            if (file) await s.addPageImage(page.id, file);
-                          }}
-                        />
-                        <span>Billede</span>
-                      </label>
+                        + Felt
+                      </button>
+                    )}
 
-                      {/* The picture the page is printed ON, as opposed to
-                      the one laid on top of it. A second control rather
-                      than a mode on the first, because the two differ
-                      in where the file lands — under the whole sheet,
-                      or pinned in a corner at a quarter of its width —
-                      and that is not a choice a dropdown beside a file
-                      picker makes legible. */}
-                      <label
-                        className="sheet__image"
-                        title="Læg et billede under hele siden"
+                    {/* Words anywhere on the page — a headline of your
+                        own, "Kun i weekenden", a price note. */}
+                    <button
+                      className="pagebar__pics"
+                      title="Læg en tekst på siden — flyt den med musen, skriv den i panelet til højre"
+                      onClick={() => s.addNote(page.id)}
+                    >
+                      + Tekst
+                    </button>
+
+                    {/* Every cluster on the sheet in one errand — the
+                        model composes each, the chain's cutouts move to
+                        match. Violet, as everything a model does. */}
+                    {page.placements.some(
+                      (placement) => (offers.get(placement.offerId)?.members.length ?? 0) > 1,
+                    ) && (
+                      <button
+                        className="pagebar__model"
+                        title={
+                          s.decorReady
+                            ? "Lad billedmodellen stille alle sidens klynger op"
+                            : "Kræver GEMINI_API_KEY på serveren"
+                        }
+                        disabled={Boolean(s.busy) || !s.decorReady}
+                        onClick={() => void s.standUpClusters(page.id)}
                       >
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp,image/gif"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            e.target.value = "";
-                            if (file) await s.addPageBackground(page.id, file);
-                          }}
-                        />
-                        <span>
-                          {page.background ? "Baggrund ✓" : "Baggrund"}
-                        </span>
-                      </label>
-
-                      {/*
-                       * Every cluster on the sheet, in one errand.
-                       *
-                       * Here rather than in the tile panel because
-                       * that is the whole point: standing six clusters
-                       * up one at a time means picking a tile, waiting
-                       * for its cutouts, going to Gemini and coming
-                       * back — six times. Prepared together, an editor
-                       * makes all the pictures in one sitting and
-                       * drops the lot back at once.
-                       */}
-                      {page.placements.some(
-                        (placement) =>
-                          (s.document?.offers.find(
-                            (o) => o.id === placement.offerId,
-                          )?.members.length ?? 0) > 1,
-                      ) && (
-                        <div className="sheet__group">
-                          {/* The whole job, with no trip to Gemini's own
-                              app: the model composes each cluster here,
-                              the composition is read as a layout, and
-                              the chain's own cutouts move to match. */}
-                          <button
-                            className="sheet__clusters"
-                            title={
-                              s.decorReady
-                                ? "Lad billedmodellen stille alle sidens klynger op"
-                                : "Kræver GEMINI_API_KEY på serveren"
-                            }
-                            disabled={Boolean(s.busy) || !s.decorReady}
-                            onClick={() => void s.standUpClusters(page.id)}
-                          >
-                            Stil klynger op
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="sheet__order">
-                        <button
-                          title="Tidligere i avisen"
-                          onClick={() => s.movePage(page.id, -1)}
-                          disabled={index === 0}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          title="Senere i avisen"
-                          onClick={() => s.movePage(page.id, 1)}
-                          disabled={index === s.document!.pages.length - 1}
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    </div>
+                        Stil klynger op
+                      </button>
+                    )}
+                    <PageMore pageId={page.id} index={index} />
                   </div>
 
                   {/*
@@ -1141,50 +1017,12 @@ export function App() {
                           >
                             <img src={decor.imageUrl} alt="" />
                           </button>
-                          <select
-                            value={decor.anchor}
-                            title="Hvilket hjørne det hænger i"
-                            onChange={(e) =>
-                              s.updatePageImage(page.id, decor.id, {
-                                anchor: e.target.value as typeof decor.anchor,
-                              })
-                            }
-                          >
-                            <option value="top-left">↖ øverst venstre</option>
-                            <option value="top-right">↗ øverst højre</option>
-                            <option value="bottom-left">
-                              ↙ nederst venstre
-                            </option>
-                            <option value="bottom-right">
-                              ↘ nederst højre
-                            </option>
-                          </select>
-                          <input
-                            type="range"
-                            min={5}
-                            max={60}
-                            value={Math.round(decor.scale * 100)}
-                            title="Størrelse, i procent af sidens bredde"
-                            onChange={(e) =>
-                              s.updatePageImage(page.id, decor.id, {
-                                scale: Number(e.target.value) / 100,
-                              })
-                            }
-                            onPointerUp={() => s.endGesture()}
-                          />
-                          <input
-                            type="range"
-                            min={-30}
-                            max={30}
-                            value={decor.rotate}
-                            title="Drejning"
-                            onChange={(e) =>
-                              s.updatePageImage(page.id, decor.id, {
-                                rotate: Number(e.target.value),
-                              })
-                            }
-                            onPointerUp={() => s.endGesture()}
-                          />
+                          {/* The rest — corner, size, turn, layer, mirror —
+                              is in the panel on the right once it is in
+                              hand. */}
+                          <span className="pic__name">
+                            {decor.subject || (decor.id.startsWith("decor-") ? "AI-billede" : "Eget billede")}
+                          </span>
                           <button
                             className="pic__drop"
                             title="Tag billedet af siden"
@@ -1199,6 +1037,7 @@ export function App() {
                   {page.rationale && (
                     <p className="sheet__why">{page.rationale}</p>
                   )}
+                  <div className="sheet__paper">
                   <PageView
                     page={page}
                     template={template}
@@ -1227,6 +1066,10 @@ export function App() {
                     }
                     onDecorMoveEnd={s.endGesture}
                     selectedDecorId={s.selectedDecorId}
+                    selectedNoteId={s.selectedNoteId}
+                    onSelectNote={s.selectNote}
+                    onMoveNote={(noteId, at, gesture) => s.updateNote(page.id, noteId, at, gesture)}
+                    onNoteMoveEnd={s.endGesture}
                     /* The heading and the theme line are moved on the
                      page like everything else; the fields in the bar
                      above stay for typing the words. */
@@ -1246,13 +1089,22 @@ export function App() {
                       );
                     }}
                   />
-                  <InsertImage at={index + 1} />
+                  {s.layoutEditPageId === page.id
+                    ? <LayoutEditor page={page} template={template} />
+                    : <EmptyCells page={page} template={template} />}
+                  </div>
                 </div>
               );
-            })}
+            })()}
+              <InsertImage at={at + 1} />
+              </div>
+            ))}
         </main>
         <Inspector />
       </div>
+      )}
+
+
 
       {/* Asked once, over everything, and only when something is about
           to be built that has to be called something. */}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   PAGE_PARTS, PAGE_PART_NAMES, TILE_PARTS, TILE_PART_NAMES,
   packLimits, packOverride, packTouched,
@@ -175,6 +175,7 @@ const eyeDropper = (): EyeDropperApi | null =>
 function PageGround() {
   const {
     document, brand, selectedOfferId, selectedText, setPageGround, setPageBackground,
+    spreadBackground,
   } = useStudio();
   const [dropping, setDropping] = useState(false);
 
@@ -285,7 +286,7 @@ function PageGround() {
 
       {!page.background ? (
         <p className="ground__note">
-          Ingen. Vælg <b>Baggrund</b> over siden for at lægge et billede under hele arket.
+          Ingen. Tryk <b>Billeder</b> over siden for at lægge et billede under hele arket.
         </p>
       ) : (
         <>
@@ -359,6 +360,26 @@ function PageGround() {
               </label>
             </>
           )}
+
+          {/*
+            * The same backdrop under the rest of the book.
+            *
+            * An avis has one look, and setting it a page at a time is
+            * a file picker, four sliders and a scroll, once per sheet.
+            * Copies what was decided here as well as the picture, so
+            * the other pages get the fit and the strength that were
+            * tuned on this one — and it is one undo step.
+            */}
+          <div className="inspector__spread">
+            <button
+              className="inspector__link"
+              onClick={() => spreadBackground(page.id, 'resten')}
+            >Brug på resten af avisen</button>
+            <button
+              className="inspector__link"
+              onClick={() => spreadBackground(page.id, 'alle')}
+            >på alle sider</button>
+          </div>
         </>
       )}
     </>
@@ -401,6 +422,236 @@ function packDepths(overrides: PlacementOverrides, count: number): number[] {
   ));
 }
 
+/*
+ * A picture on the page, in hand — the chain's own or a drawn motif.
+ *
+ * The same panel a product gets, because it is the same job: it sat
+ * as a strip of two unlabelled sliders over the sheet, which gave a
+ * picture half the controls of a price tag. Every field is labelled,
+ * and it is one undo step per drag, like everything else here.
+ */
+const CORNERS = [
+  ['top-left', '↖', 'Øverst til venstre'],
+  ['top-right', '↗', 'Øverst til højre'],
+  ['bottom-left', '↙', 'Nederst til venstre'],
+  ['bottom-right', '↘', 'Nederst til højre'],
+] as const;
+
+function DecorInspector({ decorId }: { decorId: string }) {
+  const {
+    document, updatePageImage, removePageImage, selectDecor, endGesture,
+  } = useStudio();
+  const page = document?.pages.find((entry) => entry.decorations.some((d) => d.id === decorId));
+  const decor = page?.decorations.find((d) => d.id === decorId);
+  if (!page || !decor) return null;
+  const set = (patch: Parameters<typeof updatePageImage>[2]) => updatePageImage(page.id, decor.id, patch);
+  const moved = decor.offsetX !== 0 || decor.offsetY !== 0;
+
+  return (
+    <aside className="inspector">
+      <header className="inspector__head">
+        <h2>{decor.subject ? decor.subject[0]!.toUpperCase() + decor.subject.slice(1) : 'Billede på siden'}</h2>
+        <button className="inspector__close" onClick={() => selectDecor(null)} aria-label="Luk">×</button>
+      </header>
+      <p className="inspector__meta">
+        {decor.id.startsWith('decor-') ? 'Tegnet af AI' : 'Dit eget billede'} · træk det rundt på siden
+      </p>
+      <div className="decorpanel__shot"><img src={decor.imageUrl} alt="" /></div>
+
+      <div className="inspector__field">
+        <span>Hjørne</span>
+        <div className="segment" role="group" aria-label="Hjørne">
+          {CORNERS.map(([anchor, arrow, name]) => (
+            <button
+              key={anchor}
+              className={decor.anchor === anchor ? 'is-on' : ''}
+              title={name}
+              onClick={() => set({ anchor, offsetX: 0, offsetY: 0 })}
+            >{arrow}</button>
+          ))}
+        </div>
+      </div>
+
+      <label className="inspector__field">
+        <span>Størrelse <b>{Math.round(decor.scale * 100)} %</b></span>
+        <input
+          type="range" min={5} max={60} value={Math.round(decor.scale * 100)}
+          onChange={(e) => set({ scale: Number(e.target.value) / 100 })}
+          onPointerUp={endGesture}
+        />
+      </label>
+      <label className="inspector__field">
+        <span>Drejning <b>{decor.rotate}°</b></span>
+        <input
+          type="range" min={-30} max={30} value={decor.rotate}
+          onChange={(e) => set({ rotate: Number(e.target.value) })}
+          onPointerUp={endGesture}
+        />
+      </label>
+      <label className="inspector__field">
+        <span>Synlighed <b>{Math.round(decor.opacity * 100)} %</b></span>
+        <input
+          type="range" min={5} max={100} value={Math.round(decor.opacity * 100)}
+          onChange={(e) => set({ opacity: Number(e.target.value) / 100 })}
+          onPointerUp={endGesture}
+        />
+      </label>
+
+      <div className="inspector__field">
+        <span>Lag</span>
+        <div className="segment" role="group" aria-label="Lag">
+          <button className={decor.front ? '' : 'is-on'} onClick={() => set({ front: false })}>Bag varerne</button>
+          <button className={decor.front ? 'is-on' : ''} onClick={() => set({ front: true })}>Foran varerne</button>
+        </div>
+      </div>
+
+      <div className="decorpanel__row">
+        <button className="inspector__promote" onClick={() => set({ flip: !decor.flip })}>
+          {decor.flip ? '⇋ Spejlvendt' : '⇋ Spejlvend'}
+        </button>
+        <button
+          className="inspector__promote"
+          disabled={!moved && decor.rotate === 0}
+          onClick={() => set({ offsetX: 0, offsetY: 0, rotate: 0 })}
+          title="Tilbage i hjørnet, uden drejning"
+        >Nulstil placering</button>
+      </div>
+      <button className="inspector__drop" onClick={() => removePageImage(page.id, decor.id)}>
+        Tag af siden
+      </button>
+
+      <ul className="inspector__keys">
+        <li><b>Træk</b> billedet på siden for at flytte det</li>
+        <li><b>Piletaster</b> flytter det — med shift længere</li>
+        <li><b>+ / −</b> ændrer størrelsen, <b>[ ]</b> drejer, <b>0</b> retter det op</li>
+        <li><b>⌫</b> tager det af siden</li>
+        <li><b>Esc</b> slipper det, så det lægger sig på plads</li>
+      </ul>
+    </aside>
+  );
+}
+
+/*
+ * Free text on the page, in hand. The words are typed here and show on
+ * the sheet as they are typed; the box is dragged on the sheet itself.
+ */
+const NOTE_INKS = ['#16181d', '#ffffff', '#c31414', '#871623', '#1c5c34'];
+const NOTE_BACKINGS: [string | null, string][] = [
+  [null, 'Ingen'], ['#ffffff', 'Hvid'], ['#c31414', 'Rød'], ['#16181d', 'Sort'], ['#fff1b8', 'Gul'],
+];
+
+function NoteInspector({ noteId }: { noteId: string }) {
+  const { document, updateNote, removeNote, selectNote, endGesture } = useStudio();
+  const page = document?.pages.find((entry) => (entry.notes ?? []).some((n) => n.id === noteId));
+  const note = page?.notes.find((n) => n.id === noteId);
+  if (!page || !note) return null;
+  const set = (patch: Parameters<typeof updateNote>[2], gesture?: string) =>
+    updateNote(page.id, note.id, patch, gesture);
+
+  return (
+    <aside className="inspector">
+      <header className="inspector__head">
+        <h2>Tekst på siden</h2>
+        <button className="inspector__close" onClick={() => selectNote(null)} aria-label="Luk">×</button>
+      </header>
+      <p className="inspector__meta">Træk den rundt på siden · piletaster flytter den</p>
+
+      <label className="inspector__field">
+        <span>Tekst</span>
+        <textarea
+          className="notepanel__text"
+          value={note.text}
+          rows={3}
+          autoFocus
+          onFocus={(event) => { if (event.target.value === 'Skriv din tekst') event.target.select(); }}
+          onChange={(event) => set({ text: event.target.value }, `note-text:${note.id}`)}
+          onBlur={endGesture}
+        />
+      </label>
+
+      <label className="inspector__field">
+        <span>Størrelse <b>{Math.round(note.size * 1000) / 10}</b></span>
+        <input
+          type="range" min={0.8} max={16} step={0.1} value={note.size * 100}
+          onChange={(e) => set({ size: Number(e.target.value) / 100 })}
+          onPointerUp={endGesture}
+        />
+      </label>
+      <label className="inspector__field">
+        <span>Bredde <b>{Math.round(note.w * 100)} %</b></span>
+        <input
+          type="range" min={5} max={100} value={Math.round(note.w * 100)}
+          onChange={(e) => set({ w: Number(e.target.value) / 100 })}
+          onPointerUp={endGesture}
+        />
+      </label>
+      <label className="inspector__field">
+        <span>Drejning <b>{note.rotate}°</b></span>
+        <input
+          type="range" min={-45} max={45} value={note.rotate}
+          onChange={(e) => set({ rotate: Number(e.target.value) })}
+          onPointerUp={endGesture}
+        />
+      </label>
+
+      <div className="inspector__field">
+        <span>Farve</span>
+        <div className="notepanel__swatches">
+          {NOTE_INKS.map((ink) => (
+            <button
+              key={ink}
+              className={note.color === ink ? 'is-on' : ''}
+              style={{ background: ink }}
+              title={ink}
+              onClick={() => set({ color: ink })}
+            />
+          ))}
+          <input type="color" value={note.color} onChange={(e) => set({ color: e.target.value }, `note-ink:${note.id}`)} title="Anden farve" />
+        </div>
+      </div>
+
+      <div className="inspector__field">
+        <span>Bagved</span>
+        <div className="segment" role="group" aria-label="Bagved">
+          {NOTE_BACKINGS.map(([backing, name]) => (
+            <button
+              key={name}
+              className={note.background === backing ? 'is-on' : ''}
+              onClick={() => set({ background: backing, h: backing ? note.h : note.h })}
+            >{name}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="inspector__field">
+        <span>Skrift</span>
+        <div className="segment" role="group" aria-label="Skrift">
+          <button className={note.bold ? 'is-on' : ''} onClick={() => set({ bold: !note.bold })}><b>Fed</b></button>
+          {(['left', 'center', 'right'] as const).map((align) => (
+            <button
+              key={align}
+              className={note.align === align ? 'is-on' : ''}
+              title={align === 'left' ? 'Venstre' : align === 'right' ? 'Højre' : 'Midte'}
+              onClick={() => set({ align })}
+            >{align === 'left' ? '⇤' : align === 'right' ? '⇥' : '↔'}</button>
+          ))}
+        </div>
+      </div>
+
+      <button className="inspector__drop" onClick={() => removeNote(page.id, note.id)}>
+        Tag af siden
+      </button>
+    </aside>
+  );
+}
+
+type InspectorTab = 'indhold' | 'billede' | 'bokse';
+const INSPECTOR_TABS: [InspectorTab, string][] = [
+  ['indhold', 'Indhold'],
+  ['billede', 'Billede'],
+  ['bokse', 'Bokse'],
+];
+
 export function Inspector() {
   // Shut by default: the prompt is three hundred words, and most
   // sessions never open it.
@@ -416,11 +667,25 @@ export function Inspector() {
     clusterPlaceModel, setClusterPlaceModel, clusterPrompt, setClusterPrompt, promptRuns,
     placeStrict, setPlaceStrict,
     clusterPromptId, setClusterPromptId,
-    standUpOneCluster, busy, decorReady,
+    standUpOneCluster, busy, decorReady, selectedDecorId, selectedNoteId, splitAndStandUp,
   } = useStudio();
+  const [tab, setTab] = useState<InspectorTab>('indhold');
+  /*
+   * The tab follows the hand. Clicking a box on the sheet, or a product
+   * in a pack, picks up something that lives in another tab — and the
+   * sliders for it being one click away is the old below-the-fold
+   * problem again.
+   */
+  useEffect(() => {
+    if (selectedPart !== null) setTab('bokse');
+  }, [selectedPart]);
+  useEffect(() => {
+    if (selectedPack !== null) setTab('billede');
+  }, [selectedPack]);
 
-  if (!document || !selectedOfferId) {
-    return (
+  // Nothing selected — or a selection that no page holds any more,
+  // as after a cell is refilled — shows the page's own panel.
+  const nothing = (
       <aside className="inspector inspector--empty">
         {/* Page-level, so it is reachable with nothing selected — which
             is the state a freshly rebuilt page opens in. */}
@@ -435,8 +700,11 @@ export function Inspector() {
           <li><b>Overskriften</b> og stemningslinjen trækkes på samme måde</li>
         </ul>
       </aside>
-    );
-  }
+  );
+
+  if (selectedNoteId) return <NoteInspector noteId={selectedNoteId} />;
+  if (selectedDecorId) return <DecorInspector decorId={selectedDecorId} />;
+  if (!document || !selectedOfferId) return nothing;
 
   const offer = document.offers.find((o) => o.id === selectedOfferId);
   const onPage = document.pages
@@ -449,13 +717,7 @@ export function Inspector() {
    */
   const leads = onPage?.placements[0]?.offerId === selectedOfferId;
 
-  if (!offer || !placement) {
-    return (
-      <aside className="inspector inspector--empty">
-        <p>Varen er ikke længere på en side.</p>
-      </aside>
-    );
-  }
+  if (!offer || !placement) return nothing;
 
   const { overrides } = placement;
   /*
@@ -477,12 +739,39 @@ export function Inspector() {
         <button className="inspector__close" onClick={() => select(null)} aria-label="Luk">×</button>
       </header>
 
-      <dl className="inspector__facts">
-        <dt>Pris</dt><dd>{offer.price.toFixed(2)} {offer.currency}</dd>
-        <dt>Kategori</dt><dd>{offer.category}</dd>
-        <dt>Varenr.</dt><dd>{offer.id}</dd>
-      </dl>
+      {/*
+        * One line of facts instead of a three-row table, and then three
+        * tabs.
+        *
+        * The panel stacked nine sections for one selected vare — its
+        * words, its pack, every box, the model, the page's own ground —
+        * and the one somebody wanted was always below the fold. The
+        * tabs split it by what you are touching: what the tile SAYS,
+        * the pictures in it, and the boxes it is built from. Nothing
+        * left; it is sorted.
+        */}
+      <p className="inspector__meta" title={`Varenr. ${offer.id}`}>
+        {[
+          `felt ${placement.slotId}`,
+          `${offer.price.toFixed(2).replace('.', ',')} ${offer.currency}`,
+          offer.category,
+        ].filter(Boolean).join(' · ')}
+      </p>
+      <div className="inspector__tabs" role="tablist">
+        {INSPECTOR_TABS.map(([id, name]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            className={tab === id ? 'is-on' : ''}
+            onClick={() => setTab(id)}
+          >{name}</button>
+        ))}
+      </div>
 
+
+      {tab === 'billede' && (
+      <>
       {/*
         * The products in the tile, and then the one in hand — first,
         * before anything else the panel can do.
@@ -640,8 +929,12 @@ export function Inspector() {
           })()}
         </>
       )}
+      </>
+      )}
 
 
+      {tab === 'indhold' && (
+      <>
       <h3 className="inspector__group">Tekst</h3>
 
       <label className="inspector__field">
@@ -718,6 +1011,19 @@ export function Inspector() {
         </button>
       )}
 
+      <label className="inspector__check">
+        <input
+          type="checkbox"
+          checked={overrides.pinned}
+          onChange={(e) => updateOverrides(offer.id, { pinned: e.target.checked })}
+        />
+        <span>Fastlås — må ikke flyttes ved næste generering</span>
+      </label>
+      </>
+      )}
+
+      {tab === 'bokse' && (
+      <>
       <h3 className="inspector__group">
         Elementer
         {arranged && (
@@ -767,7 +1073,11 @@ export function Inspector() {
           );
         })}
       </ul>
+      </>
+      )}
 
+      {tab === 'billede' && (
+      <>
       {/*
         * The products inside a cluster, when the tile draws one.
         *
@@ -787,6 +1097,29 @@ export function Inspector() {
         * would have sent it, the cutouts numbered in the order the
         * prompt names them, and a way back in for the result.
         */}
+      {/*
+        * One picture, several variants — three bottles in one packshot.
+        * The arrangement below works on separate cutouts, so this cuts
+        * the picture into one per variant first, then stands them up.
+        */}
+      {offer.members.length <= 1 && (offer.imageUrl || offer.imagePack.length > 1) && (
+        <div className="way way--split">
+          <h3 className="inspector__group">Stil op med Gemini</h3>
+          <button
+            className="way__go"
+            disabled={Boolean(busy) || !decorReady}
+            title={decorReady ? 'Gemini stiller varerne i billedet op i feltet (G)' : 'Kræver en Gemini-nøgle'}
+            onClick={() => void splitAndStandUp(offer.id)}
+          >
+            Stil op med Gemini
+          </button>
+          <p className="way__aside">
+            Varerne i billedet stilles op som en tilbudsavis — og kan bagefter flyttes
+            hver for sig. Prisen og teksten er de samme.
+          </p>
+        </div>
+      )}
+
       {offer.members.length > 1 && (
         <>
           <h3 className="inspector__group">Gemini</h3>
@@ -1133,6 +1466,15 @@ export function Inspector() {
         </>
       )}
 
+      {/* The SHEET's own settings, at the foot of a panel about a vare.
+          They are reachable from here because a page has no other panel
+          — but they are set once per sheet and asked about last. */}
+      <PageGround />
+      </>
+      )}
+
+      {tab === 'bokse' && (
+      <>
       {/*
         * The four sliders for the variant in hand.
         *
@@ -1200,20 +1542,8 @@ export function Inspector() {
           </small>
         </label>
       )}
-
-      <label className="inspector__check">
-        <input
-          type="checkbox"
-          checked={overrides.pinned}
-          onChange={(e) => updateOverrides(offer.id, { pinned: e.target.checked })}
-        />
-        <span>Fastlås — må ikke flyttes ved næste generering</span>
-      </label>
-
-      {/* The SHEET's own settings, at the foot of a panel about a vare.
-          They are reachable from here because a page has no other panel
-          — but they are set once per sheet and asked about last. */}
-      <PageGround />
+      </>
+      )}
 
       {/* Written out because the tile is where the work happens, and a
           shortcut nobody is told about is a shortcut nobody uses. */}

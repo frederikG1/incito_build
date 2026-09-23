@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { coversWeek, weekRange, type Offer } from '@incitio/schema';
 import { formatPrice } from '@incitio/renderer';
 import { count, useStudio } from './state.js';
+import { Pictures } from './Pictures.js';
 
 /**
  * What is in the file, as a deck of cards.
@@ -143,6 +144,9 @@ export function Library() {
   const week = useStudio((s) => s.week);
   const weekOnly = useStudio((s) => s.weekOnly);
   const setWeekOnly = useStudio((s) => s.setWeekOnly);
+  const drawer = useStudio((s) => s.drawer);
+  const setDrawer = useStudio((s) => s.setDrawer);
+  const uploads = useStudio((s) => s.uploads);
 
   /*
    * The feed's products first, then any the document has that the feed
@@ -209,7 +213,11 @@ export function Library() {
 
   if (!open) {
     return (
-      <button className="library__tab" onClick={() => setOpen(true)} title="Vis varerne i feedet">
+      <button
+        className="library__tab"
+        onClick={() => setOpen(true)}
+        title="Vis varerne i feedet og kædens egne billeder"
+      >
         Varer{offers.length > 0 ? ` (${offers.length})` : ''}
       </button>
     );
@@ -217,6 +225,30 @@ export function Library() {
 
   return (
     <aside className="library">
+      {/*
+        * Two drawers in one, because they are the two things a page is
+        * made of that come from outside it: this week's products, and
+        * the chain's own pictures. Tabs rather than a second panel —
+        * the canvas has given up enough width already.
+        */}
+      <div className="library__tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={drawer === 'varer'}
+          className={drawer === 'varer' ? 'is-on' : ''}
+          onClick={() => setDrawer('varer')}
+        >Varer{offers.length > 0 ? ` (${offers.length})` : ''}</button>
+        <button
+          role="tab"
+          aria-selected={drawer === 'billeder'}
+          className={drawer === 'billeder' ? 'is-on' : ''}
+          onClick={() => setDrawer('billeder')}
+        >Billeder{uploads.length > 0 ? ` (${uploads.length})` : ''}</button>
+        <button className="library__close" title="Skjul listen" onClick={() => setOpen(false)}>×</button>
+      </div>
+
+      {drawer === 'billeder' ? <Pictures /> : (
+      <>
       <header className="library__head">
         <strong>Varer</strong>
         {/* The count is what is LISTED, with the whole file beside it
@@ -229,7 +261,6 @@ export function Library() {
               setAside > 0 ? ` af ${all.length}` : ''} · ${reading.withImage} med billede`
             : `${offers.length}${setAside > 0 ? ` af ${all.length}` : ''} i avisen`}
         </span>
-        <button className="library__close" title="Skjul listen" onClick={() => setOpen(false)}>×</button>
       </header>
 
       <input
@@ -442,6 +473,8 @@ export function Library() {
             />
           )}
         </footer>
+      )}
+      </>
       )}
     </aside>
   );

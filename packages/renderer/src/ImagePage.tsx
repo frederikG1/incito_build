@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { Brand, CatalogPage } from '@incitio/schema';
 import { brandCssVars } from '@incitio/schema';
+import { cssUrl } from './format.js';
 
 export interface ImagePageProps {
   page: CatalogPage;
@@ -16,7 +17,7 @@ export interface ImagePageProps {
  * `PageBackground`, so the PDF run's path rewriting and the inspector's
  * fit and crop controls work here for free.
  */
-export function ImagePage({ page, brand, pageIndex = 0, pageNumber }: ImagePageProps) {
+export function ImagePage({ page, brand, pageIndex = 0 }: ImagePageProps) {
   const style: CSSProperties = {
     ...brandCssVars(brand, pageIndex),
     aspectRatio: String(brand.pageAspect),
@@ -35,7 +36,7 @@ export function ImagePage({ page, brand, pageIndex = 0, pageNumber }: ImagePageP
           data-fit={page.background.fit}
           aria-hidden="true"
           style={{
-            '--bg-image': `url("${encodeURI(page.background.imageUrl)}")`,
+            '--bg-image': cssUrl(page.background.imageUrl),
             '--bg-opacity': String(page.background.opacity),
             '--bg-focus': `${page.background.focusX}% ${page.background.focusY}%`,
           } as CSSProperties}
@@ -46,7 +47,7 @@ export function ImagePage({ page, brand, pageIndex = 0, pageNumber }: ImagePageP
         <p className="page__missing">Siden har intet billede</p>
       )}
 
-      {pageNumber !== undefined && <footer className="page__foot">{pageNumber}</footer>}
+      {/* No page number on the sheet: the chain's pages do not print one. */}
     </section>
   );
 }

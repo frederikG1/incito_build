@@ -12,6 +12,8 @@ export * from './prompt.js';
 export * from './cutout.js';
 export * from './cluster.js';
 export * from './store.js';
+export * from './split.js';
+export * from './backdrop.js';
 
 /**
  * Step 5: decoration.
@@ -57,6 +59,8 @@ export interface DecorateOptions extends GeminiOptions {
   browser?: Browser;
   /** Decorate at most this many pages. Omit for all of them. */
   maxPages?: number;
+  /** Only these pages. Omit for every page. */
+  pageIds?: string[];
   /** Answer from the cache only — never call the image model. */
   offline?: boolean;
   /** Layout seed, so a rebuild puts the artwork back where it was. */
@@ -73,6 +77,8 @@ export interface DecorateResult {
   cached: number;
   /** Anything that went wrong, page by page. Never thrown. */
   errors: { pageId: string; message: string }[];
+  /** What each drawn page got, in Danish — for the editor's note. */
+  subjects: { pageId: string; subject: string }[];
   usage?: { input: number; output: number };
 }
 
@@ -104,8 +110,10 @@ export async function decorate(
   const store = decorStore(options.assetRoot);
 
   // An image page is finished artwork; there is nothing to decorate.
+  const only = options.pageIds ? new Set(options.pageIds) : null;
   const pages = document.pages
     .filter((page) => page.kind !== 'image')
+    .filter((page) => !only || only.has(page.id))
     .slice(0, options.maxPages ?? document.pages.length);
   const briefs: PageBrief[] = pages.map((page) => ({
     pageId: page.id,
@@ -132,6 +140,7 @@ export async function decorate(
       skipped: 0,
       cached: 0,
       errors: [{ pageId: '*', message: message(error) }],
+      subjects: [],
     };
   }
 
@@ -209,6 +218,8 @@ export async function decorate(
       // for a person moving one by hand — see `PageDecoration.offsetX`.
       offsetX: 0,
       offsetY: 0,
+      flip: false,
+      front: false,
     });
   }
 
@@ -217,10 +228,25 @@ export async function decorate(
       ...document,
       pages: document.pages.map((page) => {
         const decor = decorated.get(page.id);
-        return decor ? { ...page, decorations: [decor] } : page;
+        /*
+         * Replaces the page's previous DRAWN motif and nothing else. It
+         * used to replace every decoration, which quietly deleted the
+         * pictures an editor had uploaded onto the page (`img-…`).
+         */
+        return decor
+          ? {
+            ...page,
+            decorations: [
+              // A page holds twelve at most (see `CatalogPage.decorations`).
+              ...page.decorations.filter((d) => !d.id.startsWith('decor-')).slice(-11),
+              decor,
+            ],
+          }
+          : page;
       }),
     },
     drawn: decorated.size,
+    subjects: [...decorated].map(([pageId, decor]) => ({ pageId, subject: decor.subject })),
     skipped,
     cached,
     errors,
@@ -232,3 +258,4 @@ function message(error: unknown): string {
   if (error instanceof GeminiError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
+export * from './key.js';

@@ -1,10 +1,18 @@
 import { useStudio } from './state.js';
 
 /**
- * The two ways into a page that are not a file you hand in.
+ * Every way a page can come into being, in one place.
  *
- * `Genskab sider` takes pages off your desk — a photograph, a scan, a
- * PDF. These take them from somewhere else:
+ * There were four of them and they were four separate buttons on the
+ * toolbar — `Genskab sider`, `Hurtigt udkast`, `Hent/tegn`, and a test
+ * button — which is one decision ("where do the pages come from")
+ * spread across half the bar, with nothing to say which answer is the
+ * good one. They are rows in one panel now, in the order somebody
+ * should try them:
+ *
+ *   **Trykte sider.** Hand in the pages you want the avis to look
+ *   like. The most expensive route and the only one that reliably
+ *   produces a page worth printing, so it is first.
  *
  *   **Et link.** A leaflet published through Tjek carries its own
  *   layout in the page it is served on: every offer is a rectangle with
@@ -32,8 +40,36 @@ export function Ways() {
   const busy = Boolean(s.busy);
 
   return (
-    <section className="ways" aria-label="Hent eller tegn sider">
+    <section className="ways" aria-label="Nye sider">
       <div className="ways__row">
+          {/*
+            * The route that produces a page worth printing, first.
+            *
+            * Its own overlay rather than a row of fields — handing in
+            * eight scans needs a file list, an order and a page range
+            * per file, which is more than a row. The panel's job is to
+            * say that this is one of four answers to the same
+            * question, and to be the place the choice is made.
+            */}
+          <div className="ways__way">
+            <div className="ways__field ways__field--wide">
+              <span className="ways__label">
+                Trykte sider <em>— aflevér de sider avisen skal ligne</em>
+              </span>
+              <span className="ways__hint">
+                Én fil pr. side, eller et sideinterval af en PDF. Dyrest, og den
+                eneste vej der pålideligt giver en side værd at trykke.
+              </span>
+            </div>
+            <button
+              className="primary ways__go"
+              disabled={busy}
+              onClick={() => { s.closePanel(); s.setReproduceOpen(true); }}
+            >
+              Aflevér sider
+            </button>
+          </div>
+
           {/*
             * The link route.
             *
@@ -152,6 +188,72 @@ export function Ways() {
               onClick={() => void s.generateLayout()}
             >
               Tegn og fyld
+            </button>
+          </div>
+
+          {/*
+            * The fast look at a feed, last.
+            *
+            * `Sider` lives here and nowhere else now. It is the page
+            * budget for THIS route and no other, and standing
+            * permanently in the toolbar it looked like a setting for
+            * the whole studio.
+            */}
+          <div className="ways__way">
+            <div className="ways__field ways__field--wide">
+              <span className="ways__label">
+                Hurtigt udkast <em>— kategorisortering, ingen model</em>
+              </span>
+              <span className="ways__hint">
+                Feedet lagt direkte i kædens egne layouts. Øjeblikkeligt og gratis —
+                et hurtigt kig på ugens varer, ikke en avis.
+              </span>
+            </div>
+
+            <label className="ways__field ways__field--slim">
+              <span className="ways__label">Sider</span>
+              <input
+                type="number"
+                min={1}
+                max={60}
+                value={s.maxPages}
+                onChange={(event) => s.setMaxPages(Number(event.target.value))}
+              />
+              <span className="ways__hint">højst</span>
+            </label>
+
+            <button
+              className="ways__go"
+              disabled={busy || !s.feed}
+              title={s.feed ? '' : 'Upload et feed først'}
+              onClick={() => void s.build({ fresh: true })}
+            >
+              Byg udkast
+            </button>
+          </div>
+
+          {/*
+            * The five steps every test of the cluster feature starts
+            * with, as one press — see `testCluster`.
+            *
+            * Here rather than in the toolbar, and said plainly. It is
+            * a developer's shortcut and it spent months looking like
+            * something a customer was meant to press.
+            */}
+          <div className="ways__way ways__way--aside">
+            <div className="ways__field ways__field--wide">
+              <span className="ways__label">Testflise <em>— til udvikling</em></span>
+              <span className="ways__hint">
+                Bygger et udkast om nødvendigt, samler de tre første varer med billede
+                i første plads, og lader Gemini stille dem op.
+              </span>
+            </div>
+            <button
+              className="ways__go"
+              disabled={busy || (!s.feed && !s.document)}
+              onClick={() => void s.testCluster()}
+            >
+              Kør test
             </button>
           </div>
 

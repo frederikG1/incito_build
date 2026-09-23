@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CatalogDocument, coversWeek, nextWeek, weekDates, weekName, weekOf,
-  weekRange, weeksInYear, weekSaid,
+  weekRange, weeksInYear,
 } from '../index.js';
 
 describe('weekDates', () => {
@@ -71,9 +71,8 @@ describe('weekRange', () => {
   });
 });
 
-describe('weekSaid and weekName', () => {
-  it('are what the toolbar and the picker show', () => {
-    expect(weekSaid({ year: 2026, week: 39 })).toBe('uge 39 · gælder 21.–27. september');
+describe('weekName', () => {
+  it('is what the picker shows', () => {
     expect(weekName('SuperBrugsen', { year: 2026, week: 39 }))
       .toBe('SuperBrugsen · uge 39');
   });

@@ -13,9 +13,11 @@ import {
 import { imaginePage, matchPage, MatchError, mediaType } from '@incitio/match';
 import type { Browser } from 'playwright';
 import { uploadStore } from './uploads.js';
+import { readFileSync } from 'node:fs';
+import { join, normalize, sep } from 'node:path';
 import { renderCataloguePdf } from '@incitio/pdf';
 import {
-  clusterPrompt, composeCluster, cutout, decorate, fetchImages,
+  clusterPrompt, composeCluster, backdropPrompt, keyOutMotifs, composedCount, cropBoxes, cutout, decorate, fetchImages, findIslands, findVariants, generateImage, ASPECTS,
   sharedBrowser, DEFAULT_IMAGE_MODEL, GeminiError,
 } from '@incitio/decor';
 import { importPublication, PublicationError } from '@incitio/publication';
@@ -94,7 +96,36 @@ export interface AppOptions {
 export function createApp(store: Store, options: AppOptions = {}) {
   const app = new Hono<Scope>();
   const labels = options.labels ?? EMPTY_LABEL_DICTIONARY;
-  const uploads = options.assetDir ? uploadStore(options.assetDir) : null;
+  /*
+   * A store per chain, made where the chain is known.
+   *
+   * It used to be one store built at boot, which is what made the
+   * upload tree flat — see `uploadStore`. The brand is only resolved
+   * inside a request, so the store has to be too.
+   */
+  /*
+   * Pictures for the models, wherever they live. A product off the feed
+   * is a URL; a cutout the studio made (`/uploads/…`, `/decor/…`) is a
+   * file under the asset root, and fetching it over HTTP would ask the
+   * dev server for a file this process can simply read.
+   */
+  const imagesFor = async (urls: (string | null)[]) => Promise.all(urls.map(async (url) => {
+    if (url && url.startsWith('/') && options.assetDir) {
+      const root = normalize(options.assetDir);
+      const file = normalize(join(root, url.split('?')[0]!));
+      if (!file.startsWith(root + sep)) return null;
+      try {
+        const bytes = readFileSync(file);
+        return { bytes, mimeType: mediaType(bytes) };
+      } catch {
+        return null;
+      }
+    }
+    return (await fetchImages([url]))[0] ?? null;
+  }));
+
+  const uploadsFor = (brandId: string) =>
+    (options.assetDir ? uploadStore(options.assetDir, brandId) : null);
 
   app.use('/api/*', cors({ origin: '*', allowHeaders: ['content-type', BRAND_HEADER, KEY_HEADER] }));
 
@@ -239,6 +270,8 @@ export function createApp(store: Store, options: AppOptions = {}) {
 
   const DecorRequest = z.object({
     document: CatalogDocument,
+    /** Only these pages; omitted means every page. */
+    pageIds: z.array(z.string()).max(200).optional(),
     brief: z.string().max(2000).optional(),
     /**
      * The editor's own words for the image model, added to every prompt
@@ -315,10 +348,12 @@ export function createApp(store: Store, options: AppOptions = {}) {
         ...(parsed.data.brief ? { brief: parsed.data.brief } : {}),
         ...(parsed.data.style ? { style: parsed.data.style } : {}),
         ...(parsed.data.offline ? { offline: true } : {}),
+        ...(parsed.data.pageIds ? { pageIds: parsed.data.pageIds } : {}),
       });
       return c.json({
         document: result.document,
         drawn: result.drawn,
+        subjects: result.subjects,
         skipped: result.skipped,
         cached: result.cached,
         // Never thrown by `decorate` — a page that could not be drawn is
@@ -419,6 +454,8 @@ export function createApp(store: Store, options: AppOptions = {}) {
   });
 
   app.post('/api/brand/uploads', async (c) => {
+    const brandId = c.get('brand').brand.id;
+    const uploads = uploadsFor(brandId);
     if (!uploads) {
       return c.json(
         { error: 'ingen billedmappe', detail: 'Serveren blev startet uden assetDir.' },
@@ -481,6 +518,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
          * like a prompt that was ignored.
          */
         const { ref } = uploads.put(cut.bytes, 'png');
+        store.rememberUpload(brandId, ref, parsed.data.name?.trim() || 'uden navn');
         return c.json({
           url: ref,
           bytes: cut.bytes.length,
@@ -494,7 +532,35 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
 
     const { ref } = uploads.put(bytes, extension);
+    /*
+     * Written down, not just written to disk.
+     *
+     * The bytes were always stored; nothing recorded that they had
+     * been. A picture could therefore only be reached through a
+     * document that already pointed at it — upload a background, press
+     * undo, and it was unreachable for good. The row is what makes the
+     * chain's own library a place rather than a side effect.
+     */
+    store.rememberUpload(brandId, ref, parsed.data.name?.trim() || 'uden navn');
     return c.json({ url: ref, bytes: bytes.length });
+  });
+
+  /** This chain's own pictures. Never another chain's — see `uploads`. */
+  app.get('/api/brand/uploads', (c) =>
+    c.json({ uploads: store.uploads(c.get('brand').brand.id) }));
+
+  /*
+   * Take one out of the library.
+   *
+   * The row goes and the file stays: a catalogue saved last week may
+   * still be printing it, and a library says what is on offer rather
+   * than what exists.
+   */
+  app.delete('/api/brand/uploads', (c) => {
+    const ref = c.req.query('ref') ?? '';
+    return store.forgetUpload(c.get('brand').brand.id, ref)
+      ? c.json({ ok: true })
+      : c.json({ error: 'not found' }, 404);
   });
 
   /**
@@ -715,7 +781,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
 
     const offers = parsed.data.offers;
-    const fetched = await fetchImages(offers.map((offer) => offer.imageUrl));
+    const fetched = await imagesFor(offers.map((offer) => offer.imageUrl));
     const missing = offers.filter((_, index) => fetched[index] === null);
     if (missing.length > 0) {
       /*
@@ -768,8 +834,8 @@ export function createApp(store: Store, options: AppOptions = {}) {
        * on a printed page.
        */
       const cut = await cutout(drawn.bytes, drawn.mimeType, await cutOptions());
-      const store = uploadStore(options.assetDir);
-      const stored = store.put(cut.bytes, 'png');
+      const files = uploadStore(options.assetDir, c.get('brand').brand.id);
+      const stored = files.put(cut.bytes, 'png');
 
       return c.json({
         url: stored.ref,
@@ -785,7 +851,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
             files: copyCutouts(
               offers,
               fetched as { bytes: Buffer; mimeType: string }[],
-              store,
+              files,
             ),
           }
           : {}),
@@ -837,7 +903,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
 
     const offers = parsed.data.offers;
-    const fetched = await fetchImages(offers.map((offer) => offer.imageUrl));
+    const fetched = await imagesFor(offers.map((offer) => offer.imageUrl));
     const missing = offers.filter((_, index) => fetched[index] === null);
     if (missing.length > 0) {
       return c.json({
@@ -849,7 +915,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     const files = copyCutouts(
       offers,
       fetched as { bytes: Buffer; mimeType: string }[],
-      uploadStore(options.assetDir),
+      uploadStore(options.assetDir, c.get('brand').brand.id),
     );
 
     return c.json({
@@ -977,7 +1043,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
 
     const offers = parsed.data.offers;
-    const fetched = await fetchImages(offers.map((offer) => offer.imageUrl));
+    const fetched = await imagesFor(offers.map((offer) => offer.imageUrl));
     const missing = offers.filter((_, index) => fetched[index] === null);
     if (missing.length > 0) {
       return c.json({
@@ -1125,6 +1191,171 @@ export function createApp(store: Store, options: AppOptions = {}) {
    * another origin — and because a URL that reaches the server's own
    * network is checked before it is fetched, in `@incitio/publication`.
    */
+  /*
+   * One packshot of several variants, as one cutout per variant — see
+   * `findVariants`. The crops are kept as the chain's own uploads, so
+   * the tile they make survives a reload like any other picture.
+   */
+  app.post('/api/brand/split', async (c) => {
+    const brandId = c.get('brand').brand.id;
+    const uploads = uploadsFor(brandId);
+    if (!uploads) return c.json({ error: 'serveren har ingen assetDir at gemme billeder i' }, 503);
+    const apiKey = imageKey(c);
+    if (!apiKey) {
+      return c.json({
+        error: 'ingen Gemini-nøgle',
+        detail: 'Indsæt en Gemini-nøgle i studioet, eller sæt GEMINI_API_KEY i .env.',
+      }, 503);
+    }
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+    const parsed = z.object({ imageUrl: z.string().min(1).max(4000) }).safeParse(payload);
+    if (!parsed.success) return c.json({ error: 'invalid request' }, 400);
+
+    try {
+      const [image] = await imagesFor([parsed.data.imageUrl]);
+      if (!image) return c.json({ error: 'billedet kunne ikke hentes' }, 502);
+      // A Tjek packshot says how many photographs it is made of.
+      const expected = composedCount(parsed.data.imageUrl);
+      const options = await cutOptions();
+      /*
+       * The picture's own pixels first: packages standing apart on a
+       * clear background are islands of ink, found instantly and
+       * exactly. The model is asked only when they touch or overlap.
+       */
+      let boxes = await findIslands(image, options.browser ? { browser: options.browser } : {})
+        .catch(() => []);
+      if (boxes.length < 2 || (expected !== null && boxes.length !== expected)) {
+        const seen = await findVariants(image, { apiKey, expected }).then((r) => r.boxes).catch(() => []);
+        if (seen.length >= boxes.length) boxes = seen;
+      }
+      if (boxes.length < 2) {
+        return c.json({
+          error: expected
+            ? `Billedet består af ${expected} varer, men Gemini kunne ikke skelne dem — prøv igen om lidt`
+            : 'Der er kun én vare i billedet — der er ikke flere at stille op',
+        }, 422);
+      }
+      const crops = await cropBoxes(image, boxes, options.browser ? { browser: options.browser } : {});
+      const products = [];
+      for (const [index, bytes] of crops.entries()) {
+        /*
+         * Cut out when the crop sits on a light field; kept as cropped
+         * when the fill finds nothing (a packshot that is already
+         * transparent, or photographed on a table).
+         */
+        let finished = bytes;
+        try {
+          const cut = await cutout(bytes, 'image/png', options);
+          if (cut.kept < 0.97) finished = cut.bytes;
+        } catch { /* the crop stands */ }
+        const { ref } = uploads.put(finished, 'png');
+        products.push({ name: boxes[index]!.name || `Variant ${index + 1}`, ref });
+      }
+      return c.json({ products });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : 'opdelingen fejlede' }, 500);
+    }
+  });
+
+  /*
+   * The background picture for one page — see `backdropPrompt`.
+   * The studio measures the page; the brief is written here, so the
+   * words the model gets are one function's, not two copies of it.
+   */
+  const BackdropRequest = z.object({
+    aspect: z.enum(ASPECTS),
+    colour: z.string().regex(/^#[0-9a-f]{6}$/i),
+    regions: z.array(z.object({ x0: z.number(), x1: z.number(), y0: z.number(), y1: z.number() })).max(24),
+    text: z.array(z.string().max(20)).max(40),
+    offer: z.string().max(200),
+    products: z.array(z.string().max(120)).max(20),
+    style: z.string().max(600).optional(),
+    /** The free places on the page, in percent — see `measurePage`. */
+    spots: z.array(z.object({ x0: z.number(), x1: z.number(), y0: z.number(), y1: z.number() })).max(3).optional(),
+    /** The sheet's width over its height. */
+    ratio: z.number().min(0.2).max(5).optional(),
+  });
+
+  app.post('/api/brand/backdrop', async (c) => {
+    const brandId = c.get('brand').brand.id;
+    const uploads = uploadsFor(brandId);
+    if (!uploads) return c.json({ error: 'serveren har ingen assetDir at gemme billeder i' }, 503);
+    const apiKey = imageKey(c);
+    if (!apiKey) {
+      return c.json({
+        error: 'ingen nøgle til billedmodellen',
+        detail: 'Indsæt en Gemini-nøgle i studioet, eller sæt GEMINI_API_KEY i .env.',
+      }, 503);
+    }
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+    const parsed = BackdropRequest.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+    if (parsed.data.spots) {
+      /*
+       * Motifs for a page, from the editor's own brief: the page painted
+       * in its own flat colour with the motif placed around the products
+       * and the words. The flat colour is then taken out and each group
+       * of objects returned as its own picture at the place the model
+       * gave it — laid by the studio as decorations on the page's real
+       * background, each movable by hand.
+       */
+      try {
+        const browser = await sharedBrowser();
+        const prompt = backdropPrompt(parsed.data as Parameters<typeof backdropPrompt>[0]);
+        const image = await generateImage(prompt, { apiKey, aspectRatio: parsed.data.aspect })
+          .catch((error: unknown) => {
+            if (error instanceof Error && /400|imageConfig|aspect/i.test(error.message)
+              && !/kvoten|quota/i.test(error.message)) {
+              return generateImage(prompt, { apiKey });
+            }
+            throw error;
+          });
+        const keyed = await keyOutMotifs(image, { browser, max: 2 });
+        if (keyed.length === 0) throw new Error('billedet havde intet motiv at tage ud — prøv igen');
+        const motifs = keyed.map((motif) => {
+          const { ref } = uploads.put(motif.png, 'png');
+          return { url: ref, spot: motif.box, width: motif.width, height: motif.height };
+        });
+        return c.json({ motifs, prompt });
+      } catch (error) {
+        return c.json({ error: error instanceof Error ? error.message : 'billedet kunne ikke tegnes' }, 502);
+      }
+    }
+    const prompt = backdropPrompt(parsed.data as Parameters<typeof backdropPrompt>[0]);
+    try {
+      /*
+       * The shape as a setting when the model takes it; a model that
+       * refuses the setting (a 400 naming it) is asked again without —
+       * the brief states the ratio in words as well.
+       */
+      const image = await generateImage(prompt, { apiKey, aspectRatio: parsed.data.aspect })
+        .catch((error: unknown) => {
+          if (error instanceof Error && /400|imageConfig|aspect/i.test(error.message)
+            && !/kvoten|quota/i.test(error.message)) {
+            return generateImage(prompt, { apiKey });
+          }
+          throw error;
+        });
+      const extension = mediaType(image.bytes).split('/')[1]!;
+      const { ref } = uploads.put(image.bytes, extension);
+      return c.json({ url: ref, prompt });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : 'billedet kunne ikke tegnes' }, 502);
+    }
+  });
+
   app.post('/api/brand/publication', async (c) => {
     const definition = c.get('brand');
 

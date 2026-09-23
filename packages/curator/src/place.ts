@@ -230,7 +230,7 @@ interface Answered {
   model: string;
   /** The one that was asked for, when it was busy and another answered. */
   insteadOf?: string;
-  usage: { inputTokens: number; outputTokens: number } | null;
+  usage: { inputTokens: number; outputTokens: number; cachedTokens: number } | null;
 }
 
 /**
@@ -298,6 +298,20 @@ async function fromGemini(
           // not to wait. Strict has no queue, so there is only the
           // long wait.
           timeoutMs: (at === 0 || options.strict) ? 45_000 : 20_000,
+          /*
+           * The standing prompt in front of the cutouts.
+           *
+           * This API bills a cached token at a fraction of a fresh
+           * one and matches a cache by the request's LEADING tokens,
+           * so the half that never changes has to lead. Pictures
+           * first — which is what this did — put the one thing that
+           * differs per tile in front of the one thing that does not,
+           * and no two calls ever shared a prefix.
+           *
+           * The prompt still numbers the cutouts and they still
+           * arrive in that order; only what comes first changed.
+           */
+          promptFirst: true,
           ...(options.apiKey ? { apiKey: options.apiKey } : {}),
         },
         pictures,
@@ -306,7 +320,9 @@ async function fromGemini(
         answer: value,
         model: candidate,
         ...(at > 0 ? { insteadOf: model } : {}),
-        usage: usage ? { inputTokens: usage.input, outputTokens: usage.output } : null,
+        usage: usage
+          ? { inputTokens: usage.input, outputTokens: usage.output, cachedTokens: usage.cached }
+          : null,
       };
     } catch (error) {
       // Only a busy model is stepped over. A bad request, a refused
@@ -394,6 +410,9 @@ async function fromClaude(
     usage: {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
+      // The other house reports its cache under different names; not
+      // read here, because this path is kept for a comparison.
+      cachedTokens: 0,
     },
   };
 }

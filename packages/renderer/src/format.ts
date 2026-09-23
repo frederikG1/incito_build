@@ -31,14 +31,6 @@ export function formatQuantity(size: number | null, unit: string, pieceCount: nu
   return parts.join(' ');
 }
 
-export function formatValidity(from: string, to: string): string {
-  const fmt = (iso: string) => {
-    const [, m, d] = iso.split('-');
-    return `${Number(d)}.${Number(m)}.`;
-  };
-  return `${fmt(from)} – ${fmt(to)}`;
-}
-
 /**
  * A section heading split into the two faces it is set in.
  *
@@ -63,4 +55,19 @@ export function splitHeading(title: string): { head: string; tail: string } {
   const match = /^(.*?\S)\s+((?:og|eller|&)\s+\S.*)$/i.exec(trimmed);
   if (!match) return { head: trimmed, tail: '' };
   return { head: match[1]!, tail: match[2]! };
+}
+
+/**
+ * A picture's address, safe inside a CSS `url("…")`.
+ *
+ * `encodeURI` on its own encodes the `%` of an address that is already
+ * encoded, and a signed image-service URL — `?u=s3%3A…&s=<signature>` —
+ * then asks for a different file than the one signed: 401, and a
+ * background that silently never appears. So an address with escapes in
+ * it is left as it is, and only the characters that would end the CSS
+ * string are escaped.
+ */
+export function cssUrl(url: string): string {
+  const safe = /%[0-9a-f]{2}/i.test(url) ? url : encodeURI(url);
+  return `url("${safe.replace(/["\\\n]/g, (c) => encodeURIComponent(c))}")`;
 }

@@ -309,16 +309,3 @@ export async function readPage(
 
   return { page, width, height, items };
 }
-
-/** Every page of a file, in order. Convenience over a loop with state. */
-export async function readPages(
-  pdfjs: PdfjsLike,
-  source: { data?: Uint8Array; url?: string },
-  pages?: number[],
-): Promise<ReferencePage[]> {
-  const doc = await pdfjs.getDocument({ ...source, isEvalSupported: false }).promise;
-  const wanted = pages ?? Array.from({ length: doc.numPages }, (_, i) => i + 1);
-  const out: ReferencePage[] = [];
-  for (const page of wanted) out.push(await readPage(pdfjs, source, page));
-  return out;
-}

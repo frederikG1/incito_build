@@ -31,6 +31,78 @@ export const MeasuredRect = z.object({
 });
 export type MeasuredRect = z.infer<typeof MeasuredRect>;
 
+/**
+ * One line of type as a published page sets it, inside a price mark or a
+ * badge — sizes and margins in shares of the PAGE's width.
+ */
+export const FrameLine = z.object({
+  /** `figure` is the live price; `pack` the offer's pack; `note` fixed words. */
+  role: z.enum(['figure', 'pack', 'note']),
+  text: z.string(),
+  /** A stretch of the text set as superscript — "15⁹⁵". */
+  sup: z.object({ start: z.number().int().min(0), end: z.number().int().min(0) }).optional(),
+  size: z.number().min(0).max(0.5),
+  color: z.string().optional(),
+  bold: z.boolean().default(false),
+  upper: z.boolean().default(false),
+  align: z.enum(['left', 'center', 'right']).optional(),
+  lineHeight: z.number().min(0.5).max(3).optional(),
+  /** top, right, bottom, left. */
+  margin: z.array(z.number().min(-0.5).max(0.5)).length(4).optional(),
+  /** CSS width as the page states it — "50%", or a page share. */
+  width: z.union([z.string().regex(/^\d+(\.\d+)?%$/), z.number().min(0).max(1)]).optional(),
+});
+export type FrameLine = z.infer<typeof FrameLine>;
+
+/** How a box stacks its lines — the flex settings the page used. */
+export const FrameStack = z.object({
+  align: z.enum(['flex-start', 'center', 'flex-end']).default('center'),
+  justify: z.enum(['flex-start', 'center', 'flex-end']).default('center'),
+});
+export type FrameStack = z.infer<typeof FrameStack>;
+
+export const TileFrame = z.object({
+  media: MeasuredRect,
+  price: MeasuredRect.optional(),
+  words: MeasuredRect.optional(),
+  splash: z.string().optional(),
+  priceInk: z.string().optional(),
+  /** The words hang from the top of their box, or stand on its foot. */
+  wordsAlign: z.enum(['start', 'end']).default('start'),
+  /**
+   * The shape of the cell the frame was drawn for, width over height as
+   * printed. A frame fits cells of about that shape; it travels, but a
+   * frame for a wide hero put into a square cell squeezes its words.
+   */
+  shape: z.number().min(0.1).max(10).optional(),
+  /** The price mark's own lines, when the page set more than a figure. */
+  priceLines: z.array(FrameLine).max(8).optional(),
+  priceStack: FrameStack.optional(),
+  /**
+   * Boxes of words set over the tile that are neither the price nor the
+   * name — the member-discount roundel. In shares of the cell.
+   */
+  badges: z.array(z.object({
+    rect: MeasuredRect,
+    lines: z.array(FrameLine).max(8),
+    stack: FrameStack,
+    image: z.string().optional(),
+  })).max(6).optional(),
+  /** Small drawn marks placed in the tile — "Dansk & lokalt". */
+  art: z.array(z.object({ rect: MeasuredRect, image: z.string() })).max(6).optional(),
+  /**
+   * Type sizes as the page set them, in shares of the PAGE's width —
+   * so they print the same from thumbnail to A4. Absent: our own scale.
+   */
+  type: z.object({
+    name: z.number().min(0).max(0.2),
+    body: z.number().min(0).max(0.2),
+    figure: z.number().min(0).max(0.5),
+    pack: z.number().min(0).max(0.2),
+  }).optional(),
+});
+export type TileFrame = z.infer<typeof TileFrame>;
+
 export const TemplateSlot = z.object({
   /** Also the CSS grid-area name, so `areas` below can refer to it. */
   id: z.string().min(1).regex(/^[a-z][a-z0-9]*$/, 'must be a CSS ident'),
@@ -52,6 +124,31 @@ export const TemplateSlot = z.object({
    * headline is not a design, it is a collision.
    */
   bleed: z.number().min(1).max(1.6).default(1),
+  /**
+   * Where the cell sits, MEASURED off a published page, in shares of
+   * the sheet — instead of where the grid puts it.
+   *
+   * A lattice is a good approximation of a printed page and never an
+   * exact one: a published hero overlaps the headline, runs off the
+   * edge, sits a few points off every line. A layout read from a
+   * publication keeps each offer's own box, and the grid in `areas`
+   * stays as the fallback for anything that has no box (a cell grown
+   * by hand).
+   */
+  rect: MeasuredRect.optional(),
+  /**
+   * Where the three parts of the tile sit INSIDE the cell, in shares of
+   * the cell — measured off the same published page.
+   *
+   * These publications build every offer from the same three boxes:
+   * the packshot, the price mark and the words. Placing our tile's own
+   * parts in those boxes reproduces the page while every part stays
+   * the editable thing it always was. `splash` is the chain's drawn
+   * price shape, printed behind the figure; `priceInk` its type colour.
+   * On the cell, not the offer, so a product dropped into the cell
+   * takes the cell's design.
+   */
+  frame: TileFrame.optional(),
 });
 export type TemplateSlot = z.infer<typeof TemplateSlot>;
 
@@ -224,6 +321,23 @@ export function slotCells(template: PageTemplate, pageAspect: number): Map<strin
         bottom: box.y1 === rowCount - 1,
         left: box.x0 === 0,
       },
+    });
+  }
+  /*
+   * A cell with its own box — measured off a publication, or dragged to
+   * size by hand — is described by that box, not by the grid it came
+   * from: the grid no longer says how big it is.
+   */
+  for (const slot of template.slots) {
+    if (!slot.rect) continue;
+    const { x, y, w, h } = slot.rect;
+    const was = cells.get(slot.id);
+    cells.set(slot.id, {
+      columns: was?.columns ?? 1,
+      rows: was?.rows ?? 1,
+      aspect: (w / h) * pageAspect,
+      width: w,
+      edges: { top: y <= 0.03, right: x + w >= 0.97, bottom: y + h >= 0.97, left: x <= 0.03 },
     });
   }
   return cells;

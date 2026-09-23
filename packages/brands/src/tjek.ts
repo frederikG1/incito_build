@@ -283,3 +283,112 @@ export function tjekOffers(retailerId: string, sourceName: string): FieldMapping
     },
   };
 }
+
+/**
+ * The Tjek "transformed offers" export — the platform's own offer rows
+ * as the publication builder holds them: a flat array, snake_case,
+ * `price`/`membership_price` at the top level, the pack in
+ * `comment_label_1` and every variant's packshot under `products[]`.
+ *
+ * Not the public offers API above (`heading`, `pricing`, `run_from`)
+ * and not the chain's own export — a third shape of the same week, and
+ * the one a campaign is handed over in once it has been through Tjek.
+ */
+const TRANSFORMED_UNITS: Record<string, string> = {
+  gram: 'g', kilogram: 'kg', milliliter: 'ml', centiliter: 'cl', deciliter: 'dl',
+  liter: 'l', piece: 'pcs', meter: 'm',
+};
+
+/** A pack mark in `comment_label_1`, or nothing when it holds a price word. */
+function transformedPack(row: Record<string, unknown>): string {
+  const label = String(row['comment_label_1'] ?? '').trim();
+  if (!label || /^(medlemspris|pris)$/i.test(label)) return '';
+  return label;
+}
+
+/** The value most rows agree on, for rows that leave it out. */
+function commonest(rows: Record<string, unknown>[], key: string): unknown {
+  const counts = new Map<unknown, number>();
+  for (const row of rows) {
+    const value = row[key];
+    if (value !== null && value !== undefined && value !== '') counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
+export function tjekTransformed(retailerId: string, sourceName: string): FieldMapping {
+  const text = (row: Record<string, unknown>, key: string) =>
+    String(row[key] ?? '').replace(/\s+/g, ' ').trim();
+  const signed = (image: unknown) => (image as { signed?: string } | null)?.signed ?? null;
+
+  return {
+    retailerId,
+    sourceName,
+    currency: 'DKK',
+    /*
+     * A handful of rows run "until further notice" and leave the dates
+     * out — the daily bake-off and the Friday steak among them. Dropped
+     * for want of a date they would vanish from the week they are in,
+     * so they take the week the rest of the file agrees on.
+     */
+    extractRows: (payload) => {
+      if (!Array.isArray(payload)) return [];
+      const rows = payload as Record<string, unknown>[];
+      const from = commonest(rows, 'valid_from');
+      const until = commonest(rows, 'valid_until');
+      return rows.map((row) => ({
+        ...row,
+        valid_from: row['valid_from'] ?? from,
+        valid_until: row['valid_until'] ?? until,
+      }));
+    },
+    fields: {
+      id: (row) => text(row, 'id') || null,
+      name: (row) => text(row, 'name') || null,
+      description: (row) => text(row, 'description') || null,
+      brand: () => null,
+      category: (row) => tjekCategory(text(row, 'name'), text(row, 'description')),
+      price: 'price',
+      prePrice: 'preprice',
+      savings: (row) => (row['savings'] ?? row['membership_savings'] ?? null) as number | null,
+      quantityValue: (row) => tjekQuantity({
+        unit: { symbol: TRANSFORMED_UNITS[String(row['unit_symbol'] ?? '')] },
+        size: { from: row['unit_size_from'] as number | null, to: row['unit_size_to'] as number | null },
+        pieces: { from: row['piece_count_from'] as number | null, to: row['piece_count_to'] as number | null },
+      }),
+      pack: transformedPack,
+      validFrom: 'valid_from',
+      validTo: 'valid_until',
+      imageUrl: (row) => signed(row['image']),
+      /*
+       * Every variant's own packshot, for a "Frit valg" tile — and then
+       * NOT the offer's own image. On a several-variant offer `image` is
+       * the chain's composed shot of all of them, so adding it to the
+       * variants printed every pack twice: once in the group, once alone.
+       */
+      imagePack: (row) => {
+        const products = Array.isArray(row['products']) ? row['products'] : [];
+        const variants = [...new Set(products
+          .map((p) => signed((p as { image?: unknown }).image))
+          .filter((url): url is string => Boolean(url)))];
+        if (variants.length > 1) return variants;
+        const own = signed(row['image']);
+        return own ? [own] : variants;
+      },
+      labels: (row, dictionary) => {
+        const logos = Array.isArray(row['logos']) ? row['logos'] : [];
+        const labels: OfferLabelInput[] = resolveLabels(
+          dictionary,
+          logos.map((logo) => String((logo as { name?: unknown }).name ?? '')),
+        );
+        if (Number(row['membership_price']) > 0) {
+          labels.push({ kind: 'member', text: `Medlemspris ${row['membership_price']}` });
+        }
+        // "Bjælke: Under halv pris" — the banner the chain asks for.
+        const banner = /Bjælke:\s*([^\n¤]+)/.exec(String(row['comment_label_2'] ?? ''));
+        if (banner) labels.push({ kind: 'custom', text: banner[1]!.trim() });
+        return labels;
+      },
+    },
+  };
+}

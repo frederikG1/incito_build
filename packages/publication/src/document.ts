@@ -19,7 +19,7 @@ import {
   type SlotRole, type TemplateSlot, validateTemplate,
 } from '@incitio/schema';
 import { lattice } from '@incitio/reference';
-import type { Publication, PublicationOffer, PublicationPage, Rect } from './incito.js';
+import type { Publication, PublicationOffer, PublicationPage, RawLine, Rect } from './incito.js';
 
 /** Grid names are `a`..`z`, which is also what `lattice` hands back. */
 const NAMES = 'abcdefghijklmnopqrstuvwxyz';
@@ -65,6 +65,65 @@ function rolesFor(areas: number[]): SlotRole[] {
     if (against <= 0.6) return 'compact';
     return 'standard';
   });
+}
+
+/** Inside what `MeasuredRect` accepts — a hero may run off the sheet, not off to infinity. */
+function clampRect(rect: Rect): Rect {
+  const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
+  return {
+    x: clamp(rect.x, -0.5, 1.5),
+    y: clamp(rect.y, -0.5, 1.5),
+    w: clamp(rect.w, 0.01, 2),
+    h: clamp(rect.h, 0.01, 2),
+  };
+}
+
+/**
+ * The page's own words and bands as notes an editor can move and retype.
+ * A label of several lines becomes one note; its size is the largest
+ * line's, which is the one that reads.
+ */
+function pageNotes(page: PublicationPage) {
+  return (page.labels ?? []).slice(0, 24).map((label, index) => {
+    const lead = [...label.lines].sort((a, b) => b.size - a.size)[0];
+    const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
+    return {
+      id: `pub-note-p${page.number}-${index}`,
+      text: label.lines.map((line) => line.text).join('\n').slice(0, 400),
+      x: clamp(label.rect.x / page.width, -0.5, 1.5),
+      y: clamp(label.rect.y / page.height, -0.5, 1.5),
+      w: clamp(label.rect.w / page.width, 0.02, 2),
+      h: clamp(label.rect.h / page.height, 0.01, 2),
+      size: clamp((lead?.size ?? 14) / page.width, 0.005, 0.3),
+      color: lead?.color ?? '#16181d',
+      bold: lead?.bold ?? true,
+      align: lead?.align ?? 'center',
+      rotate: 0,
+      background: label.fill,
+      image: label.image,
+      // A band with no words is a panel the page is split with.
+      behind: label.lines.length === 0,
+    };
+  });
+}
+
+/** A line of type in page shares — see `FrameLine`. */
+function pageLine(line: RawLine, pageWidth: number) {
+  const of = (value: number) => Math.max(-0.5, Math.min(0.5, value / pageWidth));
+  return {
+    role: line.role,
+    text: line.text,
+    ...(line.sup ? { sup: line.sup } : {}),
+    size: Math.min(0.5, line.size / pageWidth),
+    ...(line.color ? { color: line.color } : {}),
+    bold: line.bold,
+    upper: line.upper,
+    ...(line.align ? { align: line.align } : {}),
+    ...(line.lineHeight && line.lineHeight >= 0.5 && line.lineHeight <= 3 ? { lineHeight: line.lineHeight } : {}),
+    ...(line.margin ? { margin: line.margin.map(of) } : {}),
+    ...(typeof line.width === 'string' ? { width: line.width } : {}),
+    ...(typeof line.width === 'number' ? { width: Math.min(1, line.width / pageWidth) } : {}),
+  };
 }
 
 /** ISO date, n days from today. */
@@ -266,11 +325,54 @@ export function pageTemplate(
   ];
 
   const roles = rolesFor(rects.map((rect) => rect.w * rect.h));
-  const slots: TemplateSlot[] = rects.map((rect, index) => ({
-    id: NAMES[index % NAMES.length]!,
-    role: roles[index]!,
-    bleed: 1,
-  }));
+  /*
+   * Each cell keeps its offer's own measured box, and the three parts
+   * inside it — see `TemplateSlot.rect` and `.frame`. The lattice above
+   * stays as the fallback grid; what renders is the page as printed.
+   */
+  const slots: TemplateSlot[] = rects.map((rect, index) => {
+    const frame = page.offers[index]?.frame;
+    return {
+      id: NAMES[index % NAMES.length]!,
+      role: roles[index]!,
+      bleed: 1,
+      rect: clampRect(rect),
+      ...(frame ? {
+        frame: {
+          media: clampRect(frame.media),
+          ...(frame.price ? { price: clampRect(frame.price) } : {}),
+          ...(frame.words ? { words: clampRect(frame.words) } : {}),
+          ...(frame.splash ? { splash: frame.splash } : {}),
+          ...(frame.priceInk ? { priceInk: frame.priceInk } : {}),
+          wordsAlign: frame.wordsAlign,
+          shape: Math.min(10, Math.max(0.1, (page.offers[index]!.rect.w || 1) / (page.offers[index]!.rect.h || 1))),
+          ...(frame.priceLines ? {
+            priceLines: frame.priceLines.slice(0, 8).map((line) => pageLine(line, page.width)),
+            ...(frame.priceStack ? { priceStack: frame.priceStack } : {}),
+          } : {}),
+          ...(frame.badges.length > 0 ? {
+            badges: frame.badges.slice(0, 6).map((badge) => ({
+              rect: clampRect(badge.rect),
+              lines: badge.lines.slice(0, 8).map((line) => pageLine(line, page.width)),
+              stack: badge.stack,
+              ...(badge.image ? { image: badge.image } : {}),
+            })),
+          } : {}),
+          ...(frame.art.length > 0 ? {
+            art: frame.art.slice(0, 6).map((entry) => ({ rect: clampRect(entry.rect), image: entry.image })),
+          } : {}),
+          ...(frame.type ? {
+            type: {
+              name: Math.min(0.2, frame.type.name / page.width),
+              body: Math.min(0.2, frame.type.body / page.width),
+              figure: Math.min(0.5, frame.type.figure / page.width),
+              pack: Math.min(0.2, frame.type.pack / page.width),
+            },
+          } : {}),
+        },
+      } : {}),
+    };
+  });
 
   const template: PageTemplate = {
     id,
@@ -360,6 +462,8 @@ export function publicationDocument(
         opacity: 1,
         offsetX: 0,
         offsetY: 0,
+        flip: false,
+        front: false,
         rect: {
           x: page.masthead.rect.x / page.width,
           y: page.masthead.rect.y / page.height,
@@ -368,6 +472,34 @@ export function publicationDocument(
         },
       }]
       : [];
+
+    /*
+     * The rest of the sheet's own artwork — a splash of fries behind the
+     * hero — laid where the page printed it. Editable like any picture
+     * on the page: moved, turned, sent behind or in front, taken off.
+     */
+    const artwork = (page.artwork ?? []).slice(0, 11 - masthead.length).map((art, index) => ({
+      id: `pub-art-p${page.number}-${index}`,
+      imageUrl: art.imageUrl,
+      subject: '',
+      offerId: null,
+      anchor: 'top-left' as const,
+      scale: Math.min(0.6, Math.max(0.05, art.rect.w / page.width)),
+      rotate: Math.max(-30, Math.min(30, art.rotate)),
+      opacity: 1,
+      offsetX: 0,
+      offsetY: 0,
+      flip: false,
+      front: false,
+      rect: clampRect({
+        x: art.rect.x / page.width,
+        y: art.rect.y / page.height,
+        w: art.rect.w / page.width,
+        h: art.rect.h / page.height,
+      }),
+    }));
+    const decorations = [...artwork, ...masthead];
+    const notes = pageNotes(page);
 
     const background = page.background
       ? {
@@ -405,9 +537,10 @@ export function publicationDocument(
           placements: [],
           rationale: `Side ${page.number} i udgivelsen — uden gitter`,
           ground: page.ground,
-          decorations: masthead,
+          decorations,
           background,
           texts: {},
+          notes,
         });
       }
       continue;
@@ -459,9 +592,10 @@ export function publicationDocument(
         : [],
       rationale: `Side ${page.number} i udgivelsen`,
       ground: page.ground,
-      decorations: masthead,
+      decorations,
       background,
       texts: {},
+      notes,
     });
   }
 

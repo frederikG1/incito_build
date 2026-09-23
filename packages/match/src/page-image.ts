@@ -132,47 +132,6 @@ export async function rasterisePdfPage(
   }
 }
 
-/** How many pages a PDF holds, so a picker can offer the real range. */
-export async function pdfPageCount(browser: Browser, file: Buffer): Promise<number> {
-  const tab = await browser.newPage();
-  try {
-    const base = 'https://pdfjs.incitio.local';
-    const files: Record<string, { body: Buffer; type: string }> = {
-      '/host.html': {
-        body: Buffer.from('<!doctype html><meta charset="utf-8">'),
-        type: 'text/html',
-      },
-      '/pdf.mjs': {
-        body: readFileSync(require.resolve('pdfjs-dist/build/pdf.mjs')),
-        type: 'text/javascript',
-      },
-      '/pdf.worker.mjs': {
-        body: readFileSync(require.resolve('pdfjs-dist/build/pdf.worker.mjs')),
-        type: 'text/javascript',
-      },
-    };
-    await tab.route(`${base}/**`, async (route) => {
-      const hit = files[new URL(route.request().url()).pathname];
-      if (!hit) return route.fulfill({ status: 404, body: '' });
-      return route.fulfill({ status: 200, contentType: hit.type, body: hit.body });
-    });
-    await tab.goto(`${base}/host.html`, { waitUntil: 'load' });
-    return await tab.evaluate(async ({ lib, workerSrc, data }) => {
-      const load = new Function('u', 'return import(u)') as (u: string) => Promise<any>;
-      const mod = await load(lib);
-      mod.GlobalWorkerOptions.workerSrc = workerSrc;
-      const doc = await mod.getDocument({ url: data }).promise;
-      return doc.numPages as number;
-    }, {
-      lib: `${base}/pdf.mjs`,
-      workerSrc: `${base}/pdf.worker.mjs`,
-      data: `data:application/pdf;base64,${file.toString('base64')}`,
-    });
-  } finally {
-    await tab.close();
-  }
-}
-
 /**
  * The page's ground, sampled rather than guessed.
  *

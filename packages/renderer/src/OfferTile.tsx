@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import type {
-  Offer, OfferLabel, PlacementOverrides, PriceShape, SlotRole, TilePart,
-  TileArrangement,
+  FrameLine, FrameStack, MeasuredRect, Offer, OfferLabel, PlacementOverrides, PriceShape,
+  SlotRole, TilePart, TileArrangement, TileFrame,
 } from '@incitio/schema';
 import {
   packOverride, packStack, partOverride, tileArranged, PlacementOverrides as Overrides,
@@ -32,6 +32,15 @@ function LabelMark({ label }: { label: OfferLabel }) {
 export interface OfferTileProps {
   offer: Offer;
   role: SlotRole;
+  /**
+   * The cell's measured design, when it was read off a published page:
+   * where the packshot, the price mark and the words sit. Each part is
+   * placed in its box and stays exactly as editable as before — see
+   * `TemplateSlot.frame`.
+   */
+  frame?: TileFrame;
+  /** The cell's width as a share of the page, when the cell is measured. */
+  cellWidth?: number;
   priceShape: PriceShape;
   overrides?: PlacementOverrides;
   selected?: boolean;
@@ -94,14 +103,18 @@ const PART_ORIGIN: Partial<Record<TilePart, string>> = {
 /**
  * How many variant images a tile shows before it stops being legible.
  *
- * A ceiling on what a FEED hands over, where the motives are incidental:
- * an offer arrives with eight photographs of the same yoghurt and the
- * tile has no reason to print them all.
+ * A ceiling on what a FEED hands over. It was three on a standard cell,
+ * written for feeds that repeat one yoghurt eight times — but the Tjek
+ * export lists each variant as its own product ("San Pellegrino lemon,
+ * aranciata, vand, Änglamark …"), and dropping half of those printed a
+ * tile that sold fewer things than its name promised, while the
+ * inspector listed them all. Too many for the cell is what the crowded
+ * warning is for; silently leaving products out is not.
  */
 const MAX_PACK: Record<SlotRole, number> = {
-  hero: 5,
-  feature: 4,
-  standard: 3,
+  hero: 8,
+  feature: 6,
+  standard: 6,
   compact: 1,
 };
 
@@ -238,11 +251,87 @@ const LIFTED = 35;
  * container queries. That is what lets one tile stay legible from a
  * half-page hero down to a ninth-page filler.
  */
+
+/** A page share as a length that scales with the sheet. */
+const pageLength = (share: number) => `calc(${share} * 100cqw)`;
+
+/** A box of lines stacked the way the page stacked them. */
+function stackStyle(stack: FrameStack | undefined): CSSProperties {
+  return {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: stack?.align ?? 'center',
+    justifyContent: stack?.justify ?? 'center',
+  };
+}
+
+/** Words with a superscript stretch — "15⁹⁵" — and their own line breaks. */
+function lineText(line: FrameLine) {
+  if (!line.sup || line.sup.end <= line.sup.start) return line.text;
+  return (
+    <>
+      {line.text.slice(0, line.sup.start)}
+      <sup>{line.text.slice(line.sup.start, line.sup.end)}</sup>
+      {line.text.slice(line.sup.end)}
+    </>
+  );
+}
+
+/**
+ * One line set as the published page set it. The figure line gets the
+ * LIVE price and the pack line the offer's own pack, so an edited price
+ * prints; every other line is the page's words.
+ */
+function Line({ line, children }: { line: FrameLine; children?: React.ReactNode }) {
+  return (
+    <span
+      className={`frameline frameline--${line.role}`}
+      style={{
+        fontSize: pageLength(line.size),
+        ...(line.color ? { color: line.color } : {}),
+        fontWeight: line.bold ? 700 : 400,
+        ...(line.upper ? { textTransform: 'uppercase' } : {}),
+        ...(line.align ? { textAlign: line.align } : {}),
+        ...(line.lineHeight ? { lineHeight: line.lineHeight } : {}),
+        ...(line.margin ? { margin: line.margin.map(pageLength).join(' ') } : {}),
+        ...(typeof line.width === 'string' ? { width: line.width } : {}),
+        ...(typeof line.width === 'number' ? { width: pageLength(line.width) } : {}),
+      }}
+    >
+      {children ?? lineText(line)}
+    </span>
+  );
+}
+
 export function OfferTile({
   offer, role, priceShape, overrides, selected, selectedPart, selectedPack, reference,
-  onSelect,
+  onSelect, frame, cellWidth,
 }: OfferTileProps) {
   const corrections = overrides ?? UNTOUCHED;
+
+  /**
+   * Where a measured cell puts this part — its box, in shares of the
+   * cell. Only the media, the price mark and the words have boxes; the
+   * rest of the parts live inside the words, as they do on the page.
+   */
+  function framedStyle(id: TilePart): CSSProperties | null {
+    if (!frame) return null;
+    const at = (rect: MeasuredRect): CSSProperties => ({
+      left: `${rect.x * 100}%`,
+      top: `${rect.y * 100}%`,
+      width: `${rect.w * 100}%`,
+      height: `${rect.h * 100}%`,
+    });
+    if (id === 'media') return at(frame.media);
+    if (id === 'price' && frame.price) {
+      return {
+        ...at(frame.price),
+        ...(frame.splash ? { backgroundImage: `url("${frame.splash}")` } : {}),
+        ...(frame.priceInk ? { color: frame.priceInk } : {}),
+      };
+    }
+    return null;
+  }
 
   /**
    * The attributes that make one box addressable, and put it where the
@@ -259,9 +348,11 @@ export function OfferTile({
    * on `.tile__media` would re-root the price mark hanging off it.
    */
   function box(id: TilePart) {
+    const placed = frame ? framedStyle(id) : null;
     const marker = {
       'data-part': id,
       ...(selectedPart === id ? { 'data-part-selected': 'true' } : {}),
+      ...(placed ? { style: placed } : {}),
     };
     // The artwork is addressable like every other box but carries its
     // own transform, in its own frame-relative units — see `mediaStyle`
@@ -274,6 +365,7 @@ export function OfferTile({
     return {
       ...marker,
       style: {
+        ...placed,
         transform: `translate(${part.offsetX}cqw, ${part.offsetY}cqh) scale(${part.scale})`,
         transformOrigin: PART_ORIGIN[id] ?? 'left top',
         zIndex: LIFTED,
@@ -305,6 +397,53 @@ export function OfferTile({
    * at random — 72% of SuperBrugsen's offers supply two or more motives.
    * A compact tile shows one anyway: at that size a cluster is mush.
    */
+  /*
+   * Every line of a drawn price mark or roundel, no wider than its box.
+   *
+   * The page states each size for the chain's own narrow face; the
+   * stand-in face here is wider, so "25,-" ran into the roundel's
+   * "MEDLEMSPRIS" arc and "Medlems-rabat op til" out of its little
+   * white disc. Each line is shrunk — never grown — until its longest
+   * run of characters fits the room the page gave it. Estimated from
+   * the characters, so it holds in print, where nothing measures. Only
+   * on a measured cell, where the box's size on the page is known.
+   */
+  function fitLine(line: FrameLine, box: MeasuredRect | undefined): FrameLine {
+    if (!cellWidth || !box) return line;
+    let room = box.w * cellWidth;
+    if (typeof line.width === 'string') room *= parseFloat(line.width) / 100;
+    else if (typeof line.width === 'number') room = line.width;
+    if (line.margin) room -= Math.max(0, line.margin[1]!) + Math.max(0, line.margin[3]!);
+    let ems: number;
+    if (line.role === 'figure') {
+      // The roundel's arc and curve leave about two thirds of it for the figure.
+      room *= 0.62;
+      ems = 0.62 * price.major.length + (price.minor === '00' ? 0.55 : 0.8) + (offer.priceFrom ? 1.1 : 0);
+    } else {
+      // A round disc is narrower than its box away from the middle.
+      room *= 0.86;
+      const sup = line.sup ? line.sup.end - line.sup.start : 0;
+      /*
+       * A run of several words may wrap once, as the printed line does
+       * ("Pris ikke-medlem / op til 41,95") — so it is measured as its
+       * longer half, not squeezed onto one line.
+       */
+      const halves = (run: string) => {
+        const words = run.split(' ');
+        if (words.length < 3) return run.length;
+        let best = run.length;
+        for (let cut = 1; cut < words.length; cut += 1) {
+          best = Math.min(best, Math.max(words.slice(0, cut).join(' ').length, words.slice(cut).join(' ').length));
+        }
+        return best;
+      };
+      const longest = Math.max(...line.text.split('\n').map(halves)) - sup * 0.45;
+      ems = Math.max(1, longest) * (line.bold ? 0.6 : 0.55);
+    }
+    const cap = room / ems;
+    return cap > 0 && cap < line.size ? { ...line, size: cap } : line;
+  }
+
   const room = offer.members.length > 0 ? MAX_GROUP[role] : MAX_PACK[role];
   const pack = offer.imagePack.slice(0, room);
   const isPacked = pack.length > 1;
@@ -424,6 +563,8 @@ export function OfferTile({
      * still a hard edge, so nothing escapes onto a neighbouring tile.
      */
     tileArranged(corrections) && 'tile--arranged',
+    frame && 'tile--framed',
+    frame?.splash && 'tile--splashed',
     selected && 'is-selected',
   ].filter(Boolean).join(' ');
 
@@ -431,6 +572,12 @@ export function OfferTile({
     <article
       className={className}
       data-offer-id={offer.id}
+      style={frame?.type ? {
+        '--f-name': String(frame.type.name),
+        '--f-body': String(frame.type.body),
+        ...(frame.type.figure > 0 ? { '--f-figure': String(frame.type.figure) } : {}),
+        ...(frame.type.pack > 0 ? { '--f-pack': String(frame.type.pack) } : {}),
+      } as CSSProperties : undefined}
       onClick={onSelect ? () => onSelect(offer.id) : undefined}
     >
       <div className="tile__media" {...box('media')}>
@@ -555,7 +702,16 @@ export function OfferTile({
           * the mark stood level with the product name instead of on
           * the last line of the block.
           */}
-        <div className="tile__words">
+        <div
+          className="tile__words"
+          style={frame?.words ? {
+            left: `${frame.words.x * 100}%`,
+            top: `${frame.words.y * 100}%`,
+            width: `${frame.words.w * 100}%`,
+            height: `${frame.words.h * 100}%`,
+            justifyContent: frame.wordsAlign === 'end' ? 'flex-end' : 'flex-start',
+          } : undefined}
+        >
         {/*
           * Certification marks lead the text block.
           *
@@ -583,7 +739,7 @@ export function OfferTile({
           <p className="tile__brand" {...box('brand')}>{wording('brand') ?? offer.brand}</p>
         )}
         {shown('name') && <h3 className="tile__name" {...box('name')}>{name}</h3>}
-        {quantityText && shown('quantity') && (
+        {quantityText && shown('quantity') && (!frame || wording('quantity') !== null) && (
           <p className="tile__quantity" {...box('quantity')}>{quantityText}</p>
         )}
         {showDescription && shown('description') && (
@@ -593,7 +749,11 @@ export function OfferTile({
         {/* The previous price has moved up onto the price mark, where a
             leaflet prints it; what is left here is the unit price the
             law requires. */}
-        <p className="tile__meta" hidden={!showMeta || !shown('meta')} {...box('meta')}>
+        <p
+          className="tile__meta"
+          hidden={!showMeta || !shown('meta') || (Boolean(frame) && wording('meta') === null)}
+          {...box('meta')}
+        >
           {metaText !== null ? (
             // An empty rewrite is the editor removing the line, the same
             // way it is on the supporting line — not an empty span.
@@ -628,7 +788,32 @@ export function OfferTile({
           * `box('price')`, so every offset the editor writes lands on
           * top of wherever the layout put it.
           */}
-        {hasPrice && shown('price') && (
+        {hasPrice && shown('price') && frame?.priceLines && (
+          /*
+           * A price mark the page set line by line — a member price is
+           * "Medlemsrabat", the saving, the price and "Pris ikke-medlem"
+           * laid out against one drawn roundel. Reproduced line for line,
+           * with the live price in the figure's place.
+           */
+          <div className={`price price--${priceShape} price--lines`} {...box('price')}>
+            <span className="price__lines" style={stackStyle(frame.priceStack)}>
+              {frame.priceLines.map((line, index) => (
+                <Line key={`${index}-${line.role}`} line={fitLine(line, frame.price)}>
+                  {line.role === 'figure' ? (
+                    <span className="price__figure">
+                      {offer.priceFrom && <span className="price__from">fra</span>}
+                      <span className="price__major">{price.major}</span>
+                      {price.minor === '00'
+                        ? <span className="price__kr"><i aria-hidden="true" /><span>,</span></span>
+                        : <span className="price__minor">{price.minor}</span>}
+                    </span>
+                  ) : line.role === 'pack' && offer.pack ? offer.pack : undefined}
+                </Line>
+              ))}
+            </span>
+          </div>
+        )}
+        {hasPrice && shown('price') && !frame?.priceLines && (
           <div className={`price price--${priceShape}`} {...box('price')}>
             {/*
               * What the number buys, directly above it.
@@ -639,7 +824,11 @@ export function OfferTile({
               * is the line that settles it. Dropped on a compact tile,
               * where the mark is too small to carry two lines.
               */}
-            {offer.pack !== '' && role !== 'compact' && (
+            {/* On a drawn splash the pack is a word or two ("1 pose"); a
+                sentence there is fine print that was misread, and it
+                would run straight off the shape. */}
+            {offer.pack !== '' && role !== 'compact'
+              && !(frame?.splash && offer.pack.length > 18) && (
               <span className="price__pack">{offer.pack}</span>
             )}
             {/* Small, struck through, hard against the offer price. The
@@ -709,6 +898,34 @@ export function OfferTile({
           ))}
         </ul>
       )}
+      {/* The page's own roundels and marks over the tile, where it set them. */}
+      {frame?.art?.map((entry, index) => (
+        <img
+          key={`art-${index}`}
+          className="tile__art"
+          src={entry.image}
+          alt=""
+          aria-hidden="true"
+          style={{
+            left: `${entry.rect.x * 100}%`, top: `${entry.rect.y * 100}%`,
+            width: `${entry.rect.w * 100}%`, height: `${entry.rect.h * 100}%`,
+          }}
+        />
+      ))}
+      {frame?.badges?.map((badge, index) => (
+        <div
+          key={`badge-${index}`}
+          className="tile__badge"
+          style={{
+            left: `${badge.rect.x * 100}%`, top: `${badge.rect.y * 100}%`,
+            width: `${badge.rect.w * 100}%`, height: `${badge.rect.h * 100}%`,
+            ...(badge.image ? { backgroundImage: `url("${badge.image}")` } : {}),
+            ...stackStyle(badge.stack),
+          }}
+        >
+          {badge.lines.map((line, at) => <Line key={at} line={fitLine(line, badge.rect)} />)}
+        </div>
+      ))}
     </article>
   );
 }

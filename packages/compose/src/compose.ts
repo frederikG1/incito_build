@@ -143,6 +143,7 @@ export function composeCatalog(
       // Same for the heading and the theme line: they are where the
       // masthead puts them until somebody moves them.
       texts: {},
+      notes: [],
     });
   });
 

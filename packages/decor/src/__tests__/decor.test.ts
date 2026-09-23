@@ -193,7 +193,9 @@ describe('the page schema', () => {
     expect(page.decorations).toEqual([]);
   });
 
-  it('refuses more than three — this is seasoning, not the meal', () => {
+  // Twelve, not three: a page copied from a publication carries its own
+  // headline and artwork as pictures, and those are not seasoning.
+  it('refuses more than twelve', () => {
     const decor = {
       id: 'd', imageUrl: '/decor/a.png', anchor: 'top-left' as const,
     };
@@ -203,8 +205,8 @@ describe('the page schema', () => {
       placements: [],
       decorations: Array.from({ length: n }, (_, i) => ({ ...decor, id: `d${i}` })),
     });
-    expect(build(3).decorations).toHaveLength(3);
-    expect(() => build(4)).toThrow();
+    expect(build(12).decorations).toHaveLength(12);
+    expect(() => build(13)).toThrow();
   });
 
   it('rejects an active scheme in the artwork URL', () => {

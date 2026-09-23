@@ -173,8 +173,3 @@ function effectiveCap(categorySizes: number[], target: number, requested: number
   return largest;
 }
 
-/** Convenience: how many offers fill a page count at a given density. */
-export function targetForPages(pages: number, offersPerPage: number): number {
-  return Math.max(0, Math.round(pages * offersPerPage));
-}
-

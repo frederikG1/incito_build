@@ -1,13 +1,13 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import type {
-  Brand, CatalogPage, Offer, PagePart, PageTemplate, PageTextOverride, TilePart,
+  Brand, CatalogPage, Offer, PageNote, PagePart, PageTemplate, PageTextOverride, TilePart,
 } from '@incitio/schema';
 import {
   artworkGrowth, brandCssVars, pageTextOverride, pageTextsFreed,
   slotCells, slotRoom, slotShape,
 } from '@incitio/schema';
 import { OfferTile } from './OfferTile.js';
-import { splitHeading } from './format.js';
+import { cssUrl, splitHeading } from './format.js';
 
 /**
  * How high a moved heading rides.
@@ -112,6 +112,15 @@ export interface PageViewProps {
    * only reason they were not was that nothing drew a handle on them.
    */
   textDecorator?: (part: PagePart) => ReactNode;
+  /**
+   * Free text on the page, in the editor: which note is in hand, and
+   * how to take one in hand and move it. Print passes none of these, so
+   * a note there is plain type that no pointer can reach.
+   */
+  selectedNoteId?: string | null;
+  onSelectNote?: (noteId: string) => void;
+  onMoveNote?: (noteId: string, at: { x: number; y: number }, gesture: string) => void;
+  onNoteMoveEnd?: () => void;
 }
 
 /**
@@ -133,7 +142,6 @@ export function PageView({
   brand,
   offers,
   pageIndex = 0,
-  pageNumber,
   selectedOfferId,
   selectedPart,
   selectedPack,
@@ -143,6 +151,10 @@ export function PageView({
   onDecorMoveEnd,
   selectedDecorId,
   textDecorator,
+  selectedNoteId,
+  onSelectNote,
+  onMoveNote,
+  onNoteMoveEnd,
   ghosts,
 }: PageViewProps) {
   const style: CSSProperties = {
@@ -206,6 +218,65 @@ export function PageView({
   const title = pageTextOverride(page, 'title');
   const subtitle = pageTextOverride(page, 'subtitle');
 
+  const renderNote = (note: PageNote) => {
+        const held = selectedNoteId === note.id;
+        const boxed = note.h !== null && (note.background !== null || note.image !== null);
+        return (
+          <div
+            key={note.id}
+            className={`page__note${note.id.startsWith('pub-note-') ? ' page__note--pub' : ''}${note.behind ? ' page__note--behind' : ''}${held ? ' page__note--active' : ''}${onSelectNote ? ' page__note--editable' : ''}`}
+            data-note-id={note.id}
+            style={{
+              left: `${note.x * 100}%`,
+              top: `${note.y * 100}%`,
+              width: `${note.w * 100}%`,
+              ...(boxed ? { height: `${note.h! * 100}%` } : {}),
+              fontSize: `calc(${note.size} * 100cqw)`,
+              color: note.color,
+              fontWeight: note.bold ? 700 : 400,
+              textAlign: note.align,
+              justifyContent: note.align === 'left' ? 'flex-start' : note.align === 'right' ? 'flex-end' : 'center',
+              ...(note.rotate ? { rotate: `${note.rotate}deg` } : {}),
+              ...(note.background ? { backgroundColor: note.background } : {}),
+              // A backing a person chose gets breathing room; a band read
+              // off a publication already has its measured height.
+              ...(note.background && !boxed ? { padding: '0.25em 0.45em' } : {}),
+              ...(note.image ? { backgroundImage: `url("${note.image}")` } : {}),
+            }}
+            onClick={onSelectNote ? (event) => { event.stopPropagation(); onSelectNote(note.id); } : undefined}
+            onPointerDown={held && onMoveNote ? (event: ReactPointerEvent<HTMLDivElement>) => {
+              const element = event.currentTarget;
+              const sheet = element.closest('.page')?.getBoundingClientRect();
+              if (!sheet || sheet.width === 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const from = { x: event.clientX, y: event.clientY };
+              const start = { x: note.x, y: note.y };
+              const clamp = (v: number) => Math.min(1.5, Math.max(-0.5, v));
+              try { element.setPointerCapture(event.pointerId); } catch { /* uncapturable */ }
+              const onMove = (move: PointerEvent) => {
+                onMoveNote(note.id, {
+                  x: clamp(start.x + (move.clientX - from.x) / sheet.width),
+                  y: clamp(start.y + (move.clientY - from.y) / sheet.height),
+                }, `note:${note.id}`);
+              };
+              const onUp = () => {
+                try { element.releasePointerCapture(event.pointerId); } catch { /* never held */ }
+                element.removeEventListener('pointermove', onMove);
+                element.removeEventListener('pointerup', onUp);
+                element.removeEventListener('pointercancel', onUp);
+                onNoteMoveEnd?.();
+              };
+              element.addEventListener('pointermove', onMove);
+              element.addEventListener('pointerup', onUp);
+              element.addEventListener('pointercancel', onUp);
+            } : undefined}
+          >
+            {note.text}
+          </div>
+        );
+  };
+
   return (
     <section
       className={`page brand--${brand.id} page--ground-${brand.groundPattern}`}
@@ -231,12 +302,15 @@ export function PageView({
           data-fit={page.background.fit}
           aria-hidden="true"
           style={{
-            '--bg-image': `url("${encodeURI(page.background.imageUrl)}")`,
+            '--bg-image': cssUrl(page.background.imageUrl),
             '--bg-opacity': String(page.background.opacity),
             '--bg-focus': `${page.background.focusX}% ${page.background.focusY}%`,
           } as CSSProperties}
         />
       )}
+
+      {/* Flat panels the page is split with, under everything drawn. */}
+      {(page.notes ?? []).filter((note) => note.behind).map(renderNote)}
 
       {/*
         * Generated mood artwork, behind everything.
@@ -249,6 +323,7 @@ export function PageView({
         <img
           key={decor.id}
           className={`page__decor page__decor--${decor.anchor}${
+            decor.front ? ' page__decor--front' : ''}${
             onMoveDecor && selectedDecorId === decor.id ? ' page__decor--active' : ''}`}
           src={decor.imageUrl}
           alt=""
@@ -306,6 +381,7 @@ export function PageView({
             '--decor-scale': String(decor.scale),
             '--decor-rotate': `${decor.rotate}deg`,
             '--decor-opacity': String(decor.opacity),
+            '--decor-flip': decor.flip ? '-1' : '1',
             '--decor-x': `${decor.offsetX}cqw`,
             '--decor-y': `${decor.offsetY}cqh`,
             /*
@@ -376,7 +452,10 @@ export function PageView({
         </header>
       )}
 
-      <div className="page__grid" style={gridStyle}>
+      <div
+        className={`page__grid${template.slots.some((slot) => slot.rect) ? ' page__grid--measured' : ''}`}
+        style={gridStyle}
+      >
         {page.placements.map((placement) => {
           const slot = slots.get(placement.slotId);
           const offer = offers.get(placement.offerId);
@@ -388,7 +467,20 @@ export function PageView({
             <div
               className={`slot slot--${slot.role}${slot.bleed > 1 ? ' slot--bleed' : ''}`}
               style={{
-                gridArea: slot.id,
+                /*
+                 * A cell measured off a published page sits in its own
+                 * box, not in the grid's — see `TemplateSlot.rect`. No
+                 * grid-area then: an absolute child of a grid with an
+                 * area is positioned against that AREA, not the page.
+                 */
+                ...(slot.rect ? {} : { gridArea: slot.id }),
+                ...(slot.rect ? {
+                  position: 'absolute',
+                  left: `${slot.rect.x * 100}%`,
+                  top: `${slot.rect.y * 100}%`,
+                  width: `${slot.rect.w * 100}%`,
+                  height: `${slot.rect.h * 100}%`,
+                } : {}),
                 /*
                  * Only read when the slot is allowed to overrun; see
                  * `TemplateSlot.bleed`. Stated as the SHARE it overruns
@@ -433,6 +525,8 @@ export function PageView({
                 <OfferTile
                   offer={offer}
                   role={slot.role}
+                  {...(slot.frame ? { frame: slot.frame } : {})}
+                  {...(slot.rect ? { cellWidth: slot.rect.w } : {})}
                   // The lead of a page may be marked differently from
                   // the rest — SuperBrugsen gives it the red disc and
                   // leaves every other price as a plain numeral.
@@ -457,7 +551,14 @@ export function PageView({
         })}
       </div>
 
-      {pageNumber !== undefined && <footer className="page__foot">{pageNumber}</footer>}
+      {/*
+        * Free text, over everything the page draws — see `PageNote`.
+        * In the editor a note is clicked to take it in hand and dragged
+        * once it is; the words themselves are typed in the panel.
+        */}
+      {(page.notes ?? []).filter((note) => !note.behind).map(renderNote)}
+
+      {/* No page number on the sheet: the chain's pages do not print one. */}
     </section>
   );
 }

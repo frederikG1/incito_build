@@ -28,6 +28,42 @@ export type DecorAnchor = (typeof DECOR_ANCHORS)[number];
  * and cached on disk by prompt, so a document that embedded the PNG
  * could not share that cache and would grow by a megabyte a page.
  */
+/**
+ * Words laid on the page wherever somebody wants them — "Kun i weekenden",
+ * a member-price headline, the "Gælder fra …" band a publication prints
+ * across its first page. Not part of any offer, so nothing on the page
+ * moves to make room for it.
+ *
+ * The box is in shares of the sheet; the type size in shares of its
+ * WIDTH, like everything else printed on the page, so a note reads the
+ * same from thumbnail to A4.
+ */
+export const PageNote = z.object({
+  id: z.string().min(1),
+  text: z.string().max(400),
+  x: z.number().min(-0.5).max(1.5),
+  y: z.number().min(-0.5).max(1.5),
+  w: z.number().min(0.02).max(2),
+  size: z.number().min(0.005).max(0.3).default(0.04),
+  color: z.string().max(32).default('#16181d'),
+  bold: z.boolean().default(true),
+  align: z.enum(['left', 'center', 'right']).default('center'),
+  rotate: z.number().min(-45).max(45).default(0),
+  /** A flat backing behind the words — a band, a sticker. */
+  background: z.string().max(32).nullable().default(null),
+  /** A drawn shape behind the words, as a publication prints a badge. */
+  image: z.string().max(2000).nullable().default(null),
+  /** Height of the box when it has a backing; otherwise the words set it. */
+  h: z.number().min(0.01).max(2).nullable().default(null),
+  /**
+   * Under the products instead of over them — a flat panel of colour a
+   * publication splits its page with. Words belong on top; a panel does
+   * not.
+   */
+  behind: z.boolean().default(false),
+});
+export type PageNote = z.infer<typeof PageNote>;
+
 export const PageDecoration = z.object({
   id: z.string().min(1),
   imageUrl: ImageRef,
@@ -53,6 +89,14 @@ export const PageDecoration = z.object({
   rotate: z.number().min(-30).max(30).default(0),
   /** Held back behind the offers when it would otherwise compete. */
   opacity: z.number().min(0.05).max(1).default(1),
+  /** Mirrored left to right — a bowl that faces into the page, not off it. */
+  flip: z.boolean().default(false),
+  /**
+   * Painted OVER the products instead of behind them — a ribbon, a
+   * splash, a sticker a designer lays across a tile. Off by default:
+   * atmosphere belongs behind.
+   */
+  front: z.boolean().default(false),
   /**
    * Nudged off its anchor, in PAGE percent.
    *
@@ -691,7 +735,9 @@ export const CatalogPage = z.object({
    * filler has stopped being a leaflet. Defaulted to empty, so every
    * catalogue saved before this existed still parses.
    */
-  decorations: z.array(PageDecoration).max(3).default([]),
+  decorations: z.array(PageDecoration).max(12).default([]),
+  /** Free text on the page — see `PageNote`. */
+  notes: z.array(PageNote).max(24).default([]),
   /**
    * The chain's own picture under the whole sheet, when there is one.
    *
