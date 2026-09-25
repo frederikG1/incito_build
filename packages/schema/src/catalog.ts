@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ImageRef, Offer } from './offer.js';
+import { ImageRef, Offer, splitLabelPrice } from './offer.js';
 import { MeasuredRect, PageTemplate } from './template.js';
 import { CatalogWeek } from './week.js';
 
@@ -48,7 +48,7 @@ export const PageNote = z.object({
   color: z.string().max(32).default('#16181d'),
   bold: z.boolean().default(true),
   align: z.enum(['left', 'center', 'right']).default('center'),
-  rotate: z.number().min(-45).max(45).default(0),
+  rotate: z.number().min(-180).max(180).default(0),
   /** A flat backing behind the words — a band, a sticker. */
   background: z.string().max(32).nullable().default(null),
   /** A drawn shape behind the words, as a publication prints a badge. */
@@ -210,7 +210,7 @@ export type PagePart = (typeof PAGE_PARTS)[number];
 /** What each line is called to the person moving it. */
 export const PAGE_PART_NAMES: Record<PagePart, string> = {
   title: 'Overskrift',
-  subtitle: 'Stemningslinje',
+  subtitle: 'Underoverskrift',
 };
 
 /**
@@ -355,7 +355,7 @@ export const PackOverride = z.object({
   offsetX: z.number().min(-100).max(100).default(0),
   offsetY: z.number().min(-100).max(100).default(0),
   scale: z.number().min(0.2).max(3).default(1),
-  rotate: z.number().min(-45).max(45).default(0),
+  rotate: z.number().min(-180).max(180).default(0),
   /**
    * Forward or back among the products it shares a cell with.
    *
@@ -383,6 +383,8 @@ export const PACK_DEFAULTS: PackOverride = Object.freeze(PackOverride.parse({}))
 
 export const PlacementOverrides = z.object({
   pinned: z.boolean().default(false),
+  /** Somebody saw the "too many products for the room" warning and chose to keep it so. */
+  crowdOk: z.boolean().optional(),
   /**
    * How this tile's products are grouped, when somebody decided.
    *
@@ -495,7 +497,7 @@ export function packLimits(): {
   reach: number; step: number; coarse: number; minScale: number; maxScale: number;
   turn: number; depth: number;
 } {
-  return { reach: 100, step: 0.25, coarse: 1, minScale: 0.2, maxScale: 3, turn: 45, depth: 4 };
+  return { reach: 100, step: 0.25, coarse: 1, minScale: 0.2, maxScale: 3, turn: 180, depth: 4 };
 }
 
 /**
@@ -693,6 +695,119 @@ export type Placement = z.infer<typeof Placement>;
 export const PAGE_KINDS = ['offers', 'image'] as const;
 export type PageKind = (typeof PAGE_KINDS)[number];
 
+/**
+ * A publication's own page, in the format it was published in.
+ *
+ * An incito section is not a picture of a page but the page's own
+ * layout tree: every box with its position, its CSS, its scale, every
+ * text with its font size and its spans. Redrawing that with the
+ * chain's tiles gets close; printing the tree gets it exactly — the
+ * same boxes Tjek's viewer draws, pixel for pixel. So the tree is kept.
+ *
+ * `view` is the sheet view (the 600×1000 box inside the section), stored
+ * as the publication sent it; `width`/`height` are its own size, which
+ * is the page's real aspect — a publication is 0.6, not A4.
+ */
+export const IncitoSource = z.object({
+  view: z.record(z.string(), z.unknown()),
+  width: z.number().positive(),
+  height: z.number().positive(),
+  /** `font_assets`, family → woff2 URL: the chain's own faces. */
+  fonts: z.record(z.string(), z.string()).default({}),
+  /**
+   * Which of the publication's offers stood in which cell, slot id →
+   * offer view id. What lets a new product take over an old one's
+   * layout: the cell still knows whose name, price and packshot it
+   * printed, so it can print the new product's in their place.
+   */
+  slots: z.record(z.string(), z.string()).default({}),
+  /**
+   * What each of the publication's offers printed, offer view id → its
+   * words, price and packshot. Kept on the page itself, because the
+   * avis's own product list changes: a new week's avis carries only the
+   * new week's products, and a page that could no longer find the
+   * product it printed kept its photograph and name under the new
+   * product's price. See `rememberPrinted`.
+   */
+  printed: z.record(z.string(), z.object({
+    name: z.string(),
+    price: z.number(),
+    description: z.string().optional(),
+    pack: z.string().optional(),
+    imageUrl: z.string().nullable().optional(),
+  })).optional(),
+  /**
+   * Each cell's box before its first edit in "Rediger layout", slot id →
+   * shares of the sheet. A cell moved or resized since carries its offer
+   * along by the difference — see `incitoCellBoxes`.
+   */
+  cellBase: z.record(z.string(), z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })).optional(),
+  theme: z.object({
+    fontFamily: z.string().default('incito-body, system-ui, sans-serif'),
+    color: z.string().default('#000000'),
+    background: z.string().default('#ffffff'),
+    lineHeight: z.number().default(1.4),
+  }).default({}),
+});
+export type IncitoSource = z.infer<typeof IncitoSource>;
+
+/** The publication's own offer ids on a page — every view marked `role: 'offer'`. */
+export function incitoOfferIds(view: Record<string, unknown>): string[] {
+  const found: string[] = [];
+  const walk = (node: Record<string, unknown>) => {
+    if (node['role'] === 'offer' && typeof node['id'] === 'string') found.push(node['id']);
+    for (const child of (node['child_views'] as Record<string, unknown>[] | undefined) ?? []) walk(child);
+  };
+  walk(view);
+  return found;
+}
+
+/**
+ * The page with what each of its printed cells showed written onto it,
+ * from the products that are still at hand. Anything it already knew is
+ * kept — the first record is the publication's, and a later product
+ * list may hold only the week's replacements.
+ */
+export function rememberPrinted<P extends { incito?: IncitoSource | null }>(
+  page: P,
+  offers: Iterable<{ id: string; name: string; price: number; description?: string; pack?: string; imageUrl?: string | null }>,
+): P {
+  const incito = page.incito;
+  if (!incito || (incito.view as Record<string, unknown>)['paged']) return page;
+  const byId = new Map([...offers].map((offer) => [offer.id, offer]));
+  const printed = { ...(incito.printed ?? {}) };
+  let learned = false;
+  for (const id of incitoOfferIds(incito.view as Record<string, unknown>)) {
+    if (printed[id]) continue;
+    const offer = byId.get(id);
+    if (!offer) continue;
+    printed[id] = {
+      name: offer.name,
+      price: offer.price,
+      ...(offer.description !== undefined ? { description: offer.description } : {}),
+      ...(offer.pack !== undefined ? { pack: offer.pack } : {}),
+      imageUrl: offer.imageUrl ?? null,
+    };
+    learned = true;
+  }
+  return learned ? { ...page, incito: { ...incito, printed } } : page;
+}
+
+/** One element's corrections on a published page — see `CatalogPage.incitoEdits`. */
+export const IncitoEdit = z.object({
+  hidden: z.boolean().default(false),
+  /** Moved, in the sheet's own points — 600 is the width of the page. */
+  dx: z.number().min(-2000).max(2000).default(0),
+  dy: z.number().min(-2000).max(2000).default(0),
+  /** Grown or shrunk from its top-left corner, as the publication scales. */
+  scale: z.number().min(0.2).max(5).default(1),
+  /** Replacement words, in the order the element's lines are set. */
+  texts: z.array(z.string().max(400)).max(24).optional(),
+});
+export type IncitoEdit = z.infer<typeof IncitoEdit>;
+/** An edit as written — every field may be left out. */
+export type IncitoEditInput = z.input<typeof IncitoEdit>;
+
 export const CatalogPage = z.object({
   id: z.string().min(1),
   /**
@@ -761,6 +876,30 @@ export const CatalogPage = z.object({
    * the lie that would crash on a catalogue saved before this existed.
    */
   texts: z.record(z.string(), PageTextOverride).default({}),
+  /**
+   * The page exactly as the publication laid it out, when it came from one.
+   *
+   * See `IncitoSource`. Kept beside the grid rather than instead of it:
+   * the grid is what the editor's tiles can work with, and this is what
+   * the page actually looked like.
+   */
+  incito: IncitoSource.nullable().default(null),
+  /**
+   * Print `incito` as it is, rather than redraw the page with the
+   * chain's tiles. On for a page imported from a publication; turned
+   * off the moment somebody wants to rearrange it by hand.
+   */
+  exact: z.boolean().default(false),
+  /**
+   * Hand corrections to a page printed as published, keyed by the
+   * element's place in the tree ("0.3.1") — see `incitoBlocks`.
+   *
+   * The tree itself is never edited: it is what the publication said,
+   * and a reset has to be able to get back to it. A roundel somebody
+   * does not want ("Storkøb min. 1,3 kg") is hidden here; a line
+   * somebody rewords is replaced here, by position within its element.
+   */
+  incitoEdits: z.record(z.string(), IncitoEdit).optional(),
 });
 export type CatalogPage = z.infer<typeof CatalogPage>;
 
@@ -906,4 +1045,36 @@ export function mergeCatalogDocuments(
     templates: [...templates.values()],
     updatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Put back the prices an earlier import left in the product names.
+ *
+ * Publications read before `splitLabelPrice` learned about line breaks
+ * carry offers named "Spangsberg is\n, DKK 32" at price 0 — the tile
+ * printed no price and the checklist stopped the print. The number was
+ * never lost, only filed under the wrong field, so this moves it back.
+ *
+ * Only an offer with no price is touched: a priced one whose name ends
+ * in something price-shaped is a product name, however odd. When the
+ * fine print had fallen back to repeating the name, it is emptied — the
+ * name was never matched on the page, which is what made it fine print.
+ */
+export function healLabelPrices(document: CatalogDocument): { document: CatalogDocument; healed: number } {
+  let healed = 0;
+  const offers = document.offers.map((offer) => {
+    if (offer.price > 0) return offer;
+    const split = splitLabelPrice(offer.name);
+    if (!split) return offer;
+    healed += 1;
+    const echoed = offer.description.replace(/\s+/g, ' ').trim() === split.name;
+    return {
+      ...offer,
+      name: split.name,
+      price: split.price,
+      currency: split.currency,
+      ...(echoed ? { description: '' } : {}),
+    };
+  });
+  return healed ? { document: { ...document, offers }, healed } : { document, healed };
 }

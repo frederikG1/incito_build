@@ -3,7 +3,7 @@ import {
   Brand, CatalogDocument, Offer, PageTemplate, type CatalogWeek,
 } from '@incitio/schema';
 import { getBrand } from '@incitio/brands';
-import { readFindings } from '../findings.js';
+import { readFindings, staleDates } from '../findings.js';
 
 const WEEK: CatalogWeek = { year: 2026, week: 39 };
 
@@ -23,6 +23,8 @@ const offer = (over: Partial<Offer> & { id: string }): Offer => Offer.parse({
   name: `vare ${over.id}`,
   price: 19.95,
   quantity: { size: 1, unit: 'kg' },
+  // A kilo of something prints its kilo price — see the price-marking check.
+  comparison: { value: 19.95, unit: 'kg' },
   // Inside week 39 of 2026 (21.–27. september) unless a test says otherwise.
   validFrom: '2026-09-21',
   validTo: '2026-09-27',
@@ -102,14 +104,6 @@ describe('readFindings', () => {
     );
   });
 
-  it('catches a product that does not run in the week', () => {
-    const stale = offer({ id: '1', name: 'Gammel ost', validFrom: '2026-09-07', validTo: '2026-09-13' });
-    const found = readFindings(doc([stale, offer({ id: '2' })]), brand, WEEK);
-    expect(found.map((f) => f.said)).toContain(
-      'Side 1: Gammel ost gælder ikke i ugen (2026-09-07 – 2026-09-13)',
-    );
-  });
-
   it('says nothing about the week when nobody has chosen one', () => {
     const stale = offer({ id: '1', validFrom: '2026-09-07', validTo: '2026-09-13' });
     const found = readFindings(doc([stale, offer({ id: '2' })]), brand, null);
@@ -137,5 +131,37 @@ describe('readFindings', () => {
 
   it('is empty without a document', () => {
     expect(readFindings(null, brand, WEEK)).toEqual([]);
+  });
+});
+
+describe('price-marking rules', () => {
+  it('stops a product sold by weight with no unit price', () => {
+    const found = readFindings(doc([offer({ id: '1', comparison: null }), offer({ id: '2' })]), brand, WEEK);
+    expect(found.map((f) => f.id)).toEqual(['page-1:1:enhedspris']);
+  });
+
+  it('asks about pant on a soft drink that does not mention it', () => {
+    const cola = offer({ id: '1', name: 'Coca-Cola', description: '150 cl. Literpris 10,00.' });
+    const found = readFindings(doc([cola, offer({ id: '2' })]), brand, WEEK);
+    expect(found.map((f) => [f.id, f.weight])).toEqual([['page-1:1:pant', 'se']]);
+    const paid = { ...cola, description: '150 cl. Literpris 10,00 + pant.' };
+    expect(readFindings(doc([paid, offer({ id: '2' })]), brand, WEEK)).toEqual([]);
+  });
+});
+
+describe('staleDates', () => {
+  const week40 = { year: 2026, week: 40 }; // 28. september – 4. oktober
+
+  it('flags a band carried over from an earlier week', () => {
+    expect(staleDates('Gælder fra fredag d. 18. september til og med torsdag d. 24. september', week40))
+      .toBe('18. september–24. september');
+  });
+
+  it('accepts a span that overlaps the week, and a lone date near it', () => {
+    expect(staleDates('Gælder fra tirsdag d. 1. september til og med onsdag d. 30. september', week40)).toBeNull();
+    expect(staleDates('Kun fredag d. 2. oktober', week40)).toBeNull();
+    expect(staleDates('Kun i weekenden', week40)).toBeNull();
+    expect(staleDates('Gælder t.o.m. 3/10', week40)).toBeNull();
+    expect(staleDates('Gælder t.o.m. 20/9', week40)).toBe('20. september');
   });
 });

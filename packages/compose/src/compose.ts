@@ -110,6 +110,7 @@ export function composeCatalog(
         slotId: slot.id,
         overrides: {
           pinned: false,
+          crowdOk: false,
           arrangement: null,
           displayName: null,
           description: null,
@@ -143,6 +144,9 @@ export function composeCatalog(
       // Same for the heading and the theme line: they are where the
       // masthead puts them until somebody moves them.
       texts: {},
+      // A composed page has no published original to print exactly.
+      incito: null,
+      exact: false,
       notes: [],
     });
   });

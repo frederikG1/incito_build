@@ -154,6 +154,73 @@ så en rettelse overlever en ny generering — og en hel træk-bevægelse er
 
 **Husk at lukke begge servere ned igen** når du er færdig.
 
+## Overalt i studiet
+
+| | |
+|---|---|
+| **⌘K** | søg efter en vare ("hvor står Lurpak?"), en side ("12") eller en handling (Hent tryk-PDF, Ny uge, Sektioner) — Enter går derhen og tager varen i hånden |
+| **?** | alle genveje |
+| **⌘S** | gem |
+| **Status ved Gem** | "Klar til tryk" i grønt, eller hvor mange ting der skal rettes. Klik åbner listen, grupperet side for side — hver linje går hen til det den handler om |
+
+En tom avis åbner med de tre veje ind: kædens sektioner (fyldes med
+ugens varer efter afdeling), et link til en trykt udgivelse, eller et
+hurtigt udkast.
+
+## Ugen, som den går
+
+En avis laves ikke fra bunden hver uge. Kødsiden står hvor kødsiden
+stod, frostsiden beholder sine balloner — det er varerne i felterne der
+skifter. Tre ting i studioet bygger på det, og ingen af dem kalder en
+model.
+
+**Upload et feed mens en avis er åben**, og studioet spørger hvad det er
+for en fil. Det er det eneste den ikke kan vide:
+
+| | |
+|---|---|
+| **Rettelser til denne avis** | onsdagens fil: nye priser skrives ind under de gamle id'er, så hver placering og hver håndrettelse bliver stående. Nye varer går i reserve. Udgåede varer bliver på siden og står i listen med **Tag af siden** — det er en beslutning, ikke en bivirkning |
+| **Næste uges avis, fra denne** | alle sider og deres design genbruges, og felterne fyldes med de nye varer, afdeling for afdeling, stærkeste vare i stærkeste felt |
+
+Studioet anbefaler den ene af de to: genkendes under 30 % af varerne,
+er filen en anden uges.
+
+Ny uge (`carryForward` i `@incitio/compose`) gør det i den rækkefølge:
+
+1. **Forsiden** tager ugens stærkeste varer, uanset afdeling — mad først.
+2. **Afdelingssider** tager deres egen afdeling. En side der sidste uge
+   var "Kronemarked" (alt til 10,- og 20,-) foretrækker varer til de
+   samme priser.
+3. **Blandede sider** tager fra de afdelinger de selv bar sidste uge.
+4. En side der mangler, **låner kun fra nabo-afdelinger** — pålæg på
+   kødsiden, aldrig toiletpapir. Hvad der ikke kan fyldes ærligt, står
+   tomt og er listet i banneret.
+
+Afdelingen læses af varens navn og underlinje (`departmentOf`), fordi
+feedenes egne kategorier ikke kan sammenlignes: Coop siger "Kolonial og
+Dybfrost", Tjek siger "Snacks og slik", og en hentet udgivelse siger
+"Side 12". Tekster på siderne der nævner datoer, markeres — "Gælder fra
+fredag d. 18. september" er det letteste på en side at trykke forkert.
+
+**Sektioner** er kædens egne sidedesigns, som CMS'ets Sections: gem en
+side fra ⋯-menuen med navn og tags, eller start biblioteket med alle
+siderne i en avis. Klik en sektion, og den lægges ind som ny side med
+felterne fyldt fra reserven efter sektionens afdelings-tags. Gemt pr.
+kæde i `sections`-tabellen og scopet som alt andet — se
+`isolation.test.ts`.
+
+**Tjeklisten** kender nu også prismærkningsreglerne: en vare solgt på
+vægt eller volumen uden enhedspris stopper print, og en sodavand der
+ikke nævner pant er værd at se. Tekster med en anden uges datoer
+stopper print.
+
+**Hent PDF ▾ → Til trykkeriet** giver arket med 3 mm beskæring,
+skæremærker og en versionslinje med avisens navn og tidspunkt.
+Korrekturen er stadig siden skåret til. Fra API'et: `…/pdf?tryk=1`.
+
+Demo-filen `data/feeds/SuperBrugsenW36-rettelser.json` er W36 med tre
+ændrede priser, én udgået vare og én ny — til at prøve rettelses-vejen.
+
 ## Varelisten
 
 Et upload plejede at være en streng: filen blev gemt, og det første syn
@@ -464,6 +531,24 @@ Hvad der kommer med:
 Sider uden gitter — forsider, annoncer, opskriftsopslag — kommer med som
 **billedsider**, så sidetallene stemmer med den avis du sammenligner med.
 
+### Billed-aviser (Netto, REMA, Lidl …)
+
+De fleste kæder udgiver ikke incito, men en PDF, som viewer'en viser som
+ét billede pr. side. Sådan en avis kommer ind **præcis som udgivet** — siden
+*er* billedet — og får pladser uden noget modelkald:
+
+| Linket er … | Pladserne kommer fra |
+|---|---|
+| en udgivet avis (`etilbudsavis.dk/…/M3A02XpX`) | Tjeks eget katalog-API: hver vare med navn, pris og sin kasse på siden — lige så eksakt som incito |
+| et preview (`publication-viewer…/previews/…`) | sidens pixels: spalter og rækker læses ud af mellemrummene (`findPageCells`) |
+
+En plads der ikke er fyldt, viser den trykte vare. Lægges en ny vare i
+den, dækkes den trykte med sidens egen papirfarve, og den nye vare står
+som kædens egen flise — med alle flisens værktøjer: billede, bokse,
+"Saml og stil op" med Gemini. "Fyld siderne" med et nyt feed gør det for
+hele avisen. Pladser der er læst forkert, rettes i **Rediger layout**;
+her tilføjes også nye (`+ Felt`).
+
 `Sider` tager `4`, `1-6` eller `2,5,9`. `varerne med` kan slås fra, hvis
 det er gitteret alene du vil have: varerne følger stadig med dokumentet
 og ligger i reserve.
@@ -618,8 +703,10 @@ sidst, men strukturelt:
   brugeren, kun den opslåede kæde.
 - Databasen tager kæden med i hver eneste forespørgsel. `Store.get`
   har med vilje ingen overload uden den.
-- Et upload bliver tjekket mod kædens eget feedformat og afvist hvis
-  det er en anden kædes fil — ikke gættet på.
+- Et upload bliver tjekket mod kædens egne feedformater og afvist hvis
+  det er en anden kædes fil — ikke gættet på. Tjeks egne formater
+  (offers-API'et og "transformed offers") læses af alle kæder; en
+  Tjek-fil der navngiver en anden forhandler afvises på forhandleren.
 
 `packages/server/src/__tests__/isolation.test.ts` holder det ærligt: en
 Netto-session kan ikke læse, liste, printe, overskrive eller slette

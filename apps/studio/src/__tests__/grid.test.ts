@@ -21,6 +21,8 @@ const page = (templateId: string, slotIds: string[]): CatalogPage => ({
   background: null,
   texts: {},
   notes: [],
+  incito: null,
+  exact: false,
 });
 
 const FULL = template(['a b', 'c d'], [

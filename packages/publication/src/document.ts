@@ -15,7 +15,7 @@
  * printed sheet rather than a shape the chain uses again.
  */
 import {
-  type CatalogDocument, type CatalogPage, type Offer, type PageTemplate,
+  type CatalogDocument, type CatalogPage, type IncitoSource, type Offer, type PageTemplate,
   type SlotRole, type TemplateSlot, validateTemplate,
 } from '@incitio/schema';
 import { lattice } from '@incitio/reference';
@@ -117,6 +117,7 @@ function pageLine(line: RawLine, pageWidth: number) {
     size: Math.min(0.5, line.size / pageWidth),
     ...(line.color ? { color: line.color } : {}),
     bold: line.bold,
+    ...(line.face ? { face: line.face } : {}),
     upper: line.upper,
     ...(line.align ? { align: line.align } : {}),
     ...(line.lineHeight && line.lineHeight >= 0.5 && line.lineHeight <= 3 ? { lineHeight: line.lineHeight } : {}),
@@ -254,6 +255,26 @@ function padding(
 /** A row of `n` empty cells. */
 const blankRow = (n: number) => new Array<string>(n).fill('.').join(' ');
 
+/**
+ * A grid for offers that sit on none: one cell each, in reading order.
+ *
+ * A page read off a picture, or a published page laid out freehand, has
+ * boxes that no lattice explains — and without a grid it used to come
+ * in as a picture with no products on it, which cannot be refilled.
+ * Every slot keeps its own measured box (`TemplateSlot.rect`), and that
+ * is what renders; the row is only there so each slot has a cell.
+ */
+function loose(rects: Rect[]): { columns: number; rows: number; areas: string[]; gutter: { x: number; y: number }; fit: number } | null {
+  if (rects.length === 0 || rects.length > NAMES.length) return null;
+  return {
+    columns: rects.length,
+    rows: 1,
+    areas: [rects.map((_, index) => NAMES[index]!).join(' ')],
+    gutter: { x: 0, y: 0 },
+    fit: 1,
+  };
+}
+
 export interface PageReading {
   number: number;
   offers: number;
@@ -275,6 +296,7 @@ export interface PageReading {
 export function pageTemplate(
   page: PublicationPage,
   id: string,
+  looseOnly = false,
 ): { template: PageTemplate; order: string[]; fit: number } | null {
   if (page.offers.length === 0) return null;
 
@@ -295,7 +317,8 @@ export function pageTemplate(
     w: offer.rect.w / page.width,
     h: offer.rect.h / page.height,
   }));
-  const fitted = lattice(rects);
+  const measured = looseOnly ? null : lattice(rects);
+  const fitted = measured ?? loose(rects);
   if (!fitted) return null;
 
   const x0 = Math.min(...rects.map((r) => r.x));
@@ -308,7 +331,7 @@ export function pageTemplate(
   // Padding is a courtesy, not a requirement: past the caps it is
   // dropped entirely rather than partly, so the grid that renders is
   // either the printed proportions or the offers' own.
-  const pad = (fitted.columns + across.before + across.after <= MAX_COLUMNS
+  const pad = (measured && fitted.columns + across.before + across.after <= MAX_COLUMNS
     && fitted.rows + down.before + down.after <= MAX_ROWS)
     ? { across, down }
     : { across: { before: 0, after: 0 }, down: { before: 0, after: 0 } };
@@ -332,11 +355,13 @@ export function pageTemplate(
    */
   const slots: TemplateSlot[] = rects.map((rect, index) => {
     const frame = page.offers[index]?.frame;
+    const paper = page.offers[index]?.paper;
     return {
       id: NAMES[index % NAMES.length]!,
       role: roles[index]!,
       bleed: 1,
       rect: clampRect(rect),
+      ...(paper ? { paper } : {}),
       ...(frame ? {
         frame: {
           media: clampRect(frame.media),
@@ -384,7 +409,18 @@ export function pageTemplate(
     slots: slots.filter((slot) => areas.some((row) => row.split(' ').includes(slot.id))),
   };
 
+  /*
+   * Every offer keeps a cell, or the lattice is not the page's grid.
+   *
+   * Two offers the lattice puts in one cell lose one of them, and an
+   * offer with no cell is taken off an exactly printed page — a product
+   * the publication plainly shows would vanish from it. One cell each,
+   * in reading order, is always possible.
+   */
   const problems = validateTemplate(template);
+  if (measured && (problems.length > 0 || template.slots.length < slots.length)) {
+    return pageTemplate(page, id, true);
+  }
   if (problems.length > 0) return null;
 
   return { template, order: slots.map((slot) => slot.id), fit: fitted.fit };
@@ -410,6 +446,27 @@ export interface ImportOptions extends OfferOptions {
 export interface PublicationImport {
   document: CatalogDocument;
   readings: PageReading[];
+}
+
+/** The picture a sheet was made from — see `pagedPage`. */
+const paged = (view: Record<string, unknown>) => view['paged'] as Record<string, unknown> | undefined;
+
+/** The page as published, for printing it exactly — see `IncitoSource`. */
+function incitoOf(
+  page: PublicationPage, publication: Publication, slots: Record<string, string> = {},
+): IncitoSource {
+  return {
+    slots,
+    view: page.view,
+    // The printed view's own size, which is the page's true aspect.
+    width: Number(page.view['layout_width']) || page.width,
+    height: Number(page.view['layout_height']) || page.height,
+    fonts: publication.fonts,
+    // A picture's own paper shows where the print format is not its shape.
+    theme: typeof paged(page.view)?.['paper'] === 'string'
+      ? { ...publication.theme, background: paged(page.view)!['paper'] as string }
+      : publication.theme,
+  };
 }
 
 /**
@@ -541,6 +598,8 @@ export function publicationDocument(
           background,
           texts: {},
           notes,
+          incito: incitoOf(page, publication),
+          exact: true,
         });
       }
       continue;
@@ -558,7 +617,7 @@ export function publicationDocument(
 
     const placements = read.order
       .map((slotId, index) => ({ slotId, offer: page.offers[index] }))
-      .filter((entry): entry is { slotId: string; offer: PublicationOffer } => Boolean(entry.offer))
+      .filter((entry): entry is { slotId: string; offer: PublicationOffer } => Boolean(entry.offer) && !entry.offer!.unbound)
       .filter((entry) => read.template.slots.some((slot) => slot.id === entry.slotId));
 
     for (const entry of placements) {
@@ -596,6 +655,27 @@ export function publicationDocument(
       background,
       texts: {},
       notes,
+      incito: paged(page.view)
+        // A picture's cells are the layout's; the sheet only remembers
+        // which products the publication printed in them.
+        ? {
+          ...incitoOf(page, publication),
+          view: {
+            ...page.view,
+            paged: {
+              ...paged(page.view),
+              printed: Object.fromEntries(placements.map((entry) => [entry.slotId, { id: entry.offer.id, price: entry.offer.price ?? 0 }])),
+            },
+          },
+        }
+        : incitoOf(
+          page, publication,
+          Object.fromEntries(placements.map((entry) => [entry.slotId, entry.offer.id])),
+        ),
+      // Printed as published — the placements only say which products it
+      // carries, until someone chooses to rearrange it with tiles. A
+      // picture has no tiles to fall back on: it is always printed.
+      exact: withOffers || Boolean(paged(page.view)),
     });
   }
 

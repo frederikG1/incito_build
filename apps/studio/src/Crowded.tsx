@@ -53,7 +53,8 @@ export function Crowded({ pageId, slotId, offerId }: { pageId: string; slotId: s
 
   const products = Math.max(offer.imagePack.length, offer.members.length, 1);
   const crowded = (products >= 3 && area < 0.13) || (products === 2 && area < 0.07);
-  if (!crowded) return <span ref={probe} hidden />;
+  const placement = page.placements.find((entry) => entry.slotId === slotId);
+  if (!crowded || placement?.overrides.crowdOk) return <span ref={probe} hidden />;
 
   const lead = slotAssignmentOrder(template)[0]?.id === slotId;
   const filled = new Set(page.placements.map((placement) => placement.slotId));
@@ -102,6 +103,10 @@ export function Crowded({ pageId, slotId, offerId }: { pageId: string; slotId: s
           <button onClick={() => { setOpen(false); s.setLayoutEdit(pageId); }}>
             Rediger layout
             <em>træk flisen præcis så stor du vil</em>
+          </button>
+          <button onClick={() => { setOpen(false); s.updateOverrides(offerId, { crowdOk: true }); }}>
+            Behold som den er
+            <em>skjul advarslen for denne flise</em>
           </button>
         </div>
       )}

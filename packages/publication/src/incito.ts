@@ -15,6 +15,8 @@
  * builds a document never has to know what an incito is.
  */
 
+import { splitLabelPrice } from '@incitio/schema';
+
 /** One rectangle on a page, in the page's own units. */
 export interface Rect {
   x: number;
@@ -38,6 +40,14 @@ export interface PublicationOffer {
   currency: string;
   /** The packshot, or null when the offer prints without one. */
   imageUrl: string | null;
+  /**
+   * A cell with nothing known about what stands in it — a product found
+   * on a page picture by its pixels (see `findPageCells`). It becomes a
+   * cell of the layout and nothing else: no offer, no placement.
+   */
+  unbound?: boolean;
+  /** The paper around it, on a page picture — see `TemplateSlot.paper`. */
+  paper?: string;
   /** Certification marks and other badges printed inside the tile. */
   marks: string[];
   /**
@@ -80,6 +90,8 @@ export interface RawLine {
   size: number;
   color?: string;
   bold: boolean;
+  /** The chain's heading face rather than its body face. */
+  face?: 'heading';
   upper: boolean;
   align?: 'left' | 'center' | 'right';
   lineHeight?: number;
@@ -135,12 +147,17 @@ export interface PublicationPage {
    */
   labels: PageLabel[];
   offers: PublicationOffer[];
+  /** The sheet view itself, untouched — what `IncitoSource.view` keeps. */
+  view: Record<string, unknown>;
 }
 
 export interface Publication {
   id: string;
   locale: string;
   pages: PublicationPage[];
+  /** `font_assets` as family → woff2 URL: the chain's own typefaces. */
+  fonts: Record<string, string>;
+  theme: { fontFamily: string; color: string; background: string; lineHeight: number };
 }
 
 /**
@@ -240,13 +257,12 @@ function walk(
  * currency code is also the only honest source for `currency`.
  */
 function pricedLabel(label: string): { name: string; price: number | null; currency: string } {
-  const found = /^(.*),\s*([A-Z]{3})\s*([0-9]+(?:[.,][0-9]+)?)\s*$/.exec(label.trim());
-  if (!found) return { name: label.trim(), price: null, currency: 'DKK' };
-  return {
-    name: found[1]!.trim(),
-    price: Number(found[3]!.replace(',', '.')),
-    currency: found[2]!,
-  };
+  // Across line breaks: labels are often wrapped exactly at the comma,
+  // and a match that stopped there left 22 of uge 40's offers priceless
+  // with ", DKK 32" in their names. See `splitLabelPrice`.
+  const found = splitLabelPrice(label);
+  if (!found) return { name: label.replace(/\s+/g, ' ').trim(), price: null, currency: 'DKK' };
+  return found;
 }
 
 /** A price as the page sets it: "49,-", "12,95". */
@@ -378,6 +394,8 @@ function linesOf(holder: View): RawLine[] {
       size: pxOf(style, 'font-size') ?? 16,
       ...(colorOf(style) ? { color: colorOf(style)! } : {}),
       bold: /font-weight:\s*(bold|[6-9]00)/i.test(style),
+      // incito-h1 is the chain's heading face — heavy in itself, whatever the weight says.
+      ...(/font-family:\s*incito-h1/i.test(style) ? { face: 'heading' as const } : {}),
       upper: /text-transform:\s*uppercase/i.test(style),
       ...(/text-align:\s*(left|center|right)/i.exec(style)
         ? { align: /text-align:\s*(left|center|right)/i.exec(style)![1] as RawLine['align'] }
@@ -396,8 +414,15 @@ function linesOf(holder: View): RawLine[] {
    * stretch. "16⁹⁵" beside a member price is the SAVING, set small and
    * superscripted — a number, not the price.
    */
+  /*
+   * The figure is the biggest price-shaped line. A raised stretch does
+   * not disqualify it: a member price is set "109⁹⁵" with its øre up,
+   * and ruling those out left the mark with no figure at all — the live
+   * price never reached it, and it was sized as fine print. A smaller
+   * raised line beside a bigger plain one is still the saving.
+   */
   const figures = lines.filter((line) => line.role === 'figure');
-  const main = figures.filter((line) => !line.sup).sort((a, b) => b.size - a.size)[0] ?? null;
+  const main = [...figures].sort((a, b) => b.size - a.size)[0] ?? null;
   for (const line of figures) if (line !== main) line.role = 'note';
 
   // The short line right before the figure is the pack — "1 pose".
@@ -410,6 +435,43 @@ function linesOf(holder: View): RawLine[] {
 }
 
 /** The deepest view whose children are the lines — the flex column. */
+/** The scale a view is drawn at by its own `transform_scale`. */
+function scaleOf(view: View): number {
+  const k = (view as { transform_scale?: unknown }).transform_scale;
+  return typeof k === 'number' && k > 0 ? k : 1;
+}
+
+/**
+ * Everything a mark is drawn at, from its box down to the node its words hang off.
+ *
+ * SuperBrugsen sets its price marks small and scales them up — a 129 ×
+ * 103 box at `transform_scale: 1.36` — and the scale may sit on the box
+ * or on the panel inside it. Read at face value, the words came out a
+ * third smaller than the viewer draws them against their own disc:
+ * "Ugens køb 10,-" printed at the size of the fine print.
+ */
+function scaleDown(from: View, to: View): number {
+  let total = 1;
+  const visit = (node: View, k: number): boolean => {
+    const here = k * scaleOf(node);
+    if (node === to) { total = here; return true; }
+    return (node.child_views ?? []).some((child) => visit(child, here));
+  };
+  visit(from, 1);
+  return total;
+}
+
+/** The same lines, drawn at `k` times their stated size. */
+function scaled(lines: RawLine[], k: number): RawLine[] {
+  if (k === 1) return lines;
+  return lines.map((line) => ({
+    ...line,
+    size: line.size * k,
+    ...(typeof line.width === 'number' ? { width: line.width * k } : {}),
+    ...(line.margin ? { margin: line.margin.map((m) => m * k) as [number, number, number, number] } : {}),
+  }));
+}
+
 function holderOf(view: View): View {
   let holder = view;
   for (let depth = 0; depth < 4; depth += 1) {
@@ -456,8 +518,11 @@ function frameOf(view: View, name: string): OfferFrame | null {
   const boxes = (inner.child_views ?? []).filter(sized);
   if (boxes.length < 2) return null;
 
+  // A box scaled by its own transform grows from its top-left corner.
   const share = (x: number, y: number, node: View): Rect => ({
-    x: x / W, y: y / H, w: px(node.layout_width) / W, h: px(node.layout_height) / H,
+    x: x / W, y: y / H,
+    w: (px(node.layout_width) * scaleOf(node)) / W,
+    h: (px(node.layout_height) * scaleOf(node)) / H,
   });
 
   let media: Rect | null = null;
@@ -496,7 +561,7 @@ function frameOf(view: View, name: string): OfferFrame | null {
       && texts.length <= 6) {
       const holder = holderOf(box);
       price = rect;
-      priceLines = linesOf(holder);
+      priceLines = scaled(linesOf(holder), scaleDown(box, holder));
       priceStack = stackOf(holder.style);
       let drawn: string | null = null;
       walk(box, 0, 0, (node) => {
@@ -533,7 +598,7 @@ function frameOf(view: View, name: string): OfferFrame | null {
     });
     badges.push({
       rect: entry.rect,
-      lines: linesOf(holder),
+      lines: scaled(linesOf(holder), scaleDown(entry.node, holder)),
       stack: stackOf(holder.style),
       image: drawn,
     });
@@ -690,6 +755,36 @@ function readOffer(view: View, x: number, y: number): PublicationOffer | null {
  * is a full-bleed image and not a wrapper, which is what the last of
  * those four tests is for.
  */
+/**
+ * The view to PRINT, which is the page at its own size.
+ *
+ * `sheetOf` answers where to measure from, and for a section about the
+ * size of its page it stops at the section. For printing, that is
+ * wrong whenever the two differ: the viewer fits the 600 × 1000 page to
+ * its section with a scale it computes itself — 0.99 into a 595 section,
+ * 0.625 into a 375 one — and that number is in no file. Printed from
+ * the section, the page stood at full size inside a smaller box: every
+ * sheet zoomed in and cropped to its top-left corner.
+ *
+ * So: step into a lone child with children of its own, as long as it is
+ * the same SHAPE — whatever its size. Our own fitting (`IncitoPage`)
+ * then does what the viewer's does.
+ */
+function drawnSheet(view: View): View {
+  let sheet = view;
+  for (let depth = 0; depth < 4; depth += 1) {
+    const children = (sheet.child_views ?? []).filter(sized);
+    const child = children.length === 1 ? children[0]! : undefined;
+    if (!child || (child.child_views?.length ?? 0) === 0) break;
+    const parentAspect = px(sheet.layout_width) / px(sheet.layout_height);
+    const aspect = px(child.layout_width) / px(child.layout_height);
+    if (!Number.isFinite(parentAspect) || !Number.isFinite(aspect)) break;
+    if (Math.abs(aspect / parentAspect - 1) > 0.02) break;
+    sheet = child;
+  }
+  return sheet;
+}
+
 function sheetOf(section: View): View {
   let page = section;
   // Four is deeper than any wrapper seen; the cap is there so a
@@ -821,7 +916,11 @@ function readPage(section: View, number: number): PublicationPage {
     return;
   });
 
-  return { number, width, height, ground, background, masthead, artwork, labels, offers };
+  const exact = drawnSheet(sheetView);
+  return {
+    number, width, height, ground, background, masthead, artwork, labels, offers,
+    view: exact as Record<string, unknown>,
+  };
 }
 
 /**
@@ -835,7 +934,13 @@ export function readIncito(data: unknown): Publication {
   if (typeof data !== 'object' || data === null) {
     throw new Error('incito-dokumentet er ikke et objekt');
   }
-  const root = data as { id?: string; locale?: string; root_view?: View };
+  const root = data as {
+    id?: string;
+    locale?: string;
+    root_view?: View;
+    font_assets?: Record<string, { src?: [string, string][] }>;
+    theme?: { font_family?: string[]; text_color?: string; background_color?: string; line_spacing_multiplier?: number };
+  };
   if (!root.root_view) throw new Error('incito-dokumentet har ingen root_view');
 
   const sections: View[] = [];
@@ -850,9 +955,22 @@ export function readIncito(data: unknown): Publication {
 
   if (sections.length === 0) throw new Error('udgivelsen indeholder ingen sider');
 
+  const fonts: Record<string, string> = {};
+  for (const [family, asset] of Object.entries(root.font_assets ?? {})) {
+    const source = (asset.src ?? []).find(([format]) => format === 'woff2') ?? asset.src?.[0];
+    if (source?.[1]) fonts[family] = source[1];
+  }
+
   return {
     id: root.id ?? '',
     locale: root.locale ?? 'da-DK',
     pages: sections.map((section, index) => readPage(section, index + 1)),
+    fonts,
+    theme: {
+      fontFamily: (root.theme?.font_family ?? ['incito-body', 'system-ui', 'sans-serif']).join(', '),
+      color: root.theme?.text_color ?? '#000000',
+      background: root.theme?.background_color ?? '#ffffff',
+      lineHeight: root.theme?.line_spacing_multiplier ?? 1.4,
+    },
   };
 }

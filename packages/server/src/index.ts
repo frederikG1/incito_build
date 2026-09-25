@@ -10,7 +10,8 @@ import { arrangeGroup, placeCluster, readClusterLayout } from '@incitio/curator'
 import {
   EMPTY_LABEL_DICTIONARY, ingestCsv, ingestJson, type LabelDictionary,
 } from '@incitio/ingest';
-import { imaginePage, matchPage, MatchError, mediaType } from '@incitio/match';
+import { decodePixels, imaginePage, matchPage, MatchError, mediaType } from '@incitio/match';
+import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
 import { uploadStore } from './uploads.js';
 import { readFileSync } from 'node:fs';
@@ -20,8 +21,8 @@ import {
   clusterPrompt, composeCluster, backdropPrompt, keyOutMotifs, composedCount, cropBoxes, cutout, decorate, fetchImages, findIslands, findVariants, generateImage, ASPECTS,
   sharedBrowser, DEFAULT_IMAGE_MODEL, GeminiError,
 } from '@incitio/decor';
-import { importPublication, PublicationError } from '@incitio/publication';
-import { Store } from './db.js';
+import { findPageCells, importPublication, PublicationError } from '@incitio/publication';
+import { Section, Store } from './db.js';
 
 export { Store } from './db.js';
 
@@ -91,6 +92,21 @@ export interface AppOptions {
    * same feed printed marks from the terminal and words from the editor.
    */
   labels?: LabelDictionary;
+}
+
+/** The chain a Tjek offers file names on its rows, when it names one. */
+function feedDealer(text: string): string | null {
+  if (!text.trimStart().startsWith('[') && !text.trimStart().startsWith('{')) return null;
+  try {
+    const payload = JSON.parse(text) as unknown;
+    const rows = Array.isArray(payload) ? payload : [];
+    for (const row of rows.slice(0, 20)) {
+      const record = row as { dealer?: { name?: unknown }; branding?: { name?: unknown } };
+      const name = record.dealer?.name ?? record.branding?.name;
+      if (typeof name === 'string' && name.trim()) return name.trim();
+    }
+  } catch { /* not JSON the dealer can be read from */ }
+  return null;
 }
 
 export function createApp(store: Store, options: AppOptions = {}) {
@@ -182,6 +198,36 @@ export function createApp(store: Store, options: AppOptions = {}) {
       })),
     });
   });
+
+  /*
+   * The chain's section designs. Same scoping as catalogues: the brand
+   * comes from the middleware, never from the body.
+   */
+  app.get('/api/brand/sections', (c) =>
+    c.json({ sections: store.sections(c.get('brand').brand.id) }));
+
+  app.post('/api/brand/sections', async (c) => {
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+    const parsed = Section.safeParse(payload);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid section', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+    try {
+      return c.json({ section: store.saveSection(c.get('brand').brand.id, parsed.data) });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : 'kunne ikke gemme' }, 403);
+    }
+  });
+
+  app.delete('/api/brand/sections/:id', (c) =>
+    (store.removeSection(c.get('brand').brand.id, c.req.param('id'))
+      ? c.json({ ok: true })
+      : c.json({ error: 'not found' }, 404)));
 
   app.get('/api/brand/catalogs', (c) =>
     c.json({ catalogs: store.list(c.get('brand').brand.id) }));
@@ -638,6 +684,18 @@ export function createApp(store: Store, options: AppOptions = {}) {
       if (!match.source) return c.json({ error: match.reason }, 422);
       source = match.source;
       reason = match.reason;
+    }
+
+    /*
+     * Tjek's own formats are every chain's (see `withTjekFormats`), so the
+     * format no longer says whose file it is. The file itself often does:
+     * the offers API names its dealer on every row. A file that names
+     * another chain is refused, as a foreign format used to be.
+     */
+    const owner = feedDealer(parsed.data.feed);
+    const mine = definition.brand.name.split(/[\s—-]+/)[0]!.toLowerCase();
+    if (owner && !owner.toLowerCase().includes(mine) && !mine.includes(owner.toLowerCase())) {
+      return c.json({ error: `filen er ${owner}s — du arbejder i ${definition.brand.name}` }, 422);
     }
 
     try {
@@ -1356,6 +1414,13 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
   });
 
+  // One browser for reading page pictures, started the first time one comes in.
+  let pagedBrowser: Promise<Browser> | null = null;
+  const browserForPaged = () => {
+    pagedBrowser ??= chromium.launch().catch((error) => { pagedBrowser = null; throw error; });
+    return pagedBrowser;
+  };
+
   app.post('/api/brand/publication', async (c) => {
     const definition = c.get('brand');
 
@@ -1372,18 +1437,33 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
 
     try {
+      const uploads = uploadsFor(definition.brand.id);
       const run = await importPublication(parsed.data.url, {
         brandId: definition.brand.id,
         catalogId: `${definition.brand.id}-${Date.now().toString(36)}`,
         name: parsed.data.name || 'Hentet udgivelse',
         ...(parsed.data.pages?.length ? { pages: parsed.data.pages } : {}),
         ...(parsed.data.withOffers === false ? { withOffers: false } : {}),
+        // A picture-only publication's pages are kept as the chain's own uploads,
+        ...(uploads ? { store: (bytes: Buffer, extension: string) => uploads.put(bytes, extension).ref } : {}),
+        // and their cells read off the pixels — free, and no model.
+        analyse: async (bytes: Buffer) => {
+          const browser = await browserForPaged();
+          return findPageCells(await decodePixels(browser, bytes, mediaType(bytes)));
+        },
       });
 
       return c.json({
         document: run.document,
         readings: run.readings,
-        publication: { id: run.publication.id, pages: run.publication.pages.length },
+        publication: {
+          id: run.publication.id,
+          pages: run.publication.pages.length,
+          // Pictures, not incito — and how many products the catalogue named.
+          paged: run.paged !== null,
+          title: run.paged?.title ?? null,
+          known: run.paged?.known ?? 0,
+        },
       });
     } catch (error) {
       // A link that cannot be read is the editor's problem to fix — a
@@ -1611,12 +1691,20 @@ export function createApp(store: Store, options: AppOptions = {}) {
     const document = store.get(definition.brand.id, c.req.param('id'));
     if (!document) return c.json({ error: 'not found' }, 404);
 
+    /*
+     * `?tryk=1` is the file that goes to the printer: 3 mm bleed, crop
+     * marks, and a slug line saying which avis and when. Without it the
+     * PDF is a proof, trimmed to the page, for reading on a screen.
+     */
+    const forPrint = c.req.query('tryk') === '1';
+    const stamp = new Date().toLocaleString('da-DK', { dateStyle: 'short', timeStyle: 'short' });
     const pdf = await renderCataloguePdf(document, definition.brand, {
       ...(options.assetDir ? { assetDir: options.assetDir } : {}),
+      ...(forPrint ? { marks: { bleedMm: 3, slug: `${document.name} · tryk ${stamp}` } } : {}),
     });
     return c.body(new Uint8Array(pdf), 200, {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="${document.id}.pdf"`,
+      'content-disposition': `inline; filename="${document.id}${forPrint ? '-tryk' : ''}.pdf"`,
     });
   });
 

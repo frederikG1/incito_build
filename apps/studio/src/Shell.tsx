@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { weekRange } from '@incitio/schema';
 import { useStudio } from './state.js';
-import { bySeverity } from './findings.js';
+import { ReadyPill } from './Checklist.js';
+import { SearchButton } from './Palette.js';
 
 /**
  * The chrome both screens wear: who you are, what is in the way, and
@@ -93,10 +94,17 @@ function Document() {
                     setOpen(false);
                   }}
                 >
-                  <option value="">{s.catalogues.length} gemte…</option>
-                  {s.catalogues.map((saved) => (
-                    <option key={saved.id} value={saved.id}>{saved.name}</option>
-                  ))}
+                  <option value="">{s.catalogues.length} gemte aviser…</option>
+                  {[...s.catalogues]
+                    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+                    .map((saved) => (
+                      /* When it was last touched, so two with one name can be told apart. */
+                      <option key={saved.id} value={saved.id}>
+                        {saved.name} · {new Date(saved.updatedAt).toLocaleString('da-DK', {
+                          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                        })}
+                      </option>
+                    ))}
                 </select>
               </label>
             )}
@@ -116,7 +124,7 @@ function Document() {
                   if (file) await s.uploadFeed(file.name, await file.text());
                 }}
               />
-              Upload feed <i>{s.feed ? s.feed.source : 'ingen endnu'}</i>
+              Hent ugens varer fra fil <i>{s.feed ? s.feed.source : 'ingen endnu'}</i>
             </label>
 
             <button
@@ -124,7 +132,25 @@ function Document() {
               disabled={!s.document || Boolean(s.busy)}
               onClick={() => { setOpen(false); void s.save(); }}
             >
-              Gem nu <i>⌘S</i>
+              Gem <i>⌘S</i>
+            </button>
+
+            {/*
+              * A clean table. Asked once, because it cannot be undone
+              * from here — but it only closes the working copy: a saved
+              * avis is still in "Åbn en anden".
+              */}
+            <button
+              className="docmenu__do docmenu__do--drop"
+              disabled={!s.document || Boolean(s.busy)}
+              onClick={() => {
+                setOpen(false);
+                if (window.confirm('Start forfra med en tom avis?\n\nDet der ikke er gemt, forsvinder. Gemte aviser ligger stadig under "Åbn en anden".')) {
+                  s.startOver();
+                }
+              }}
+            >
+              Start forfra <i>tom avis</i>
             </button>
           </div>
         </>
@@ -171,6 +197,43 @@ function PageHead() {
   );
 }
 
+/* ---------------------------------------------------------- the pdf */
+
+/**
+ * Two files, one button.
+ *
+ * The proof is the page trimmed, for reading on a screen and sending to
+ * the category manager. The print file is what the printer asks for:
+ * 3 mm bleed, crop marks, and a slug line naming the avis and the time
+ * — so the file on the printer's desk says which version it is.
+ */
+function PdfButton() {
+  const s = useStudio();
+  const [open, setOpen] = useState(false);
+  const off = !s.document || Boolean(s.busy);
+  return (
+    <div className="pdfwrap">
+      <button className="go go--split" onClick={() => void s.downloadPdf()} disabled={off}>Hent PDF</button>
+      <button className="go go--caret" onClick={() => setOpen(!open)} disabled={off} aria-expanded={open} title="Flere PDF'er">▾</button>
+      {open && (
+        <>
+          <div className="sheetaway" onPointerDown={() => setOpen(false)} />
+          <div className="docmenu docmenu--right">
+            <button className="docmenu__do docmenu__do--big" onClick={() => { setOpen(false); void s.downloadPdf(); }}>
+              <b>Korrektur</b>
+              <span>Til skærm og godkendelse</span>
+            </button>
+            <button className="docmenu__do docmenu__do--big" onClick={() => { setOpen(false); void s.downloadPdf(true); }}>
+              <b>Til trykkeriet</b>
+              <span>3 mm beskæring, skæremærker og versionslinje</span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------- the top */
 
 export function Top() {
@@ -194,6 +257,8 @@ export function Top() {
 
         {/* The save, as a button that says when it last happened — the
             only visible way to save besides ⌘S and the avis menu. */}
+        <SearchButton />
+        <ReadyPill />
         <button
           className="top__save"
           disabled={!s.document || Boolean(s.busy)}
@@ -205,9 +270,7 @@ export function Top() {
         <button className="quiet" onClick={s.undo} disabled={s.past.length === 0} title="Fortryd (⌘Z)">↶</button>
         <button className="quiet" onClick={s.redo} disabled={s.future.length === 0} title="Gentag (⇧⌘Z)">↷</button>
 
-        <button className="go" onClick={() => void s.downloadPdf()} disabled={!s.document || Boolean(s.busy)}>
-          Hent PDF
-        </button>
+        <PdfButton />
       </header>
 
     </>

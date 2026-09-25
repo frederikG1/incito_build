@@ -28,9 +28,17 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 
-/** Every `z-index: N` a stylesheet declares. */
+/**
+ * Every `z-index: N` a stylesheet declares for what it PRINTS.
+ *
+ * `--active` rules are left out: they are the editor's grip on a note or
+ * a picture while it is being dragged, which must win over everything,
+ * a moved price mark included — they are not a layer of the page.
+ */
 function layers(css: string): number[] {
-  return [...css.matchAll(/^\s*z-index:\s*(-?\d+)\s*;/gm)].map((m) => Number(m[1]));
+  return [...css.matchAll(/([^{}]*)\{([^}]*)\}/g)]
+    .filter(([, selector]) => !/--active/.test(selector!))
+    .flatMap(([, , body]) => [...body!.matchAll(/(?:^|;|\n)\s*z-index:\s*(-?\d+)\s*;/g)].map((m) => Number(m[1])));
 }
 
 describe('tile stacking', () => {

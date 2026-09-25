@@ -5,9 +5,10 @@ import {
   pageGround, pageTextLimits, pageTextOverride, pageTextTouched,
   partLimits, partOverride, partTouched,
 } from '@incitio/schema';
-import type { CatalogPage, PagePart, PlacementOverrides, TilePart } from '@incitio/schema';
+import type { CatalogPage, Offer, PagePart, PlacementOverrides, TilePart } from '@incitio/schema';
 import { PLACE_PROMPTS, placePrompt } from '@incitio/curator/place-prompt';
 import { useStudio } from './state.js';
+import { incitoSlotOf, pageBlocks, type IncitoBlock } from '@incitio/renderer';
 import { priceOf, saidPrice } from './price.js';
 
 /**
@@ -84,7 +85,7 @@ function PageTexts({ page }: { page: CatalogPage }) {
               <input
                 type="text"
                 value={held === 'title' ? page.title : page.subtitle}
-                placeholder={held === 'title' ? 'overskrift' : 'stemningslinje'}
+                placeholder={held === 'title' ? 'overskrift' : 'underoverskrift'}
                 onChange={(e) => (held === 'title'
                   ? setPageTitle(page.id, e.target.value)
                   : setPageSubtitle(page.id, e.target.value))}
@@ -209,7 +210,7 @@ function PageGround() {
       <PageTexts page={page} />
 
       <h3 className="inspector__group">
-        Sidens bund
+        Baggrundsfarve
         {page.ground && (
           <button className="inspector__link" onClick={() => setPageGround(page.id, null)}>
             Nulstil
@@ -227,23 +228,11 @@ function PageGround() {
           />
         </label>
 
-        <input
-          className="ground__hex"
-          type="text"
-          value={value}
-          spellCheck={false}
-          onChange={(e) => {
-            const raw = e.target.value.trim();
-            setPageGround(page.id, raw.startsWith('#') ? raw : `#${raw}`);
-          }}
-          aria-label="Hex-kode"
-        />
-
         {pipette && (
           <button
             className="ground__pick"
             disabled={dropping}
-            title="Hold pipetten over farven på referencen"
+            title="Klik et sted på skærmen for at bruge den farve"
             onClick={async () => {
               setDropping(true);
               try {
@@ -256,15 +245,14 @@ function PageGround() {
                 setDropping(false);
               }
             }}
-          >⌖ Pipette</button>
+          >⌖ Tag farve fra skærmen</button>
         )}
       </div>
 
       <p className="ground__note">
         {page.ground
-          ? <>Sat på siden. {brand.name}s egen er <code>{chains}</code>.</>
+          ? <>Din egen farve. <b>Nulstil</b> giver {brand.name}s farve igen.</>
           : <>{brand.name}s egen farve for side {index + 1}.</>}
-        {pipette && ' Pipetten kan tage farven direkte fra referencebilledet.'}
       </p>
 
       {/*
@@ -286,7 +274,7 @@ function PageGround() {
 
       {!page.background ? (
         <p className="ground__note">
-          Ingen. Tryk <b>Billeder</b> over siden for at lægge et billede under hele arket.
+          Intet. Tryk <b>Billeder og baggrund</b> over siden for at lægge et billede under hele siden.
         </p>
       ) : (
         <>
@@ -307,7 +295,7 @@ function PageGround() {
           </label>
 
           <label className="inspector__field">
-            <span>Gennemsigtighed {Math.round(page.background.opacity * 100)}%</span>
+            <span>Synlighed {Math.round(page.background.opacity * 100)}%</span>
             <input
               type="range"
               min={5}
@@ -617,7 +605,7 @@ function NoteInspector({ noteId }: { noteId: string }) {
             <button
               key={name}
               className={note.background === backing ? 'is-on' : ''}
-              onClick={() => set({ background: backing, h: backing ? note.h : note.h })}
+              onClick={() => set({ background: backing })}
             >{name}</button>
           ))}
         </div>
@@ -649,8 +637,211 @@ type InspectorTab = 'indhold' | 'billede' | 'bokse';
 const INSPECTOR_TABS: [InspectorTab, string][] = [
   ['indhold', 'Indhold'],
   ['billede', 'Billede'],
-  ['bokse', 'Bokse'],
+  ['bokse', 'Dele'],
 ];
+
+const BLOCK_KINDS: Record<IncitoBlock['kind'], string> = {
+  skilt: 'Skilt',
+  tekst: 'Tekst',
+  billede: 'Billede',
+  mærker: 'Mærker',
+};
+
+/** The published page the canvas is on, when it prints as published. */
+function usePublishedPage() {
+  const document = useStudio((s) => s.document);
+  const openPageId = useStudio((s) => s.openPageId);
+  const activePageId = useStudio((s) => s.activePageId);
+  const selected = useStudio((s) => s.selectedIncito);
+  const id = selected?.pageId ?? openPageId ?? activePageId;
+  const page = document?.pages.find((entry) => entry.id === id);
+  return page && page.incito && page.exact ? page : null;
+}
+
+/**
+ * One element of a page printed as published: a roundel, a price mark,
+ * the words under a product.
+ *
+ * Two things to do with it, and both are corrections laid over the
+ * publication rather than changes to it — see `CatalogPage.incitoEdits`
+ * — so "Nulstil" always gets back to what was published.
+ */
+function IncitoInspector() {
+  const selected = useStudio((s) => s.selectedIncito);
+  const select = useStudio((s) => s.selectIncito);
+  const edit = useStudio((s) => s.editIncito);
+  const hide = useStudio((s) => s.hideIncito);
+  const move = useStudio((s) => s.moveIncito);
+  const endGesture = useStudio((s) => s.endGesture);
+  const document = useStudio((s) => s.document);
+  const setOfferPrice = useStudio((s) => s.setOfferPrice);
+  const page = usePublishedPage();
+  const block = page?.incito && selected
+    ? pageBlocks({ ...page, incito: page.incito }, document?.offers ?? [], document?.templates.find((t) => t.id === page.templateId))
+      .find((entry) => entry.path === selected.path)
+    : undefined;
+  if (!page || !selected || !block) {
+    return <aside className="inspector inspector--empty"><p>Elementet findes ikke længere.</p></aside>;
+  }
+
+  const saved = page.incitoEdits?.[block.path];
+  const hidden = saved?.hidden ?? false;
+  /*
+   * The words as they stand on the page — a product that took over this
+   * cell prints its own name here, not the publication's. Read off the
+   * rendered element, which is the one place that has done that
+   * substitution; the element's own lines only, not those of an element
+   * nested inside it.
+   */
+  const element = window.document.querySelector(
+    `[data-page-id="${CSS.escape(page.id)}"] [data-incito-block="${CSS.escape(block.path)}"]`,
+  );
+  const shown = element
+    ? [...element.querySelectorAll('p.tjek-incito__text-view')]
+      .filter((line) => line.closest('[data-incito-block]') === element)
+      .map((line) => line.textContent ?? '')
+    : [];
+  const texts = block.texts.map((text, index) => saved?.texts?.[index] ?? shown[index] ?? text);
+  const offer = cellOffer(page, block.offerId, document?.offers ?? []);
+
+  return (
+    <aside className="inspector">
+      <div className="inspector__head">
+        <h2>{offer ? offer.name : `${BLOCK_KINDS[block.kind]} på siden`}</h2>
+        <button className="thin" onClick={() => select(page.id, null)} title="Slip (Esc)">×</button>
+      </div>
+      <p className="inspector__said">
+        {hidden
+          ? 'Slettet fra siden — det kommer ikke med i PDF\'en.'
+          : offer
+            ? 'Byt varen: træk en anden vare fra listen til venstre over på den.'
+            : 'Som i den trykte avis — dine rettelser kommer ovenpå.'}
+      </p>
+
+      {offer && <OfferPrice key={offer.id} offer={offer} onPrice={(price) => setOfferPrice(offer.id, price)} onDone={endGesture} />}
+
+      <div className="incito__do">
+        <button
+          className={hidden ? 'go' : 'thin thin--drop'}
+          onClick={() => hide(page.id, block.path, !hidden)}
+          title={hidden ? '' : 'Eller tryk ⌫'}
+        >
+          {hidden ? 'Vis på siden igen' : 'Slet fra siden ⌫'}
+        </button>
+        {saved && (
+          <button className="thin" onClick={() => edit(page.id, block.path, { hidden: false, texts: null })}>
+            Nulstil
+          </button>
+        )}
+      </div>
+
+      <section className="incito__place">
+        <h4>Placering</h4>
+        <label className="incito__line">
+          <span>Størrelse {(saved?.scale ?? 1).toFixed(2)}×</span>
+          <input
+            type="range" min={0.3} max={3} step={0.01}
+            value={saved?.scale ?? 1}
+            onChange={(event) => move(page.id, block.path, { scaleBy: Number(event.target.value) - (saved?.scale ?? 1) }, `incito-size-${block.path}`)}
+            onPointerUp={endGesture}
+          />
+        </label>
+        {(saved?.dx || saved?.dy || (saved?.scale ?? 1) !== 1) ? (
+          <button className="thin" onClick={() => move(page.id, block.path, { reset: true })}>Nulstil placering</button>
+        ) : null}
+        <p className="inspector__hint">
+          <b>Træk</b> for at flytte · <b>⌘ + scroll</b> for størrelse · <b>Esc</b> slipper
+        </p>
+      </section>
+
+      {texts.length > 0 && (
+        <section className="incito__lines">
+          <h4>Tekst</h4>
+          {texts.map((text, index) => (
+            <label key={index} className="incito__line">
+              <span>Linje {index + 1}</span>
+              <textarea
+                rows={Math.min(4, Math.max(1, Math.ceil(text.length / 28)))}
+                value={text}
+                onChange={(event) => {
+                  const next = [...texts];
+                  next[index] = event.target.value;
+                  edit(page.id, block.path, { texts: next }, `incito-text-${block.path}`);
+                }}
+                onBlur={endGesture}
+              />
+            </label>
+          ))}
+          <p className="inspector__hint">Skrifttype, størrelse og placering følger udgivelsen.</p>
+        </section>
+      )}
+    </aside>
+  );
+}
+
+/** The product standing in a published offer's cell now — by cell, as `incitoCells` reads it. */
+function cellOffer(page: CatalogPage, viewId: string | null, offers: Offer[]): Offer | null {
+  if (!viewId) return null;
+  const slotId = incitoSlotOf(page, viewId);
+  const placement = page.placements.find((entry) => entry.slotId === slotId);
+  return offers.find((entry) => entry.id === placement?.offerId) ?? null;
+}
+
+/** The product in the cell and its price, which the page's mark is set from. */
+function OfferPrice({ offer, onPrice, onDone }: { offer: Offer; onPrice: (price: number) => void; onDone: () => void }) {
+  const [typed, setTyped] = useState(offer.price.toFixed(2).replace('.', ','));
+  return (
+    <section className="incito__lines">
+      <label className="incito__line">
+        <span>Pris, kr.{offer.priceFrom ? ' (laveste — der står "fra")' : ''}</span>
+        <input
+          inputMode="decimal"
+          value={typed}
+          onChange={(event) => {
+            setTyped(event.target.value);
+            const price = Number(event.target.value.replace(/\s/g, '').replace(',', '.'));
+            if (event.target.value.trim() && Number.isFinite(price)) onPrice(Math.round(price * 100) / 100);
+          }}
+          onBlur={onDone}
+        />
+      </label>
+    </section>
+  );
+}
+
+/** The elements somebody took off a published page, to put back. */
+function HiddenIncito() {
+  const page = usePublishedPage();
+  const select = useStudio((s) => s.selectIncito);
+  const hide = useStudio((s) => s.hideIncito);
+  const offers = useStudio((s) => s.document?.offers);
+  const templates = useStudio((s) => s.document?.templates);
+  if (!page?.incito) return null;
+  const all = pageBlocks({ ...page, incito: page.incito }, offers ?? [], templates?.find((t) => t.id === page.templateId));
+  const gone = all.filter((block) => page.incitoEdits?.[block.path]?.hidden);
+  // A disc taken off with its words is one thing to put back, listed by its words.
+  const hidden = gone.filter((block) => block.texts.length > 0
+    || !block.companions.some((path) => gone.some((other) => other.path === path)));
+  return (
+    <section className="incito__hidden">
+      {hidden.length > 0 && (
+        <>
+          <h4>Skjult fra siden · {hidden.length}</h4>
+          <ul>
+            {hidden.map((block) => (
+              <li key={block.path}>
+                <button className="incito__name" onClick={() => select(page.id, block.path)}>
+                  {BLOCK_KINDS[block.kind]}{block.texts.length ? ` — ${block.texts.join(' ').slice(0, 40)}` : ''}
+                </button>
+                <button className="thin" onClick={() => hide(page.id, block.path, false)}>Vis</button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
 
 export function Inspector() {
   // Shut by default: the prompt is three hundred words, and most
@@ -668,6 +859,7 @@ export function Inspector() {
     placeStrict, setPlaceStrict,
     clusterPromptId, setClusterPromptId,
     standUpOneCluster, busy, decorReady, selectedDecorId, selectedNoteId, splitAndStandUp,
+    selectedIncito,
   } = useStudio();
   const [tab, setTab] = useState<InspectorTab>('indhold');
   /*
@@ -689,19 +881,21 @@ export function Inspector() {
       <aside className="inspector inspector--empty">
         {/* Page-level, so it is reachable with nothing selected — which
             is the state a freshly rebuilt page opens in. */}
+        {/* What to do first, then what can be set for the page as a whole. */}
+        <div className="inspector__startbox">
+          <p className="inspector__start">Klik på en vare på siden for at rette den.</p>
+          <ul className="inspector__keys">
+            <li><b>Træk</b> en vare fra listen til venstre over på en vare på siden for at bytte</li>
+            <li><b>Dobbeltklik</b> på en tekst for at rette den</li>
+            <li><b>⌘Z</b> fortryder alt</li>
+          </ul>
+        </div>
+        <HiddenIncito />
         <PageGround />
-        <p>Klik på en vare for at rette den.</p>
-        <ul className="inspector__keys">
-          <li><b>Træk</b> en vare over på en anden for at bytte dem</li>
-          <li><b>Klik</b> og træk igen for at flytte det du peger på</li>
-          <li><b>⌘ + scroll</b> eller knib for at ændre størrelsen</li>
-          <li><b>Dobbeltklik</b> på en tekst for at rette den på siden</li>
-          <li><b>⌫</b> tager et element af siden — det kan hentes tilbage</li>
-          <li><b>Overskriften</b> og stemningslinjen trækkes på samme måde</li>
-        </ul>
       </aside>
   );
 
+  if (selectedIncito) return <IncitoInspector />;
   if (selectedNoteId) return <NoteInspector noteId={selectedNoteId} />;
   if (selectedDecorId) return <DecorInspector decorId={selectedDecorId} />;
   if (!document || !selectedOfferId) return nothing;
@@ -752,8 +946,7 @@ export function Inspector() {
         */}
       <p className="inspector__meta" title={`Varenr. ${offer.id}`}>
         {[
-          `felt ${placement.slotId}`,
-          `${offer.price.toFixed(2).replace('.', ',')} ${offer.currency}`,
+          `${offer.priceFrom ? 'fra ' : ''}${offer.price.toFixed(2).replace('.', ',')} kr.`,
           offer.category,
         ].filter(Boolean).join(' · ')}
       </p>
@@ -946,7 +1139,7 @@ export function Inspector() {
           onChange={(e) =>
             updateOverrides(offer.id, { displayName: e.target.value || null })}
         />
-        <small>Tom = feedets egen tekst.</small>
+        <small>Tom = varens egen tekst.</small>
       </label>
 
       <label className="inspector__field">
@@ -963,7 +1156,7 @@ export function Inspector() {
             <button
               className="inspector__link"
               onClick={() => updateOverrides(offer.id, { description: null })}
-            >Hent feedets tekst</button>
+            >Brug varens egen tekst</button>
           )}
         </small>
       </label>
@@ -1005,7 +1198,7 @@ export function Inspector() {
         <button
           className="inspector__drop"
           onClick={() => removeOfferFromPage(onPage.id, offer.id)}
-          title="Varen bliver i avisen og går i reserve"
+          title="Varen bliver i avisen under Ikke placeret"
         >
           Tag af siden
         </button>
@@ -1017,7 +1210,7 @@ export function Inspector() {
           checked={overrides.pinned}
           onChange={(e) => updateOverrides(offer.id, { pinned: e.target.checked })}
         />
-        <span>Fastlås — må ikke flyttes ved næste generering</span>
+        <span>Lås varen på pladsen</span>
       </label>
       </>
       )}
@@ -1104,25 +1297,22 @@ export function Inspector() {
         */}
       {offer.members.length <= 1 && (offer.imageUrl || offer.imagePack.length > 1) && (
         <div className="way way--split">
-          <h3 className="inspector__group">Stil op med Gemini</h3>
+          <h3 className="inspector__group">Opstilling</h3>
           <button
             className="way__go"
             disabled={Boolean(busy) || !decorReady}
-            title={decorReady ? 'Gemini stiller varerne i billedet op i feltet (G)' : 'Kræver en Gemini-nøgle'}
+            title={decorReady ? 'AI stiller varerne i billedet pænt op (G)' : 'AI-hjælpen er slået fra på denne maskine'}
             onClick={() => void splitAndStandUp(offer.id)}
           >
-            Stil op med Gemini
+            Stil varerne pænt op
           </button>
-          <p className="way__aside">
-            Varerne i billedet stilles op som en tilbudsavis — og kan bagefter flyttes
-            hver for sig. Prisen og teksten er de samme.
-          </p>
+          <p className="way__aside">Hver vare kan bagefter flyttes for sig.</p>
         </div>
       )}
 
       {offer.members.length > 1 && (
         <>
-          <h3 className="inspector__group">Gemini</h3>
+          <h3 className="inspector__group">Opstilling</h3>
 
           {/*
             * One box, because it is one decision with one button.
@@ -1139,13 +1329,18 @@ export function Inspector() {
               className="way__go"
               disabled={Boolean(busy) || (clusterWay === 'rundtur' && !decorReady)}
               title={clusterWay === 'rundtur' && !decorReady
-                ? 'Rundturen kræver en Gemini-nøgle'
-                : 'Lad Gemini stille denne flises varer op'}
+                ? 'AI-hjælpen er slået fra på denne maskine'
+                : 'AI stiller varerne pænt op (G)'}
               onClick={() => void standUpOneCluster(offer.id)}
             >
-              {clusterWay === 'koordinater' ? 'Stil op med Gemini' : 'Tegn og mål med Gemini'}
+              Stil varerne pænt op
             </button>
+            <p className="way__aside">Hver vare kan bagefter flyttes for sig.</p>
 
+            {/* Model, method, prompt and the numbers from the last run —
+                for whoever is tuning the arrangement, not for the week's paper. */}
+            <details className="way__more">
+            <summary>Avanceret</summary>
             <label className="way__field">
               <span>Metode</span>
               <select
@@ -1381,6 +1576,7 @@ export function Inspector() {
                 )}
               </>
             )}
+            </details>
           </div>
 
           {/*
@@ -1398,24 +1594,27 @@ export function Inspector() {
             <div className="proof">
               <button
                 className="inspector__link"
-                title="Læg Geminis billede over flisen, så du kan se om varerne står som på det"
+                title="Læg AI'ens forslag over varerne, så du kan se om de står som på det"
                 onClick={() => toggleGhost(offer.id)}
               >
-                {ghost.shown ? 'Skjul Geminis billede' : 'Vis Geminis billede over flisen'}
+                {ghost.shown ? 'Skjul forslaget' : 'Vis forslaget oven på varerne'}
               </button>
               {/* What the arithmetic did, for the tile that comes out
                   wrong — see `reference.report`. */}
-              <textarea
-                className="proof__numbers"
-                readOnly
-                value={ghost.report.join('\n')}
-              />
-              <button
-                className="inspector__link"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(ghost.report.join('\n'));
-                }}
-              >Kopiér tallene</button>
+              <details className="way__more">
+                <summary>Tallene bag</summary>
+                <textarea
+                  className="proof__numbers"
+                  readOnly
+                  value={ghost.report.join('\n')}
+                />
+                <button
+                  className="inspector__link"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(ghost.report.join('\n'));
+                  }}
+                >Kopiér tallene</button>
+              </details>
             </div>
             );
           })()}
@@ -1430,7 +1629,7 @@ export function Inspector() {
             * detour is gone. What is left is the case it never
             * covered — a designer with a photograph of their own.
             */}
-          <h3 className="inspector__group">Eget billede</h3>
+          <h3 className="inspector__group">Dit eget billede</h3>
 
           <label className="drop drop--layout">
             <input
@@ -1554,7 +1753,7 @@ export function Inspector() {
         <li><b>Dobbeltklik</b> retter teksten direkte på siden</li>
         <li><b>Esc</b> slipper elementet, så flisen</li>
         {offer.members.length > 1 && (
-          <li><b>G</b> stiller varerne op igen med Gemini</li>
+          <li><b>G</b> stiller varerne pænt op igen</li>
         )}
       </ul>
     </aside>

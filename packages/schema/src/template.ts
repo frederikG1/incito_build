@@ -44,6 +44,8 @@ export const FrameLine = z.object({
   size: z.number().min(0).max(0.5),
   color: z.string().optional(),
   bold: z.boolean().default(false),
+  /** Set in the chain's heading face — the one a roundel's words are drawn in. */
+  face: z.enum(['heading']).optional(),
   upper: z.boolean().default(false),
   align: z.enum(['left', 'center', 'right']).optional(),
   lineHeight: z.number().min(0.5).max(3).optional(),
@@ -149,6 +151,13 @@ export const TemplateSlot = z.object({
    * takes the cell's design.
    */
   frame: TileFrame.optional(),
+  /**
+   * The paper under the cell, on a page that was published as a
+   * picture: what shows where the printed product is taken away, so a
+   * new product stands on the page's own colour. Sampled around the
+   * cell when the page was read.
+   */
+  paper: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 });
 export type TemplateSlot = z.infer<typeof TemplateSlot>;
 

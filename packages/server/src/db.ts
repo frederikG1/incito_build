@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { CatalogDocument } from '@incitio/schema';
+import { CatalogDocument, CatalogPage, Offer, PageTemplate } from '@incitio/schema';
+import { z } from 'zod';
 
 /**
  * Storage for the studio.
@@ -57,7 +58,43 @@ CREATE TABLE IF NOT EXISTS uploads (
   created_at  TEXT NOT NULL,
   PRIMARY KEY (brand_id, ref)
 );
+
+/*
+ * The chain's section designs — "Frost med balloner", "Bagside",
+ * "Fredag & lørdag" — the pages a leaflet reuses week after week with
+ * different products in the cells. Stored whole, like a catalogue, and
+ * like a catalogue scoped by brand in every query.
+ */
+CREATE TABLE IF NOT EXISTS sections (
+  id          TEXT PRIMARY KEY,
+  brand_id    TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  section     TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sections_brand ON sections (brand_id);
 `;
+
+/**
+ * One saved page design.
+ *
+ * `page` is the design with last week's products still in it, and
+ * `preview` is those products — kept so the gallery can show the page
+ * as it printed, which is how anyone recognises a design. Using the
+ * section never uses them: the cells are dealt from this week's feed.
+ * `template` travels along when the grid was the document's own (read
+ * off a publication), since it is in no chain's vocabulary.
+ */
+export const Section = z.object({
+  id: z.string().min(1).max(80),
+  name: z.string().min(1).max(120),
+  tags: z.array(z.string().min(1).max(40)).max(12).default([]),
+  page: CatalogPage,
+  template: PageTemplate.nullable().default(null),
+  preview: z.array(Offer).max(40).default([]),
+  createdAt: z.string().default(''),
+});
+export type Section = z.infer<typeof Section>;
 
 export interface CatalogSummary {
   id: string;
@@ -121,6 +158,40 @@ export class Store {
   forgetUpload(brandId: string, ref: string): boolean {
     return this.db.prepare('DELETE FROM uploads WHERE brand_id = ? AND ref = ?')
       .run(brandId, ref).changes > 0;
+  }
+
+  /**
+   * This chain's section designs, in the order they were saved — which
+   * for a library started from an avis is the avis's own page order.
+   * Never another chain's.
+   */
+  sections(brandId: string): Section[] {
+    return this.db
+      .prepare('SELECT section FROM sections WHERE brand_id = ? ORDER BY created_at, rowid')
+      .all(brandId)
+      .map((row) => Section.safeParse(JSON.parse(row['section'] as string)))
+      .filter((parsed) => parsed.success)
+      .map((parsed) => parsed.data!);
+  }
+
+  /** Save a section, refusing to overwrite another chain's id. */
+  saveSection(brandId: string, section: Section): Section {
+    const existing = this.db.prepare('SELECT brand_id FROM sections WHERE id = ?')
+      .get(section.id) as { brand_id: string } | undefined;
+    if (existing && existing.brand_id !== brandId) {
+      throw new Error(`section ${section.id} belongs to another chain`);
+    }
+    const next = { ...section, createdAt: section.createdAt || new Date().toISOString() };
+    this.db.prepare(
+      `INSERT INTO sections (id, brand_id, name, section, created_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name, section = excluded.section`,
+    ).run(next.id, brandId, next.name, JSON.stringify(next), next.createdAt);
+    return next;
+  }
+
+  removeSection(brandId: string, id: string): boolean {
+    return this.db.prepare('DELETE FROM sections WHERE id = ? AND brand_id = ?')
+      .run(id, brandId).changes > 0;
   }
 
   list(brandId: string): CatalogSummary[] {

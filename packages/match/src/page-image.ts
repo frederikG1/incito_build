@@ -231,3 +231,41 @@ export async function pageImage(
   if (!isPdf(file)) return { image: file, type: mediaType(file) };
   return { image: await rasterisePdfPage(browser, file, pageNumber), type: 'image/png' };
 }
+
+/**
+ * A picture's pixels, decoded by the browser — RGBA, row by row.
+ *
+ * For reading a page picture's layout (`findPageCells`), which is plain
+ * arithmetic over pixels; the browser is only here because it decodes
+ * WebP, JPEG and PNG alike and the server already has one.
+ */
+export async function decodePixels(
+  browser: Browser,
+  image: Buffer,
+  type: ImageMediaType,
+): Promise<{ width: number; height: number; data: Uint8Array }> {
+  const tab = await browser.newPage();
+  try {
+    await tab.goto('about:blank');
+    const out = await tab.evaluate(async (dataUrl) => {
+      const img = new Image();
+      img.src = dataUrl;
+      await img.decode();
+      const canvas = window.document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const bytes = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      // Base64 in slices: one call over megabytes overflows the stack.
+      let binary = '';
+      for (let at = 0; at < bytes.length; at += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+      }
+      return { width: canvas.width, height: canvas.height, data: btoa(binary) };
+    }, `data:${type};base64,${image.toString('base64')}`);
+    return { width: out.width, height: out.height, data: new Uint8Array(Buffer.from(out.data, 'base64')) };
+  } finally {
+    await tab.close();
+  }
+}

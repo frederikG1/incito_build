@@ -4,3 +4,8 @@ export * from './OfferTile.js';
 export * from './PageView.js';
 export * from './ImagePage.js';
 export * from './CatalogView.js';
+export * from './words.js';
+export * from './incito.js';
+export * from './IncitoPage.js';
+export * from './paged.js';
+export { shifted, snap, targetsFrom, SNAP_WITHIN, type Guide, type Snapped, type Rect as SnapRect } from './snap.js';

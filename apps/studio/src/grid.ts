@@ -17,6 +17,7 @@
  * part of "add a product" that is arithmetic and the part worth having
  * tests for.
  */
+import { pagedSheet } from '@incitio/renderer';
 import {
   slotAssignmentOrder, validateTemplate,
   type CatalogPage, type PageTemplate, type SlotRole, type TemplateSlot,
@@ -37,6 +38,13 @@ export const MAX_ROWS = 14;
 /** Slots this template has that no placement is sitting in. */
 export function freeSlots(page: CatalogPage, template: PageTemplate): TemplateSlot[] {
   const taken = new Set(page.placements.map((placement) => placement.slotId));
+  /*
+   * On a page picture a cell nobody has filled still shows the product
+   * printed there — it is not empty. Only a cell whose printed product
+   * was taken off the page is.
+   */
+  const sheet = pagedSheet(page.incito);
+  if (sheet) for (const slot of template.slots) if (!sheet.printed?.[slot.id]) taken.add(slot.id);
   // Assignment order, so the first product added lands in the most
   // prominent empty cell rather than in whichever one was declared first.
   return slotAssignmentOrder(template).filter((slot) => !taken.has(slot.id));
@@ -114,7 +122,18 @@ export function growTemplate(
     used.add(name);
     added.push(name);
     grid[at.row]![at.column] = name;
-    slots.push({ id: name, role: NEW_CELL_ROLE, bleed: 1 });
+    /*
+     * A layout whose every cell has its own box — a published page, a
+     * page picture — prints its cells from those boxes, not from the
+     * grid. A new cell there gets a box too, in the middle of the page
+     * and stepped so several stay apart, for "Rediger layout" to put
+     * where it belongs; without one it would hold a product nothing draws.
+     */
+    const boxed = template.slots.length > 0 && template.slots.every((slot) => slot.rect);
+    slots.push({
+      id: name, role: NEW_CELL_ROLE, bleed: 1,
+      ...(boxed ? { rect: { x: 0.3 + 0.04 * n, y: 0.36 + 0.04 * n, w: 0.4, h: 0.28 } } : {}),
+    });
   }
 
   const grown: PageTemplate = {

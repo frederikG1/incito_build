@@ -27,6 +27,7 @@ const MARKS: Record<FindingKind, string> = {
   ark: '⤢',
   uge: '⏱',
   skabelon: '⚠',
+  regler: '§',
 };
 
 function Line({ finding }: { finding: Finding }) {
@@ -40,11 +41,12 @@ function Line({ finding }: { finding: Finding }) {
         className={`checks__line checks__line--${finding.weight}${here ? ' is-here' : ''}`}
         onClick={() => go(finding)}
         title={finding.weight === 'stop'
-          ? 'Skal rettes før tryk — klik for at stå ved flisen'
-          : 'Værd at se på — klik for at stå ved flisen'}
+          ? 'Skal rettes før tryk — klik for at gå til den'
+          : 'Værd at se på — klik for at gå til den'}
       >
         <span className="checks__mark" aria-hidden="true">{MARKS[finding.kind]}</span>
-        <span className="checks__said">{finding.said}</span>
+        {/* Under its page's heading, so the "Side 3:" it starts with is said twice. */}
+        <span className="checks__said">{finding.said.replace(/^Side \d+: /, '')}</span>
       </button>
     </li>
   );
@@ -56,65 +58,101 @@ export function Checklist() {
   const open = useStudio((s) => s.findingsOpen);
   const setOpen = useStudio((s) => s.setFindingsOpen);
   const refresh = useStudio((s) => s.refreshFindings);
+  // Inside a page the right edge is the panel you fix things with: the list moves left.
+  const onPage = useStudio((s) => s.view === 'side');
 
   if (!document || !open) return null;
 
   const stop = findings.filter((finding) => finding.weight === 'stop');
+  /*
+   * By page, in the order the avis is read, the book's own lines last.
+   * Twenty lines about one avis are a list; the same twenty under their
+   * page numbers are a round of the paper, page by page.
+   */
+  const groups = new Map<string, Finding[]>();
+  for (const finding of findings) {
+    const key = finding.pageId ?? 'avis';
+    groups.set(key, [...(groups.get(key) ?? []), finding]);
+  }
+  const pageName = (pageId: string) => {
+    const index = document.pages.findIndex((page) => page.id === pageId);
+    const page = document.pages[index];
+    return index < 0 ? 'Avisen' : `Side ${index + 1}${page?.title ? ` · ${page.title}` : ''}`;
+  };
+  const order = [...groups.keys()].sort((a, b) => {
+    const at = (key: string) => (key === 'avis' ? 1e6 : document.pages.findIndex((page) => page.id === key));
+    return at(a) - at(b);
+  });
 
   return (
-    <section className="checks" aria-label="Hvad mangler">
+    <aside className={`checks${onPage ? ' checks--left' : ''}`} aria-label="Hvad mangler">
       <div className="checks__head">
-        <h2>Hvad mangler?</h2>
-        <span className="checks__count">
-          {findings.length === 0
-            ? 'ingenting — avisen er hel'
-            : `${stop.length} skal rettes · ${findings.length - stop.length} værd at se`}
-        </span>
+        <h2>{stop.length === 0 ? 'Klar til tryk' : 'Før tryk'}</h2>
         <button
           className="checks__again"
           onClick={refresh}
-          title="Mål siderne igen — efter et billede er landet, eller et vindue er ændret"
+          title="Tjek siderne igen"
         >
-          Mål igen
+          Tjek igen
         </button>
-        <button className="checks__close" onClick={() => setOpen(false)} title="Skjul listen">×</button>
+        <button className="checks__close" onClick={() => setOpen(false)} title="Luk">×</button>
       </div>
+      <p className="checks__count">
+        {findings.length === 0
+          ? 'Ingen huller, ingen afskæring, alle varer har en plads.'
+          : `${stop.length} skal rettes · ${findings.length - stop.length} værd at se · klik en linje for at gå til den`}
+      </p>
 
       {findings.length === 0 ? (
-        <p className="checks__clear">
-          Ingen huller, ingen afskæring, alle varer har en plads. Hent PDF’en.
-        </p>
+        <div className="checks__clear">
+          <span aria-hidden="true">✓</span>
+          <p>Avisen er klar. Hent PDF’en øverst til højre.</p>
+        </div>
       ) : (
-        <ol className="checks__list">
-          {findings.map((finding) => <Line key={finding.id} finding={finding} />)}
-        </ol>
+        <div className="checks__groups">
+          {order.map((key) => (
+            <section key={key} className="checks__group">
+              <h3>{pageName(key)}</h3>
+              <ol className="checks__list">
+                {groups.get(key)!.map((finding) => <Line key={finding.id} finding={finding} />)}
+              </ol>
+            </section>
+          ))}
+        </div>
       )}
-    </section>
+    </aside>
   );
 }
 
-/** The toolbar's way in, and the count that makes it worth pressing. */
-export function ChecklistButton() {
+/**
+ * The avis's state in one word, where the save and the PDF are.
+ *
+ * "Klar til tryk" in green is the thing a person wants to see before
+ * they send the file, and it was nowhere: the list existed and had no
+ * way in. Red with a count when something stops the print, amber when
+ * something is only worth a look.
+ */
+export function ReadyPill() {
   const findings = useStudio((s) => s.findings);
   const open = useStudio((s) => s.findingsOpen);
   const setOpen = useStudio((s) => s.setFindingsOpen);
   const document = useStudio((s) => s.document);
-
   if (!document) return null;
   const stop = findings.filter((finding) => finding.weight === 'stop').length;
-
+  const look = findings.length - stop;
+  const tone = stop > 0 ? 'stop' : look > 0 ? 'look' : 'ok';
   return (
     <button
-      className={open ? 'primary' : stop > 0 ? 'accent' : ''}
+      className={`ready ready--${tone}${open ? ' is-open' : ''}`}
       onClick={() => setOpen(!open)}
-      title="Huller, afskæring og varer uden plads — samlet i én liste"
+      title="Det der skal tjekkes før tryk — tomme pladser, tekst der er skåret af, manglende pant m.m."
     >
-      Hvad mangler?
-      {findings.length > 0 && (
-        <span className={`bar__badge${stop > 0 ? ' bar__badge--stop' : ''}`}>
-          {findings.length}
-        </span>
-      )}
+      <span className="ready__dot" aria-hidden="true">{tone === 'ok' ? '✓' : ''}</span>
+      {tone === 'ok'
+        ? 'Klar til tryk'
+        : stop > 0
+          ? `${stop} skal rettes`
+          : `${look} værd at se`}
     </button>
   );
 }

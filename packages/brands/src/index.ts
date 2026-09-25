@@ -4,6 +4,7 @@ import { NETTO } from './brands/netto.js';
 import { NEMLIG } from './brands/nemlig.js';
 import { SUPERBRUGSEN } from './brands/superbrugsen.js';
 import type { BrandDefinition, FeedSource } from './types.js';
+import { tjekOffers, tjekTransformed } from './tjek.js';
 
 export * from './types.js';
 export * from './grid.js';
@@ -18,11 +19,41 @@ export * from './labels.js';
  * `sb/grid-4` gets "unknown template", because the lookup never sees
  * SuperBrugsen's set.
  */
-const REGISTRY: Record<string, BrandDefinition> = {
-  [NETTO.brand.id]: NETTO,
-  [SUPERBRUGSEN.brand.id]: SUPERBRUGSEN,
-  [NEMLIG.brand.id]: NEMLIG,
-};
+/**
+ * Tjek's own two formats, for every chain.
+ *
+ * A chain on Tjek hands its week over in the platform's shapes — the
+ * public offers API, or the "transformed offers" the publication builder
+ * holds — whatever its own export looks like. Those readers are the
+ * platform's, not the chain's, so a chain that has not declared them
+ * still reads them: a Netto employee uploading Netto's Tjek feed must
+ * not be told the file is in an unknown format.
+ */
+function withTjekFormats(definition: BrandDefinition): BrandDefinition {
+  const id = definition.brand.id;
+  const have = new Set(definition.sources.map((source) => source.id));
+  const platform: FeedSource[] = [
+    {
+      id: 'tjek',
+      name: 'Tjek offers API',
+      format: 'json',
+      signature: { fields: ['heading', 'pricing', 'run_from'] },
+      mapping: tjekOffers(id, 'tilbud.json'),
+    },
+    {
+      id: 'tjek-transformed',
+      name: 'Tjek transformed offers',
+      format: 'json',
+      signature: { fields: ['membership_price', 'comment_label_1', 'valid_from'], nested: false },
+      mapping: tjekTransformed(id, 'transformed-offers.json'),
+    },
+  ];
+  return { ...definition, sources: [...definition.sources, ...platform.filter((source) => !have.has(source.id))] };
+}
+
+const REGISTRY: Record<string, BrandDefinition> = Object.fromEntries(
+  [NETTO, SUPERBRUGSEN, NEMLIG].map((definition) => [definition.brand.id, withTjekFormats(definition)]),
+);
 
 export class UnknownBrandError extends Error {
   constructor(id: string) {

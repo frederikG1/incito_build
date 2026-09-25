@@ -52,14 +52,25 @@ describe('reading a feed', () => {
 
   /*
    * A file is matched against THIS chain's readers, never against every
-   * chain's — see "Kæder er adskilte" in the README. Netto has one
-   * reader and it is a CSV; handed SuperBrugsen's JSON it has to refuse
-   * rather than find something in it.
+   * chain's — see "Kæder er adskilte" in the README. Tjek's formats are
+   * every chain's, so a Tjek file that names another dealer is refused
+   * by its dealer rather than by its shape.
    */
   it('refuses another chain\'s file instead of guessing at it', async () => {
-    const response = await read('netto', TJEK, 'uge38.json');
+    const theirs = JSON.stringify(JSON.parse(TJEK).map((row: object) => ({ ...row, dealer: { name: 'SuperBrugsen' } })));
+    const response = await read('netto', theirs, 'uge38.json');
     expect(response.status).toBe(422);
-    expect((await response.json() as { error: string }).error).toBeTruthy();
+    expect((await response.json() as { error: string }).error).toContain('SuperBrugsen');
+  });
+
+  /*
+   * Tjek's own formats are the platform's, not SuperBrugsen's: a Netto
+   * employee's Tjek feed has to read in Netto.
+   */
+  it('reads Tjek\'s own formats for every chain', async () => {
+    const response = await read('netto', TJEK, 'uge38.json');
+    expect(response.status).toBe(200);
+    expect((await response.json() as { source: { id: string } }).source.id).toBe('tjek');
   });
 
   it('refuses a source this chain does not have, and says which it has', async () => {

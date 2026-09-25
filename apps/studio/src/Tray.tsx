@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Offer } from '@incitio/schema';
-import { formatPrice } from '@incitio/renderer';
+import { formatPrice, incitoSlotOf, pageBlocks } from '@incitio/renderer';
 import { count, isVariantPiece, useStudio } from './state.js';
 
 /**
@@ -29,6 +29,15 @@ export function droppedOffers(dragged: string, picked: string[]): string[] {
   return picked.includes(dragged) && picked.length > 1 ? picked : [dragged];
 }
 
+/**
+ * A card-sized copy of a product photograph, where the image service can
+ * make one. The feed links 800-pixel PNGs; a shelf of 150 of them loaded
+ * as a column of empty boxes for the first seconds of every session.
+ */
+function thumbnail(url: string): string {
+  return /imageservice\d*\.republica\.dk/.test(url) ? url.replace(/([?&])size=\d+/, '$1size=240') : url;
+}
+
 /** A product as a card on the shelf. */
 function Good({ offer }: { offer: Offer }) {
   const picked = useStudio((s) => s.librarySelection.includes(offer.id));
@@ -52,7 +61,7 @@ function Good({ offer }: { offer: Offer }) {
     >
       <span className="good__shot">
         {offer.imageUrl
-          ? <img src={offer.imageUrl} alt="" loading="lazy" draggable={false} />
+          ? <img src={thumbnail(offer.imageUrl)} alt="" loading="lazy" decoding="async" draggable={false} />
           : <span>uden billede</span>}
       </span>
       <span className="good__name">{offer.name}</span>
@@ -109,7 +118,13 @@ export function Tray() {
    */
   const slots = pageId ? s.pageSlots(pageId) : [];
   const page = document?.pages.find((entry) => entry.id === pageId);
-  const selectedSlot = page?.placements.find((p) => p.offerId === s.selectedOfferId)?.slotId;
+  // The cell being pointed at: a tile in hand, or an element of a published offer.
+  const incitoOffer = s.selectedIncito && page?.incito && s.selectedIncito.pageId === page.id
+    ? pageBlocks({ ...page, incito: page.incito }, document?.offers ?? [], document?.templates.find((t) => t.id === page.templateId))
+      .find((block) => block.path === s.selectedIncito!.path)?.offerId ?? null
+    : null;
+  const incitoSlot = incitoOffer && page ? incitoSlotOf(page, incitoOffer) : undefined;
+  const selectedSlot = page?.placements.find((p) => p.offerId === s.selectedOfferId)?.slotId ?? incitoSlot;
   const emptySlot = slots.find((slot) => slot.label.endsWith('tom'))?.slotId;
   const slotId = (chosenSlot && slots.some((slot) => slot.slotId === chosenSlot) ? chosenSlot : null)
     ?? selectedSlot ?? emptySlot ?? slots[0]?.slotId ?? '';
@@ -118,14 +133,14 @@ export function Tray() {
   return (
     <aside className="shelf">
       <div className="shelf__head">
-        <b>Ikke placeret</b>
-        <span className="shelf__count">{waiting.length} af {unplaced.length}</span>
+        <b>Ugens varer</b>
+        <span className="shelf__count">{waiting.length === unplaced.length ? `${unplaced.length} ikke placeret` : `${waiting.length} af ${unplaced.length}`}</span>
       </div>
       <div className="shelf__tools">
         <input
           className="shelf__find"
           value={s.librarySearch}
-          placeholder="søg i varerne"
+          placeholder="Søg efter en vare"
           onChange={(event) => s.setLibrarySearch(event.target.value)}
         />
         <select
@@ -133,13 +148,13 @@ export function Tray() {
           value={s.trayFilter ?? ''}
           onChange={(event) => s.setTrayFilter(event.target.value || null)}
         >
-          <option value="">Alle grupper</option>
+          <option value="">Alle afdelinger</option>
           {categories.map((category) => (
             <option key={category} value={category}>{category}</option>
           ))}
         </select>
       </div>
-      <p className="shelf__hint">Klik for at vælge flere · træk ind på siden</p>
+      <p className="shelf__hint"><b>Træk</b> en vare over på en vare på siden for at bytte — eller <b>klik</b> på flere for at samle dem i én plads.</p>
 
       {/* Two to a row: twice the products per screen, so finding one is
           half the scrolling. */}
@@ -161,49 +176,66 @@ export function Tray() {
             <b>{count(picked.length, 'vare valgt', 'varer valgt')}</b>
             <button className="inspector__link" onClick={s.clearLibraryPicks}>Ryd</button>
           </div>
-          <button
-            className="shelf__do"
-            disabled={busy || !pageId}
-            title="Hver vare får sin egen plads — siden får flere celler, hvis den mangler"
-            onClick={() => { if (pageId) s.addOffersToPage(pageId, picked); }}
-          >
-            Nye pladser <i>en plads hver</i>
-          </button>
-          <div className="shelf__row">
+
+          {/*
+            * The one thing somebody making next week's avis does all day:
+            * put this product where that one was. First, largest, and
+            * saying in words what will happen — the product takes the
+            * cell and its layout, the old one goes to the reserve.
+            */}
+          <div className="put">
+            <span className="put__label">Sæt ind på pladsen</span>
             <select
+              className="put__slot"
               value={slotId}
               disabled={slots.length === 0}
               onChange={(event) => setChosenSlot(event.target.value)}
-              title="Hvilken plads varerne samles i"
+              title="Klik på en vare på siden for at vælge dens plads"
             >
-              {slots.length === 0 && <option value="">ingen pladser</option>}
+              {slots.length === 0 && <option value="">ingen pladser på siden</option>}
               {slots.map((slot) => (
                 <option key={slot.slotId} value={slot.slotId}>{slot.label}</option>
               ))}
             </select>
             <button
-              className="shelf__do"
+              className="go put__go"
               disabled={busy || !pageId || !slotId || picked.length > 8}
-              title={picked.length > 8
-                ? 'En plads kan bære otte varer'
-                : 'Alle de valgte i én plads — én pris, én overskrift'}
+              title={picked.length > 8 ? 'En plads kan bære otte varer' : ''}
               onClick={() => { if (pageId && slotId) void s.fillSlot(pageId, slotId, picked); }}
             >
-              Saml i pladsen
+              {picked.length === 1 ? 'Erstat' : `Saml ${picked.length} i pladsen`}
             </button>
+            <span className="put__said">
+              {picked.length === 1
+                ? 'Varen overtager pladsen — den gamle kommer tilbage på listen.'
+                : 'Ét samlet tilbud: én overskrift og den laveste pris med "fra".'}
+            </span>
           </div>
-          {picked.length > 1 && (
+
+          <p className="put__tip">Eller træk varen direkte hen på en vare på siden.</p>
+
+          <div className="shelf__more">
             <button
-              className="shelf__model"
-              disabled={busy || !pageId || !slotId || !s.decorReady || picked.length > 8}
-              title={s.decorReady
-                ? 'Varerne i pladsen, og billedmodellen stiller dem op som en avis'
-                : 'Kræver en Gemini-nøgle — indsæt den under Billeder'}
-              onClick={() => { if (pageId && slotId) void s.composeSlot(pageId, slotId, picked); }}
+              className="shelf__do"
+              disabled={busy || !pageId}
+              title="Hver vare får sin egen plads — siden får flere pladser, hvis den mangler"
+              onClick={() => { if (pageId) s.addOffersToPage(pageId, picked); }}
             >
-              Saml og stil op <i>model</i>
+              Tilføj som nye pladser
             </button>
-          )}
+            {picked.length > 1 && (
+              <button
+                className="shelf__model"
+                disabled={busy || !pageId || !slotId || !s.decorReady || picked.length > 8}
+                title={s.decorReady
+                  ? 'Varerne samles i pladsen, og AI stiller dem pænt op'
+                  : 'AI-hjælpen er slået fra på denne maskine'}
+                onClick={() => { if (pageId && slotId) void s.composeSlot(pageId, slotId, picked); }}
+              >
+                Saml og stil pænt op <i>AI</i>
+              </button>
+            )}
+          </div>
         </div>
       )}
     </aside>

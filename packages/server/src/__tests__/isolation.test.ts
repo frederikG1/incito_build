@@ -41,6 +41,35 @@ describe('brand scoping', () => {
     expect(brands.brands.length).toBeGreaterThan(1);
   });
 
+  it('keeps section designs inside the chain that saved them', async () => {
+    const section = {
+      id: 's1', name: 'Frost', tags: ['frost'],
+      page: { id: 'p1', templateId: 'x', placements: [] },
+    };
+    const saved = await app.request('/api/brand/sections', {
+      method: 'POST',
+      headers: { ...as('superbrugsen'), 'content-type': 'application/json' },
+      body: JSON.stringify(section),
+    });
+    expect(saved.status).toBe(200);
+
+    const theirs = await (await app.request('/api/brand/sections', { headers: as('netto') }))
+      .json() as { sections: unknown[] };
+    expect(theirs.sections).toHaveLength(0);
+    const ours = await (await app.request('/api/brand/sections', { headers: as('superbrugsen') }))
+      .json() as { sections: { name: string }[] };
+    expect(ours.sections.map((entry) => entry.name)).toEqual(['Frost']);
+
+    // Netto may neither overwrite nor delete it, even knowing the id.
+    const overwrite = await app.request('/api/brand/sections', {
+      method: 'POST',
+      headers: { ...as('netto'), 'content-type': 'application/json' },
+      body: JSON.stringify({ ...section, name: 'Stjålet' }),
+    });
+    expect(overwrite.status).toBe(403);
+    expect((await app.request('/api/brand/sections/s1', { method: 'DELETE', headers: as('netto') })).status).toBe(404);
+  });
+
   it('refuses a scoped route with no chain header', async () => {
     expect((await app.request('/api/brand/catalogs')).status).toBe(403);
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { packSizeOf, readPackSize } from '../offer.js';
+import { packSizeOf, readPackSize, splitLabelPrice } from '../offer.js';
 
 describe('reading a pack size out of the chain’s own prose', () => {
   it('takes the size and leaves the price alone', () => {
@@ -37,5 +37,25 @@ describe('reading a pack size out of the chain’s own prose', () => {
       .toBe('465 ml');
     expect(packSizeOf({ quantity: { size: null, unit: 'pcs' }, description: 'Frit valg. 1 stk.' }))
       .toBeNull();
+  });
+});
+
+describe('a price still attached to its name', () => {
+  it('reads a label broken at the comma', () => {
+    expect(splitLabelPrice('Spangsberg is\n, DKK 32')).toEqual({ name: 'Spangsberg is', price: 32, currency: 'DKK' });
+    expect(splitLabelPrice('Xtra! kyllingebryst med lage \n, DKK 32')?.name).toBe('Xtra! kyllingebryst med lage');
+  });
+
+  it('keeps commas inside the name, and reads decimals and thousands', () => {
+    expect(splitLabelPrice('Coop koteletter, skinkeschnitzler eller stegeflæsk, DKK 39')?.name)
+      .toBe('Coop koteletter, skinkeschnitzler eller stegeflæsk');
+    expect(splitLabelPrice('Kaffe, DKK 12,95')?.price).toBe(12.95);
+    expect(splitLabelPrice('Kaffe, DKK 12.95')?.price).toBe(12.95);
+    expect(splitLabelPrice('Robotstøvsuger, DKK 1.295')?.price).toBe(1295);
+  });
+
+  it('is nothing for a plain product name', () => {
+    expect(splitLabelPrice('Udvalgt Fiskars til køkkenet*')).toBeNull();
+    expect(splitLabelPrice('Pepsi Max, 1,5 l')).toBeNull();
   });
 });

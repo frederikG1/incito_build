@@ -19,14 +19,6 @@ import { useStudio } from './state.js';
  */
 
 /**
- * Stands in for the motif, which is the one part of the prompt this
- * strip does NOT decide — the text model picks a different one per page.
- * A placeholder rather than a plausible example, so nobody reads the
- * preview as the prompt for some particular page.
- */
-const MOTIF_SLOT = '‹motivet for siden›';
-
-/**
  * Where an editor puts their own key for the image model.
  *
  * In the browser and nowhere else. It goes into this browser's own
@@ -151,8 +143,7 @@ export function DecorBar() {
     <section className="decor" aria-label="Motiver med AI">
       <h3 className="inspector__group">Motiver med AI</h3>
       <p className="decor__say">
-        Siden får motiver der passer til varerne — fx chili og lime på en mexicansk side —
-        lagt i den frie plads på sidens egen baggrund. Tag dem i hånden under siden for at flytte dem.
+        AI tegner motiver der passer til varerne — fx chili og lime på en mexicansk side — i sidens tomme plads.
       </p>
 
       <div className="decor__actions">
@@ -161,7 +152,7 @@ export function DecorBar() {
             className="decor__go"
             disabled={blocked}
             onClick={() => void s.drawBackdrops([s.activePageId!])}
-            title={s.decorReady ? 'Motiver i sidens frie plads' : 'Kræver en Gemini-nøgle — se herunder'}
+            title={s.decorReady ? 'Motiver i sidens tomme plads' : 'Kræver en Gemini-nøgle — se herunder'}
           >
             Tegn til side {pageNumber}
           </button>
@@ -170,7 +161,7 @@ export function DecorBar() {
           className={pageNumber ? 'decor__second' : 'decor__go'}
           disabled={blocked}
           onClick={() => void s.drawBackdrops(pageIds)}
-          title={s.decorReady ? 'Motiver på hver side — op til to billedkald pr. side' : 'Kræver en Gemini-nøgle — se herunder'}
+          title={s.decorReady ? 'Motiver på hver side' : 'Kræver en Gemini-nøgle — se herunder'}
         >
           Tegn til alle sider
         </button>
@@ -182,7 +173,7 @@ export function DecorBar() {
       {!s.decorReady && (
         <div className="decor__row decor__row--meta">
           <span className="decor__off">
-            Billedmodellen mangler en nøgle. Indsæt din egen — den bliver i denne browser.
+            AI-hjælpen er slået fra. Indsæt en Gemini-nøgle for at slå den til — den bliver i denne browser.
           </span>
           <KeyField />
         </div>

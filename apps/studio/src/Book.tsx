@@ -1,10 +1,13 @@
-import { useMemo, useState, type DragEvent } from 'react';
+import { freeSlots } from './grid.js';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { isImagePage, type CatalogPage, type PageTemplate } from '@incitio/schema';
 import { resolveTemplate } from '@incitio/brands';
 import { ImagePage, PageView } from '@incitio/renderer';
-import { useStudio } from './state.js';
+import { departmentOfPage, useStudio } from './state.js';
 import type { Finding } from './findings.js';
 import { OFFER_MIME, droppedOffers } from './Tray.js';
+import { DEPARTMENT_NAMES } from '@incitio/compose';
+import { CarryReport, FeedArrival, FeedChanges, SectionGallery } from './Weekly.js';
 
 /**
  * The whole avis, as printed spreads.
@@ -40,6 +43,7 @@ function Card({ page, index }: { page: CatalogPage; index: number }) {
   const document = useStudio((s) => s.document);
   const findings = useStudio((s) => s.findings);
   const openPage = useStudio((s) => s.openPage);
+  const removePage = useStudio((s) => s.removePage);
   const addOffersToPage = useStudio((s) => s.addOffersToPage);
   const [taking, setTaking] = useState(false);
   const offers = useMemo(
@@ -52,8 +56,7 @@ function Card({ page, index }: { page: CatalogPage; index: number }) {
       ?? document?.templates.find((entry) => entry.id === page.templateId)
     : undefined;
   const verdict = verdictOf(findings, page.id);
-  const filled = new Set(page.placements.map((placement) => placement.slotId));
-  const empty = template ? template.slots.filter((slot) => !filled.has(slot.id)).length : 0;
+  const empty = template ? freeSlots(page, template).length : 0;
   const image = isImagePage(page);
 
   const tone = verdict?.weight === 'stop' ? ' card--stop' : verdict ? ' card--warn' : '';
@@ -114,6 +117,12 @@ function Card({ page, index }: { page: CatalogPage; index: number }) {
         : `Side ${index + 1}${empty ? ` · ${empty} ${empty === 1 ? 'tomt felt' : 'tomme felter'}` : ''}`}
     >
       <div className="card__live" aria-hidden="true">{live}</div>
+      <button
+        className="card__drop"
+        title={`Slet side ${index + 1} (⌘Z fortryder)`}
+        aria-label={`Slet side ${index + 1}`}
+        onClick={(event) => { event.stopPropagation(); removePage(page.id); }}
+      >×</button>
       {verdict && (
         <span className={`card__pill${verdict.weight === 'stop' ? '' : ' card__pill--warn'}`}>
           {verdict.weight === 'stop' ? 'se på den' : 'værd at se'}
@@ -128,6 +137,8 @@ function Caption({ page, index }: { page: CatalogPage; index: number }) {
   const brand = useStudio((s) => s.brand);
   const document = useStudio((s) => s.document);
   const verdict = verdictOf(findings, page.id);
+  // What the page is about, when nobody has named it: its department.
+  const department = document && !page.title ? departmentOfPage(document, page.id) : null;
 
   const template = brand
     ? resolveTemplate(brand, page.templateId)
@@ -140,15 +151,20 @@ function Caption({ page, index }: { page: CatalogPage; index: number }) {
    * complaint. "3 af 4 pladser fyldt" is a page you can picture; "1
    * finding" is a number about a list.
    */
+  const open = template ? freeSlots(page, template).length : 0;
   const said = verdict
-    ? (page.placements.length < cells
-      ? `${page.placements.length} af ${cells} pladser fyldt`
+    ? (open > 0
+      ? `${cells - open} af ${cells} pladser fyldt`
       : verdict.said.replace(/^Side \d+: /, ''))
     : `${page.placements.length} ${page.placements.length === 1 ? 'vare' : 'varer'}`;
 
   return (
     <div className="leaf__cap">
-      <b>{index + 1} · {page.title || (isImagePage(page) ? 'Billedside' : 'uden overskrift')}</b>
+      <b>
+        {index + 1} · {page.title || (isImagePage(page)
+          ? 'Billedside'
+          : department ? DEPARTMENT_NAMES[department] : 'Blandet')}
+      </b>
       <span className={verdict?.weight === 'stop' ? 'is-stop' : verdict ? 'is-warn' : ''}>
         {said.length > 40 ? `${said.slice(0, 38)}…` : said}
       </span>
@@ -156,7 +172,14 @@ function Caption({ page, index }: { page: CatalogPage; index: number }) {
   );
 }
 
-/** The four ways a page can come into being, priced. */
+/**
+ * Where new pages come from.
+ *
+ * The week's route first — a saved section, filled with this week's
+ * products — then the link, then a quick draft. The two that send pages
+ * to a model sit under "Mere": they are for building a new look, not for
+ * the weekly paper, and a first-time user should not have to weigh them.
+ */
 function AddPages() {
   const open = useStudio((s) => s.addPagesOpen);
   const setOpen = useStudio((s) => s.setAddPagesOpen);
@@ -164,6 +187,14 @@ function AddPages() {
   // Leftward keeps it inside the window at the end of a long book; on
   // an empty book the card is the first thing and left is off-screen.
   const [right, setRight] = useState(false);
+  const [more, setMore] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [open, setOpen]);
 
   return (
     <div className="add">
@@ -178,19 +209,24 @@ function AddPages() {
         <span aria-hidden="true">+</span>
         Tilføj sider
       </button>
-      <span className="add__said">4 veje · med pris</span>
 
       {open && (
+        <>
+        <div className="sheetaway" onPointerDown={() => setOpen(false)} />
         <div className={`ways2${right ? ' ways2--right' : ''}`}>
-          {/*
-            * Cheapest first, and every route wears its price.
-            *
-            * Nothing in the studio said which of the four cost money;
-            * two are free, one is a model call per page, one is two
-            * model calls. Sorting by that is the whole point of the
-            * control.
-            */}
-          <p className="ways2__head">Billigst først</p>
+          <p className="ways2__head">Hvor skal siderne komme fra?</p>
+
+          <button
+            className="ways2__way ways2__way--first"
+            disabled={Boolean(s.busy)}
+            onClick={() => { setOpen(false); s.setSectionsOpen(true, s.document?.pages.length ?? 0); }}
+          >
+            <span className="ways2__what">
+              <b>Fra kædens sektioner</b>
+              <span>Vælg et gemt sidedesign — det fyldes med ugens varer</span>
+            </span>
+            <span className="ways2__price ways2__price--free">anbefalet</span>
+          </button>
 
           <button
             className="ways2__way"
@@ -198,51 +234,101 @@ function AddPages() {
             onClick={() => { setOpen(false); s.togglePanel('sider'); }}
           >
             <span className="ways2__what">
-              <b>Fra et link til en udgivelse</b>
-              <span>Gitteret læses ud af udgivelsen selv</span>
+              <b>Fra en trykt avis</b>
+              <span>Sæt et link ind — siderne kommer præcis som udgivet</span>
             </span>
-            <span className="ways2__price ways2__price--free">gratis</span>
           </button>
 
           <button
             className="ways2__way"
             disabled={Boolean(s.busy) || !s.feed}
-            title={s.feed ? '' : 'Upload et feed først'}
+            title={s.feed ? '' : 'Hent ugens varer fra fil først — i menuen øverst til venstre'}
             onClick={() => { setOpen(false); void s.build({ fresh: true }); }}
           >
             <span className="ways2__what">
-              <b>Hurtigt udkast fra feedet</b>
-              <span>Kategorier i kædens egne layouts</span>
+              <b>Hurtigt udkast</b>
+              <span>{s.feed ? 'Ugens varer lagt i kædens layouts, afdeling for afdeling' : 'Kræver ugens varer fra fil'}</span>
             </span>
-            <span className="ways2__price ways2__price--free">gratis</span>
           </button>
 
-          <button
-            className="ways2__way"
-            disabled={Boolean(s.busy)}
-            onClick={() => { setOpen(false); s.setReproduceOpen(true); }}
-          >
-            <span className="ways2__what">
-              <b>Genskab trykte sider</b>
-              <span>Aflevér fotos eller et sideinterval af en PDF</span>
-            </span>
-            <span className="ways2__price ways2__price--paid">≈ 25 øre/side</span>
+          <button className="ways2__more" onClick={() => setMore(!more)} aria-expanded={more}>
+            {more ? '▾' : '▸'} Mere — nyt design med AI
           </button>
-
-          <button
-            className="ways2__way ways2__way--model"
-            disabled={Boolean(s.busy) || !s.feed || !s.decorReady}
-            title={s.decorReady ? '' : 'Kræver en Gemini-nøgle'}
-            onClick={() => { setOpen(false); s.togglePanel('sider'); }}
-          >
-            <span className="ways2__what">
-              <b>Lad modellen tegne en</b>
-              <span>Ingen reference — tegningen smides væk</span>
-            </span>
-            <span className="ways2__price ways2__price--model">2 kald</span>
-          </button>
+          {more && (
+            <>
+              <button
+                className="ways2__way"
+                disabled={Boolean(s.busy) || !s.curationReady}
+                title={s.curationReady ? '' : 'AI-hjælpen er slået fra på denne maskine'}
+                onClick={() => { setOpen(false); s.setReproduceOpen(true); }}
+              >
+                <span className="ways2__what">
+                  <b>Efterlign trykte sider</b>
+                  <span>Aflevér fotos eller en PDF — AI bygger siderne op med ugens varer</span>
+                </span>
+                <span className="ways2__price ways2__price--paid">AI</span>
+              </button>
+              <button
+                className="ways2__way ways2__way--model"
+                disabled={Boolean(s.busy) || !s.feed || !s.decorReady}
+                title={!s.decorReady ? 'AI-hjælpen er slået fra på denne maskine' : s.feed ? '' : 'Kræver ugens varer fra fil'}
+                onClick={() => { setOpen(false); s.togglePanel('sider'); }}
+              >
+                <span className="ways2__what">
+                  <b>Lad AI tegne et layout</b>
+                  <span>Beskriv siden, fx "én stor vare øverst, tre små under"</span>
+                </span>
+                <span className="ways2__price ways2__price--model">AI</span>
+              </button>
+            </>
+          )}
         </div>
+        </>
       )}
+    </div>
+  );
+}
+
+/**
+ * An avis with no pages yet — the first thing a new colleague sees.
+ *
+ * Not an empty grid with a small "+" at the end of it: the three ways a
+ * week's paper actually starts, each saying what it needs and what it
+ * costs, and the feed that is already loaded named so it is clear the
+ * products are there waiting.
+ */
+function EmptyBook() {
+  const s = useStudio();
+  const sections = useStudio((state) => state.sections.length);
+  return (
+    <div className="empty">
+      <h2>En ny avis</h2>
+      <p className="empty__said">
+        {s.feedOffers.length > 0
+          ? `${s.feedOffers.length} af ugens varer er klar. Hvor skal siderne komme fra?`
+          : 'Hent ugens varer fra fil i menuen øverst til venstre — og vælg så hvor siderne kommer fra.'}
+      </p>
+      <div className="empty__ways">
+        <button className="empty__way empty__way--first" onClick={() => s.setSectionsOpen(true, 0)}>
+          <b>Fra kædens sektioner</b>
+          <span>{sections ? `${sections} gemte sidedesigns` : 'Gemte sidedesigns'} — fyldes med ugens varer efter afdeling</span>
+          <i className="ways2__price ways2__price--free">anbefalet</i>
+        </button>
+        <button className="empty__way" onClick={() => s.togglePanel('sider')}>
+          <b>Fra en trykt avis</b>
+          <span>Sæt et link ind — siderne kommer præcis som udgivet, og kan rettes bagefter</span>
+        </button>
+        <button
+          className="empty__way"
+          disabled={!s.feed}
+          title={s.feed ? '' : 'Hent ugens varer fra fil først'}
+          onClick={() => void s.build({ fresh: true })}
+        >
+          <b>Hurtigt udkast</b>
+          <span>Ugens varer i kædens egne layouts, afdeling for afdeling</span>
+        </button>
+      </div>
+      <p className="empty__tip">Tryk <kbd>⌘K</kbd> for at søge efter alt — eller <kbd>?</kbd> for genvejene.</p>
     </div>
   );
 }
@@ -252,6 +338,8 @@ export function Book() {
   const bookView = useStudio((s) => s.bookView);
   const setBookView = useStudio((s) => s.setBookView);
   const movePage = useStudio((s) => s.movePage);
+  const setSectionsOpen = useStudio((s) => s.setSectionsOpen);
+  const sectionCount = useStudio((s) => s.sections.length);
   const [lifted, setLifted] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
 
@@ -280,6 +368,9 @@ export function Book() {
         <h2>Avisen</h2>
         <span className="book__said">som den bliver trykt · træk en side for at flytte den</span>
         <div className="book__gap" />
+        <button className="thin" onClick={() => setSectionsOpen(true)} title="Kædens gemte sidedesigns">
+          Sektioner{sectionCount ? ` · ${sectionCount}` : ''}
+        </button>
         <div className="seg" role="group" aria-label="Vis som">
           <button
             className={bookView === 'opslag' ? 'is-on' : ''}
@@ -291,6 +382,12 @@ export function Book() {
           >Sider</button>
         </div>
       </div>
+
+      {pages.length === 0 && <EmptyBook />}
+      <FeedArrival />
+      <CarryReport />
+      <FeedChanges />
+      <SectionGallery />
 
       <div className="book__row">
         {groups.map((group) => (
@@ -315,9 +412,11 @@ export function Book() {
               if (lifted === null || lifted === group.at) return;
               const from = lifted;
               const delta = group.at > from ? 1 : -1;
-              const page = pages[from];
-              if (!page) return;
-              for (let at = from; at !== group.at; at += delta) movePage(page.id, delta);
+              // A spread moves as two pages — the far one first, so the pair stays together.
+              const moving = groups.find((entry) => entry.at === from)?.pages ?? [];
+              for (const page of delta > 0 ? [...moving].reverse() : moving) {
+                for (let at = from; at !== group.at; at += delta) movePage(page.id, delta);
+              }
               setLifted(null);
             }}
           >
@@ -338,7 +437,8 @@ export function Book() {
           </div>
         ))}
 
-        <AddPages />
+        {/* An empty avis has the three ways in above; this is for one that has pages. */}
+        {pages.length > 0 && <AddPages />}
       </div>
     </main>
   );

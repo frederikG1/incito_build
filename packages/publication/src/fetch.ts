@@ -13,6 +13,8 @@
  * is not ours to open.
  */
 
+import { extractPaged, type PagedSource } from './paged.js';
+
 /** How much HTML we will read before giving up. A catalogue is ~1–5 MB. */
 const MAX_BYTES = 40 * 1024 * 1024;
 
@@ -55,6 +57,22 @@ function checkedUrl(raw: string): URL {
  * read without the network — which is what the tests do.
  */
 export async function fetchIncito(raw: string): Promise<unknown> {
+  const source = await fetchSource(raw);
+  if (source.kind === 'paged') {
+    throw new PublicationError('udgivelsen er udgivet som billeder, ikke som incito');
+  }
+  return source.data;
+}
+
+/**
+ * What a link holds: an incito document, or — for the chains that
+ * publish a PDF — the page images the viewer shows. See `./paged.ts`.
+ */
+export type PublicationSource =
+  | { kind: 'incito'; data: unknown }
+  | { kind: 'paged'; paged: PagedSource };
+
+export async function fetchSource(raw: string): Promise<PublicationSource> {
   const url = checkedUrl(raw);
 
   let response: Response;
@@ -79,9 +97,30 @@ export async function fetchIncito(raw: string): Promise<unknown> {
 
   // A link straight to the document itself is just as good a source as
   // the viewer around it, and costs one branch.
-  if (type.includes('json')) return JSON.parse(text);
+  if (type.includes('json')) return { kind: 'incito', data: JSON.parse(text) };
 
-  return extractIncito(text);
+  if (!/<script id="incito-data"/.test(text)) {
+    const paged = extractPaged(text);
+    if (paged) return { kind: 'paged', paged };
+  }
+  return { kind: 'incito', data: extractIncito(text) };
+}
+
+/** A picture the viewer links to, fetched with the same care as the page. */
+export async function fetchPageImage(raw: string): Promise<Buffer> {
+  const url = checkedUrl(raw);
+  let response: Response;
+  try {
+    response = await fetch(url, { redirect: 'follow' });
+  } catch (error) {
+    throw new PublicationError(
+      `kunne ikke hente sidebilledet: ${error instanceof Error ? error.message : 'ukendt fejl'}`,
+    );
+  }
+  if (!response.ok) throw new PublicationError(`sidebilledet svarede ${response.status}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length > MAX_BYTES) throw new PublicationError('sidebilledet er for stort');
+  return bytes;
 }
 
 /**

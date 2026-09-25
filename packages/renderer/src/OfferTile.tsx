@@ -4,8 +4,9 @@ import type {
   FrameLine, FrameStack, MeasuredRect, Offer, OfferLabel, PlacementOverrides, PriceShape,
   SlotRole, TilePart, TileArrangement, TileFrame,
 } from '@incitio/schema';
+import { wordsBesidePrice } from './words.js';
 import {
-  packOverride, packStack, partOverride, tileArranged, PlacementOverrides as Overrides,
+  TILE_PARTS, packOverride, packStack, partOverride, tileArranged, PlacementOverrides as Overrides,
 } from '@incitio/schema';
 import { formatPrice, formatQuantity, splitPrice } from './format.js';
 
@@ -41,6 +42,8 @@ export interface OfferTileProps {
   frame?: TileFrame;
   /** The cell's width as a share of the page, when the cell is measured. */
   cellWidth?: number;
+  /** The cell's height, in the same unit as `cellWidth` — a share of the page's WIDTH. */
+  cellHeight?: number;
   priceShape: PriceShape;
   overrides?: PlacementOverrides;
   selected?: boolean;
@@ -81,6 +84,38 @@ export interface OfferTileProps {
     height: number;
   } | null;
   onSelect?: (offerId: string) => void;
+  /**
+   * Only the products — a cluster standing in a published page's cell,
+   * whose words and price the publication itself prints. See `incitoPacks`.
+   */
+  artworkOnly?: boolean;
+}
+
+/**
+ * Whether a line of the printed page's own words states an amount this
+ * offer does not have.
+ *
+ * A measured cell keeps the words the page set around its price —
+ * "Pris ikke-medlem op til 84,95", "Medlemsrabat op til 25,95". They
+ * were true of the product printed there, and printed under next week's
+ * product they are a price nobody set.
+ */
+function foreignAmount(text: string, offer: Offer): boolean {
+  const known = new Set<string>();
+  for (const value of [offer.price, offer.prePrice, offer.savings, offer.savingsMax, offer.comparison?.value]) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+    known.add(value.toFixed(2).replace('.', ''));
+    if (Number.isInteger(value)) known.add(String(value));
+  }
+  const amounts = text.match(/\d+[.,]\d{2}(?!\d)|\d+,-|^\s*\d{3,}\s*$/g) ?? [];
+  return amounts.some((amount) => !known.has(amount.replace(/\D/g, '')));
+}
+
+/** Whether one box's middle lies inside another — a disc drawn under a sticker's words. */
+function covers(outer: MeasuredRect, inner: MeasuredRect): boolean {
+  const x = inner.x + inner.w / 2;
+  const y = inner.y + inner.h / 2;
+  return x >= outer.x && x <= outer.x + outer.w && y >= outer.y && y <= outer.y + outer.h;
 }
 
 /** A tile nobody has corrected. Parsed once; the shape never varies. */
@@ -238,8 +273,15 @@ export function packStyle(offerId: string, count: number, role: SlotRole): PackS
  *
  * Checked against the stylesheet in `overlay.test.ts`, together with
  * the editor overlay that has to stay above this in turn.
+ *
+ * And lifted where it counts: the price mark lives INSIDE `.tile__info`,
+ * which is a stacking context of its own at 20. A lift on the price
+ * alone stayed at 20 as far as the rest of the tile was concerned, so a
+ * member price dragged onto its own drawn roundel (`.tile__art`, 31)
+ * went under the white disc and vanished. The block is lifted with it —
+ * see `infoMoved`.
  */
-const LIFTED = 35;
+const LIFTED = 38;
 
 /**
  * One offer, drawn at whatever size its slot gives it.
@@ -289,7 +331,9 @@ function Line({ line, children }: { line: FrameLine; children?: React.ReactNode 
       style={{
         fontSize: pageLength(line.size),
         ...(line.color ? { color: line.color } : {}),
-        fontWeight: line.bold ? 700 : 400,
+        // The publication's heading face is the chain's bold cut — COOP 700 for SuperBrugsen.
+        fontWeight: line.bold || line.face === 'heading' ? 700 : 400,
+        ...(line.face === 'heading' ? { fontFamily: 'var(--heading-font)' } : {}),
         ...(line.upper ? { textTransform: 'uppercase' } : {}),
         ...(line.align ? { textAlign: line.align } : {}),
         ...(line.lineHeight ? { lineHeight: line.lineHeight } : {}),
@@ -305,7 +349,7 @@ function Line({ line, children }: { line: FrameLine; children?: React.ReactNode 
 
 export function OfferTile({
   offer, role, priceShape, overrides, selected, selectedPart, selectedPack, reference,
-  onSelect, frame, cellWidth,
+  onSelect, frame, cellWidth, cellHeight, artworkOnly,
 }: OfferTileProps) {
   const corrections = overrides ?? UNTOUCHED;
 
@@ -324,8 +368,21 @@ export function OfferTile({
     });
     if (id === 'media') return at(frame.media);
     if (id === 'price' && frame.price) {
+      /*
+       * Kept inside its own cell. The rectangle was measured on the
+       * publication, where the offer had a little more room around it;
+       * redrawn on the chain's grid, a mark in the bottom row reached
+       * 1–2 % past its cell — and past the paper, which cuts it off.
+       * Nudged back in, never shrunk.
+       */
+      const mark = frame.price;
+      const held = {
+        ...mark,
+        x: mark.w < 1 ? Math.min(mark.x, 1 - mark.w) : mark.x,
+        y: mark.h < 1 ? Math.min(mark.y, 1 - mark.h) : mark.y,
+      };
       return {
-        ...at(frame.price),
+        ...at(held),
         ...(frame.splash ? { backgroundImage: `url("${frame.splash}")` } : {}),
         ...(frame.priceInk ? { color: frame.priceInk } : {}),
       };
@@ -373,8 +430,20 @@ export function OfferTile({
     };
   }
 
+  /** Something inside the words block has been moved, so the block rises with it. */
+  const infoMoved = TILE_PARTS.some((id) => {
+    if (id === 'media') return false;
+    const part = partOverride(corrections, id);
+    return part.offsetX !== 0 || part.offsetY !== 0 || part.scale !== 1;
+  });
+
   /** Whether this box prints at all. */
   const shown = (id: TilePart) => !partOverride(corrections, id).hidden;
+
+  // Where the words stand: the measured box, never under the price mark.
+  const column = frame?.words
+    ? wordsBesidePrice(frame.words, shown('price') ? frame.price : undefined)
+    : null;
   /** The editor's wording for a box that has no field of its own. */
   const wording = (id: TilePart) => partOverride(corrections, id).text;
 
@@ -416,9 +485,32 @@ export function OfferTile({
     if (line.margin) room -= Math.max(0, line.margin[1]!) + Math.max(0, line.margin[3]!);
     let ems: number;
     if (line.role === 'figure') {
-      // The roundel's arc and curve leave about two thirds of it for the figure.
-      room *= 0.62;
-      ems = 0.62 * price.major.length + (price.minor === '00' ? 0.55 : 0.8) + (offer.priceFrom ? 1.1 : 0);
+      /*
+       * Across the middle of the disc nearly its whole width is paper. A
+       * digit of the chain's face is 0.6 em; øre are raised at 0.6 of
+       * that, and ",-" is 0.45 — the same measure the plain mark uses
+       * (see `figureFit`), so both kinds of mark give way alike.
+       */
+      room *= 0.85;
+      ems = 0.6 * price.major.length + (price.minor === '00' ? 0.45 : 0.72) + (offer.priceFrom ? 1.1 : 0);
+    } else if (cellHeight && box.h > 0) {
+      /*
+       * Words in a roundel wrap, as the page wraps them — "Pris / ikke- /
+       * medle / mmer" in a disc a little wider than one word. Kept at
+       * their printed size while they fit the disc's height at that
+       * size, and only then made smaller. Measured as one line, as this
+       * used to, a four-line badge came out a quarter of its size.
+       */
+      const across = room * 0.86;
+      const lineHeight = line.size * (line.lineHeight ?? 1.1);
+      const tall = box.h * cellHeight * 0.92;
+      // The heading face is wide: measured on SuperBrugsen's, 0.64 em a character.
+      const perChar = line.face === 'heading' ? 0.64 : line.bold ? 0.6 : 0.55;
+      const rows = (size: number) => line.text.split('\n').reduce((sum, part) => sum + part.split(/\s+/)
+        .reduce((count, word) => count + Math.max(1, Math.ceil((word.length * perChar * size) / across)), 0), 0);
+      let size = line.size;
+      while (size > line.size * 0.4 && rows(size) * size * (lineHeight / line.size) > tall) size *= 0.92;
+      return size < line.size ? { ...line, size } : line;
     } else {
       // A round disc is narrower than its box away from the middle.
       room *= 0.86;
@@ -444,6 +536,17 @@ export function OfferTile({
     return cap > 0 && cap < line.size ? { ...line, size: cap } : line;
   }
 
+  /*
+   * "fra" on the line above the number, in a measured mark.
+   *
+   * Set inline it made the number give up a third of its size to fit
+   * the disc, and a SuperBrugsen price is the biggest thing on its
+   * mark — "fra 12,-" in small figures reads as another chain's paper.
+   * Above it, like "1 pose" or "Ugens køb", the number keeps the size
+   * the publication gave it.
+   */
+  const fromAbove = Boolean(offer.priceFrom && frame?.price && frame.type?.figure);
+
   const room = offer.members.length > 0 ? MAX_GROUP[role] : MAX_PACK[role];
   const pack = offer.imagePack.slice(0, room);
   const isPacked = pack.length > 1;
@@ -455,6 +558,10 @@ export function OfferTile({
   const arrangement = isPacked
     ? overrides?.arrangement ?? packStyle(offer.id, pack.length, role)
     : 'row';
+
+  // The page's own stickers that state another product's amounts — and
+  // the drawn disc under each, which would be left standing empty.
+  const staleBadges = (frame?.badges ?? []).filter((badge) => badge.lines.some((line) => foreignAmount(line.text, offer)));
 
   // Price tags and certification marks compete for the same corner and
   // must not: a tile that can show one badge should show its Ø-mark, not
@@ -513,6 +620,32 @@ export function OfferTile({
   const showComparison = showMeta && offer.comparison !== null;
 
   const price = splitPrice(offer.price);
+
+  /*
+   * The figure of a plain measured mark, shrunk to fit its disc.
+   *
+   * Its size comes from the publication — `type.figure`, set for the
+   * price that was printed there. A different price is not the same
+   * width: "fra 30,-" on a cluster, or 109,95 in a mark set for 30,-,
+   * ran straight out of the squircle. Same arithmetic as `fitLine`, so
+   * both kinds of mark give up size the same way; never grown.
+   */
+  const figureFit: CSSProperties | undefined = (() => {
+    if (!frame?.price || !frame.type?.figure || !cellWidth) return undefined;
+    /*
+     * Across the middle of the disc, where the figure stands, nearly its
+     * whole width is paper — measured on SuperBrugsen's own marks, a
+     * digit of the chain's face is 0.6 em and ",-" 0.45. So this only
+     * steps in when the number genuinely does not fit: 109,95 in a mark
+     * set for 30,-, never "10,-" in a mark set for "10,-".
+     */
+    const room = frame.price.w * cellWidth * 0.85;
+    // "fra" stands on its own line above — see `fromAbove` — so only the number counts.
+    const ems = 0.6 * price.major.length + (price.minor === '00' ? 0.45 : 0.75);
+    const cap = room / ems;
+    return cap > 0 && cap < frame.type.figure ? { fontSize: `${cap * 100}cqw` } : undefined;
+  })();
+
   const hasBefore = offer.prePrice !== null && offer.prePrice > offer.price;
   const quantity = formatQuantity(
     offer.quantity.size, offer.quantity.unit, offer.quantity.pieceCount,
@@ -688,7 +821,9 @@ export function OfferTile({
         )}
       </div>
 
-      <div className="tile__info">
+      {!artworkOnly && (<>
+      {/* The measured words box, less the price mark's corner — see `wordsBesidePrice`. */}
+      <div className="tile__info" style={infoMoved ? { zIndex: LIFTED } : undefined}>
         {/*
           * The words, as one box.
           *
@@ -704,12 +839,12 @@ export function OfferTile({
           */}
         <div
           className="tile__words"
-          style={frame?.words ? {
-            left: `${frame.words.x * 100}%`,
-            top: `${frame.words.y * 100}%`,
-            width: `${frame.words.w * 100}%`,
-            height: `${frame.words.h * 100}%`,
-            justifyContent: frame.wordsAlign === 'end' ? 'flex-end' : 'flex-start',
+          style={column ? {
+            left: `${column.x * 100}%`,
+            top: `${column.y * 100}%`,
+            width: `${column.w * 100}%`,
+            height: `${column.h * 100}%`,
+            justifyContent: frame?.wordsAlign === 'end' ? 'flex-end' : 'flex-start',
           } : undefined}
         >
         {/*
@@ -797,7 +932,9 @@ export function OfferTile({
            */
           <div className={`price price--${priceShape} price--lines`} {...box('price')}>
             <span className="price__lines" style={stackStyle(frame.priceStack)}>
-              {frame.priceLines.map((line, index) => (
+              {frame.priceLines
+                .filter((line) => line.role !== 'note' || !foreignAmount(line.text, offer))
+                .map((line, index) => (
                 <Line key={`${index}-${line.role}`} line={fitLine(line, frame.price)}>
                   {line.role === 'figure' ? (
                     <span className="price__figure">
@@ -831,6 +968,7 @@ export function OfferTile({
               && !(frame?.splash && offer.pack.length > 18) && (
               <span className="price__pack">{offer.pack}</span>
             )}
+            {fromAbove && <span className="price__pack price__pack--from">fra</span>}
             {/* Small, struck through, hard against the offer price. The
                 comparison only lands if the two read as one mark. */}
             {hasBefore && role !== 'compact' && (
@@ -841,7 +979,7 @@ export function OfferTile({
             {/* The figure is one unbreakable unit. Inside a disc the mark
                 is square and narrow, and without this the øre wrapped onto
                 a second line and the price read as two numbers. */}
-            <span className="price__figure">
+            <span className="price__figure" style={figureFit}>
               {/*
                 * "fra", when this is the lowest of several prices.
                 *
@@ -850,7 +988,7 @@ export function OfferTile({
                 * something a shopper finds out at the till. If the feed
                 * says the products differ, the page says so too.
                 */}
-              {offer.priceFrom && <span className="price__from">fra</span>}
+              {offer.priceFrom && !fromAbove && <span className="price__from">fra</span>}
               <span className="price__major">{price.major}</span>
               {/* A whole-krone price ends in the kroner mark, which is a
                   lockup and not two characters — see `.price__kr`. */}
@@ -899,7 +1037,7 @@ export function OfferTile({
         </ul>
       )}
       {/* The page's own roundels and marks over the tile, where it set them. */}
-      {frame?.art?.map((entry, index) => (
+      {frame?.art?.filter((entry) => !staleBadges.some((badge) => covers(badge.rect, entry.rect))).map((entry, index) => (
         <img
           key={`art-${index}`}
           className="tile__art"
@@ -912,7 +1050,7 @@ export function OfferTile({
           }}
         />
       ))}
-      {frame?.badges?.map((badge, index) => (
+      {frame?.badges?.filter((badge) => !staleBadges.includes(badge)).map((badge, index) => (
         <div
           key={`badge-${index}`}
           className="tile__badge"
@@ -926,6 +1064,7 @@ export function OfferTile({
           {badge.lines.map((line, at) => <Line key={at} line={fitLine(line, badge.rect)} />)}
         </div>
       ))}
+      </>)}
     </article>
   );
 }

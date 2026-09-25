@@ -1,3 +1,4 @@
+import { pagedSheet } from '@incitio/renderer';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { CatalogPage, PageTemplate } from '@incitio/schema';
 import { useStudio } from './state.js';
@@ -92,6 +93,8 @@ export function LayoutEditor({ page, template }: { page: CatalogPage; template: 
 
   const offers = new Map((s.document?.offers ?? []).map((offer) => [offer.id, offer]));
   const cells = template.slots.filter((slot) => slot.rect);
+  // On a page picture a cell nobody filled shows what was printed there.
+  const sheet = pagedSheet(page.incito);
 
   function start(event: ReactPointerEvent<HTMLElement>, slotId: string, edge: Edge) {
     const host = root.current;
@@ -173,7 +176,7 @@ export function LayoutEditor({ page, template }: { page: CatalogPage; template: 
             style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` }}
             onPointerDown={(event) => start(event, slot.id, 'move')}
           >
-            <span className="celledit__name">{offer?.name ?? 'tomt felt'}</span>
+            <span className="celledit__name">{offer?.name ?? (sheet && !sheet.printed?.[slot.id] ? 'som trykt' : 'tomt felt')}</span>
             {(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const).map((edge) => (
               <i
                 key={edge}

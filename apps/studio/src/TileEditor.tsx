@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CSSProperties } from 'react';
 import type { TilePart } from '@incitio/schema';
 import {
@@ -106,6 +107,30 @@ function outline(box: Box): string {
 
 const clamp = (value: number, low: number, high: number) =>
   Math.min(high, Math.max(low, value));
+
+/** The screen's own origin — guides and targets are measured on it, so they can span the page. */
+const SCREEN = new DOMRect(0, 0, 0, 0);
+
+/**
+ * What a product being moved may line up with, beyond its own tile:
+ * the page's edges and middle, and every other product, picture and
+ * element on the page. This is what makes a drag feel like it lands.
+ */
+function pageTargets(element: HTMLElement): Box[] {
+  const tile = element.closest('.slot');
+  const sheet = element.closest('[data-page-id]') ?? element.closest('.page');
+  if (!sheet) return [];
+  const box = sheet.getBoundingClientRect();
+  const found: Box[] = [{ left: box.left, top: box.top, width: box.width, height: box.height }];
+  const others = sheet.querySelectorAll('.tile__media > img, .tile__pack > img, .price, [data-incito-block]');
+  for (const other of others) {
+    if (tile?.contains(other) || found.length > 160) continue;
+    const rect = other.getBoundingClientRect();
+    if (rect.width < 4 || rect.height < 4) continue;
+    found.push({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+  }
+  return found;
+}
 
 interface Bounds { minX: number; maxX: number; minY: number; maxY: number }
 
@@ -310,6 +335,13 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
     setMarked(measure(selectedPart, selectedPack));
   }, [selected, selectedPart, selectedPack, overrides]);
 
+  /** The product in hand, measured — where its turning handle stands. */
+  const [packBox, setPackBox] = useState<Box | null>(null);
+  useLayoutEffect(() => {
+    if (!selected || selectedPack === null || editing) { setPackBox(null); return; }
+    setPackBox(measure('media', selectedPack));
+  }, [selected, selectedPack, overrides, editing]);
+
   /*
    * Zoom is a modified wheel, and it has to be a native listener.
    *
@@ -450,19 +482,17 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
      * move while this one is being dragged, and re-reading the DOM on
      * every pointer move is how a drag starts to stutter.
      */
-    const frame = element.getBoundingClientRect();
     const tile = element.parentElement;
     const moving = (() => {
       const box = element.parentElement
         ?.querySelector(`[data-pack="${index}"]`)?.getBoundingClientRect();
-      return box
-        ? { left: box.left - frame.left, top: box.top - frame.top, width: box.width, height: box.height }
-        : null;
+      return box ? { left: box.left, top: box.top, width: box.width, height: box.height } : null;
     })();
     const targets = tile && moving
       ? [
-        ...targetsFrom(tile, '[data-pack]', tile.querySelector(`[data-pack="${index}"]`), frame),
-        ...targetsFrom(tile, '.tile__media', null, frame),
+        ...targetsFrom(tile, '[data-pack]', tile.querySelector(`[data-pack="${index}"]`), SCREEN),
+        ...targetsFrom(tile, '.tile__media', null, SCREEN),
+        ...pageTargets(element),
       ]
       : [];
 
@@ -499,6 +529,50 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
     element.addEventListener('pointermove', onMove);
     element.addEventListener('pointerup', onUp);
     element.addEventListener('pointercancel', onUp);
+  }
+
+  /**
+   * Turn one product of a cluster by its handle.
+   *
+   * The angle is read from the product's own middle to the pointer, so
+   * the product follows the hand the way it does in any drawing tool.
+   * Shift steps in 15°. One history entry for the whole turn.
+   */
+  function turnPackItem(event: React.PointerEvent<HTMLElement>, index: number): void {
+    event.stopPropagation();
+    event.preventDefault();
+    if (!offerId || !overrides) return;
+    const target = root.current?.parentElement?.querySelector(`[data-pack="${index}"]`);
+    if (!target) return;
+    const box = target.getBoundingClientRect();
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    const angle = (x: number, y: number) => (Math.atan2(y - cy, x - cx) * 180) / Math.PI;
+    const from = angle(event.clientX, event.clientY);
+    const start = packOverride(overrides, index).rotate;
+    const { turn } = packLimits();
+    const handle = event.currentTarget;
+    try { handle.setPointerCapture(event.pointerId); } catch { /* uncapturable */ }
+
+    const onMove = (move: PointerEvent) => {
+      let next = start + angle(move.clientX, move.clientY) - from;
+      next = ((next + 540) % 360) - 180;
+      if (move.shiftKey) next = Math.round(next / 15) * 15;
+      next = clamp(Math.round(next), -turn, turn);
+      updatePackItem(offerId, index, { rotate: next }, `turn:${offerId}:pack${index}`);
+      setHud(`Vare ${index + 1}  ${next}°`);
+    };
+    const onUp = () => {
+      try { handle.releasePointerCapture(event.pointerId); } catch { /* never captured */ }
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      endGesture();
+      setHud(null);
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
   }
 
   /**
@@ -581,10 +655,13 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
      */
     const frame = element.getBoundingClientRect();
     const tile = element.parentElement;
-    const own = measure(part);
+    const measured = measure(part);
+    // On the screen's own coordinates, so it can line up with anything on the page.
+    const own = measured ? { ...measured, left: measured.left + frame.left, top: measured.top + frame.top } : null;
     const targets = part === 'media' || !tile || !own ? [] : [
-      ...targetsFrom(tile, '[data-part]', tile.querySelector(`[data-part="${part}"]`), frame),
-      ...targetsFrom(tile, '.tile', null, frame),
+      ...targetsFrom(tile, '[data-part]', tile.querySelector(`[data-part="${part}"]`), SCREEN),
+      ...targetsFrom(tile, '.tile', null, SCREEN),
+      ...pageTargets(element),
     ];
 
     // Capture keeps the drag alive when the pointer leaves the tile —
@@ -771,18 +848,39 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
         </span>
       )}
 
+      {/* Turn the product in hand: grab the round handle over it and circle. */}
+      {packBox && selectedPack !== null && (
+        <button
+          className="handle__turn"
+          style={{ left: packBox.left + packBox.width / 2, top: Math.max(4, packBox.top - 22) }}
+          title="Træk for at dreje varen · Shift = 15° ad gangen · dobbeltklik retter den op"
+          onPointerDown={(event) => turnPackItem(event, selectedPack)}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            if (offerId) {
+              updatePackItem(offerId, selectedPack, { rotate: 0 }, `turn:${offerId}:pack${selectedPack}`);
+              endGesture();
+            }
+          }}
+        >⟳</button>
+      )}
+
       {/* Why the drag stopped where it did. Drawn in the overlay, so
           nothing about an editor selection reaches the print
           component. */}
-      {guides.map((guide, index) => (
-        <span
-          key={`${guide.axis}-${guide.at}-${index}`}
-          className={`handle__guide handle__guide--${guide.axis}`}
-          style={guide.axis === 'x'
-            ? { left: guide.at, top: guide.from, height: guide.to - guide.from }
-            : { top: guide.at, left: guide.from, width: guide.to - guide.from }}
-        />
-      ))}
+      {guides.length > 0 && createPortal(
+        guides.map((guide, index) => (
+          <span
+            key={`${guide.axis}-${guide.at}-${index}`}
+            className={`handle__guide handle__guide--sheet handle__guide--${guide.axis}`}
+            style={guide.axis === 'x'
+              ? { left: guide.at, top: guide.from, height: guide.to - guide.from }
+              : { top: guide.at, left: guide.from, width: guide.to - guide.from }}
+          />
+        )),
+        document.body,
+      )}
 
       {hud && <span className="handle__hud">{hud}</span>}
 

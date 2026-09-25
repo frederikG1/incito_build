@@ -43,34 +43,6 @@ export function Ways() {
     <section className="ways" aria-label="Nye sider">
       <div className="ways__row">
           {/*
-            * The route that produces a page worth printing, first.
-            *
-            * Its own overlay rather than a row of fields — handing in
-            * eight scans needs a file list, an order and a page range
-            * per file, which is more than a row. The panel's job is to
-            * say that this is one of four answers to the same
-            * question, and to be the place the choice is made.
-            */}
-          <div className="ways__way">
-            <div className="ways__field ways__field--wide">
-              <span className="ways__label">
-                Trykte sider <em>— aflevér de sider avisen skal ligne</em>
-              </span>
-              <span className="ways__hint">
-                Én fil pr. side, eller et sideinterval af en PDF. Dyrest, og den
-                eneste vej der pålideligt giver en side værd at trykke.
-              </span>
-            </div>
-            <button
-              className="primary ways__go"
-              disabled={busy}
-              onClick={() => { s.closePanel(); s.setReproduceOpen(true); }}
-            >
-              Aflevér sider
-            </button>
-          </div>
-
-          {/*
             * The link route.
             *
             * Marked as free in as many words, beside the button. It is
@@ -81,7 +53,7 @@ export function Ways() {
           <div className="ways__way">
             <label className="ways__field ways__field--wide">
               <span className="ways__label">
-                Udgivelse <em>— link til en trykt avis</em>
+                Fra en trykt avis <em>— sæt linket ind</em>
               </span>
               <input
                 type="url"
@@ -93,7 +65,7 @@ export function Ways() {
                 }}
               />
               <span className="ways__hint">
-                Layoutet læses ud af udgivelsen selv — gratis, uden modelkald.
+                Siderne hentes præcis som udgivet og kan rettes bagefter.
               </span>
             </label>
 
@@ -115,7 +87,7 @@ export function Ways() {
                   checked={s.publicationWithOffers}
                   onChange={(event) => s.setPublicationWithOffers(event.target.checked)}
                 />
-                varerne med
+                tag varerne med
               </label>
               <label title="Læg siderne bag den avis der allerede er åben">
                 <input
@@ -124,7 +96,7 @@ export function Ways() {
                   onChange={(event) => s.setPublicationAppend(event.target.checked)}
                   disabled={!s.document}
                 />
-                læg til
+                læg efter de nuværende sider
               </label>
             </div>
 
@@ -133,14 +105,14 @@ export function Ways() {
               disabled={busy || !s.publicationUrl.trim()}
               onClick={() => void s.importPublication()}
             >
-              Hent layout
+              Hent siderne
             </button>
           </div>
 
           <div className="ways__way">
             <label className="ways__field ways__field--wide">
               <span className="ways__label">
-                Tegnet layout <em>— ingen reference, modellen tegner den</em>
+                Lad AI tegne et layout <em>— beskriv siden</em>
               </span>
               <input
                 type="text"
@@ -150,7 +122,7 @@ export function Ways() {
                 disabled={!s.decorReady}
               />
               <span className="ways__hint">
-                Tegningen trykkes aldrig — den bruges kun til at placere varerne.
+                Kun pladserne bruges — tegningen kommer ikke med på tryk.
               </span>
             </label>
 
@@ -175,19 +147,47 @@ export function Ways() {
                   onChange={(event) => s.setLayoutAppend(event.target.checked)}
                   disabled={!s.document}
                 />
-                læg til
+                læg efter de nuværende sider
               </label>
             </div>
 
             <button
               className="accent ways__go"
               disabled={busy || !s.feed || !s.decorReady || !s.curationReady}
-              title={s.decorReady
-                ? 'Gemini tegner et layout, og varerne placeres i det'
-                : 'Tilføj GEMINI_API_KEY i .env og genstart API-serveren'}
+              title={!s.decorReady || !s.curationReady
+                ? 'AI-hjælpen er slået fra på denne maskine'
+                : s.feed ? 'AI tegner et layout, og ugens varer sættes ind i det' : 'Hent ugens varer fra fil først'}
               onClick={() => void s.generateLayout()}
             >
               Tegn og fyld
+            </button>
+          </div>
+
+          {/*
+            * The route that produces a page worth printing, first.
+            *
+            * Its own overlay rather than a row of fields — handing in
+            * eight scans needs a file list, an order and a page range
+            * per file, which is more than a row. The panel's job is to
+            * say that this is one of four answers to the same
+            * question, and to be the place the choice is made.
+            */}
+          <div className="ways__way">
+            <div className="ways__field ways__field--wide">
+              <span className="ways__label">
+                Efterlign trykte sider <em>— med AI</em>
+              </span>
+              <span className="ways__hint">
+                Aflevér fotos eller en PDF af de sider avisen skal ligne.
+              </span>
+            </div>
+            <button
+              className="primary ways__go"
+              disabled={busy || !s.curationReady}
+              title={s.curationReady ? '' : 'AI-hjælpen er slået fra på denne maskine'}
+              onClick={() => { s.closePanel(); s.setReproduceOpen(true); }}
+            >
+              Aflevér sider
             </button>
           </div>
 
@@ -202,11 +202,10 @@ export function Ways() {
           <div className="ways__way">
             <div className="ways__field ways__field--wide">
               <span className="ways__label">
-                Hurtigt udkast <em>— kategorisortering, ingen model</em>
+                Hurtigt udkast <em>— ugens varer, afdeling for afdeling</em>
               </span>
               <span className="ways__hint">
-                Feedet lagt direkte i kædens egne layouts. Øjeblikkeligt og gratis —
-                et hurtigt kig på ugens varer, ikke en avis.
+                Ugens varer lagt direkte i kædens egne layouts — et hurtigt første udkast.
               </span>
             </div>
 
@@ -225,49 +224,13 @@ export function Ways() {
             <button
               className="ways__go"
               disabled={busy || !s.feed}
-              title={s.feed ? '' : 'Upload et feed først'}
+              title={s.feed ? '' : 'Hent ugens varer fra fil først — i menuen øverst til venstre'}
               onClick={() => void s.build({ fresh: true })}
             >
               Byg udkast
             </button>
           </div>
 
-          {/*
-            * The five steps every test of the cluster feature starts
-            * with, as one press — see `testCluster`.
-            *
-            * Here rather than in the toolbar, and said plainly. It is
-            * a developer's shortcut and it spent months looking like
-            * something a customer was meant to press.
-            */}
-          <div className="ways__way ways__way--aside">
-            <div className="ways__field ways__field--wide">
-              <span className="ways__label">Testflise <em>— til udvikling</em></span>
-              <span className="ways__hint">
-                Bygger et udkast om nødvendigt, samler de tre første varer med billede
-                i første plads, og lader Gemini stille dem op.
-              </span>
-            </div>
-            <button
-              className="ways__go"
-              disabled={busy || (!s.feed && !s.document)}
-              onClick={() => void s.testCluster()}
-            >
-              Kør test
-            </button>
-          </div>
-
-          {/*
-            * Said once, under both, because the two halves need
-            * different keys and a single "no API key" would send
-            * someone to the wrong line of `.env`.
-            */}
-          {!s.decorReady && (
-            <p className="ways__off">
-              Et tegnet layout kræver <code>GEMINI_API_KEY</code> i <code>.env</code> —
-              og fakturering på Google-projektet. Linket ovenfor virker uden nøgler.
-            </p>
-          )}
       </div>
     </section>
   );

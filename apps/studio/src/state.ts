@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type {
-  Brand, CatalogDocument, CatalogWeek, DecorAnchor, Offer, PageBackground, PageDecoration, PageNote,
+  Brand, CatalogDocument, CatalogWeek, IncitoEdit, DecorAnchor, Offer, PageBackground, PageDecoration, PageNote,
   PagePart, PageTemplate, PageTextOverride,
   FrameLine, PackOverride, Placement, PartOverride, PlacementOverrides, SlotRole, TemplateSlot, TileArrangement, TilePart,
 } from '@incitio/schema';
@@ -10,11 +10,11 @@ import {
   packLimits, packOverride, packPatch,
   partLimits, partOverride, partPatch, slotAssignmentOrder, slotCells,
 } from '@incitio/schema';
-import { groupOffers, notOnePhotograph, readPackSize } from '@incitio/schema';
+import { groupOffers, healLabelPrices, notOnePhotograph, readPackSize, rememberPrinted } from '@incitio/schema';
 import { nextWeek, weekName, weekOf } from '@incitio/schema';
 import { bySeverity, measureFindings, readFindings, type Finding } from './findings.js';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
-import { packStyle } from '@incitio/renderer';
+import { incitoOfferBoxes, offerViewIds, packStyle, pageBlocks, pagedSheet } from '@incitio/renderer';
 import { freeSlots, growTemplate, grownId } from './grid.js';
 import * as api from './api.js';
 import { countPages } from './pdf.js';
@@ -27,6 +27,10 @@ import { pool } from './pool.js';
 import { MOTIF_SUBJECT, measurePage, motifDecoration } from './backdropMeasure.js';
 import { chooseBackdrop, measureBackdrop } from './backdrop.js';
 import { placePrompt, type PlacePromptId } from '@incitio/curator/place-prompt';
+import {
+  DEPARTMENTS, DEPARTMENT_NAMES, applyFeedDiff, carryForward, compareByImportance, departmentOf, familyOf,
+  feedDiff, pageDepartment, type CarryReport, type Department, type FeedDiff,
+} from '@incitio/compose';
 
 /**
  * Which chain the user works for.
@@ -689,7 +693,7 @@ export interface StudioState {
    */
   build: (options?: { fresh?: boolean }) => Promise<void>;
   save: () => Promise<void>;
-  downloadPdf: () => Promise<void>;
+  downloadPdf: (forPrint?: boolean) => Promise<void>;
 
   setReproduceOpen: (open: boolean) => void;
   /** Add pages to rebuild: images, or PDFs to take pages out of. */
@@ -898,6 +902,8 @@ export interface StudioState {
    * model in the loop at all.
    */
   importPublication: () => Promise<void>;
+  /** A product's price, corrected by hand — the page's price mark follows. */
+  setOfferPrice: (offerId: string, price: number) => void;
 
   setLayoutCells: (cells: number) => void;
   setLayoutNote: (note: string) => void;
@@ -1083,6 +1089,69 @@ export interface StudioState {
   replaceImagePage: (pageId: string, file: File) => Promise<void>;
   /** Take a page out of the book. */
   removePage: (pageId: string) => void;
+
+  /* ------------------------------------------------ the week, carried */
+
+  /** The chain's saved page designs — the gallery the CMS calls Sections. */
+  sections: api.Section[];
+  sectionsOpen: boolean;
+  /** Where the gallery inserts: the index the new page will take. */
+  sectionsAt: number;
+  /** Open (or close) the gallery, optionally aimed at one place in the book. */
+  setSectionsOpen: (open: boolean, at?: number) => void;
+  setSectionsAt: (at: number) => void;
+  refreshSections: () => Promise<void>;
+  /** Keep this page's design for later weeks, under a name and tags. */
+  saveSection: (pageId: string, name: string, tags: string[]) => Promise<void>;
+  /** Every page of the open avis as a section — how a library starts. */
+  saveAllSections: () => Promise<void>;
+  removeSection: (id: string) => Promise<void>;
+  /** A section as a new page, its cells dealt from the reserve by tag. */
+  insertSection: (id: string, at?: number) => void;
+  /**
+   * A feed arrived while an avis was open, and the two questions it
+   * raises: is this a correction to THIS avis, or next week's file?
+   */
+  feedArrival: {
+    name: string;
+    diff: FeedDiff;
+    count: number;
+    /** Products on the pages, and how many of them the file also has. */
+    onPages: number;
+    matched: number;
+  } | null;
+  dismissFeedArrival: () => void;
+  /** Write the new file's prices into the avis. Undoable. */
+  applyFeedChanges: () => void;
+  /** What the last applied feed changed, to be walked through. */
+  feedChanges: FeedDiff | null;
+  clearFeedChanges: () => void;
+  /** Next week's avis, from this one's design and the new feed. */
+  carryWeek: () => void;
+  carryReport: (CarryReport & { from: string }) | null;
+  dismissCarryReport: () => void;
+  /** Let the last note go — the toast calls it when its time is up. */
+  clearNote: () => void;
+  /** Close the avis and start from nothing. The saved copy is untouched. */
+  startOver: () => void;
+  /** Take every product off a page and keep its design. Undoable. */
+  clearPage: (pageId: string) => void;
+  /** Print a published page as published, or redraw it with tiles to edit it. */
+  setPageExact: (pageId: string, exact: boolean) => void;
+  /** The element of a published page in hand — see `incitoBlocks`. */
+  selectedIncito: { pageId: string; path: string } | null;
+  selectIncito: (pageId: string, path: string | null) => void;
+  /** Hide, show or reword one element of a published page. Undoable. */
+  editIncito: (pageId: string, path: string, patch: { hidden?: boolean; texts?: string[] | null }, gesture?: string) => void;
+  /** Take an element off a published page — with the shape behind it — or put it back. */
+  hideIncito: (pageId: string, path: string, hidden: boolean) => void;
+  /** Move or resize an element of a published page, in the sheet's points. Undoable. */
+  moveIncito: (
+    pageId: string,
+    path: string,
+    move: { dx?: number; dy?: number; absolute?: boolean } | { scaleBy: number } | { reset: true },
+    gesture?: string,
+  ) => void;
   /**
    * Put one of the chain's own pictures on a page.
    *
@@ -1214,6 +1283,17 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
  */
 export function isVariantPiece(offerId: string): boolean {
   return /~v\d+$/.test(offerId);
+}
+
+/** A page made from a publication's picture — see `pagedPage` in `@incitio/publication`. */
+export function isPicturePage(page: CatalogPage): boolean {
+  return Boolean(page.incito && (page.incito.view as Record<string, unknown>)['paged']);
+}
+
+/** How many cells the document's picture pages were given. */
+function cellCount(document: CatalogDocument): number {
+  return document.pages.filter(isPicturePage)
+    .reduce((sum, page) => sum + (document.templates.find((t) => t.id === page.templateId)?.slots.length ?? 0), 0);
 }
 
 function withTemplates(brand: Brand, templates: PageTemplate[]): Brand {
@@ -1842,6 +1922,7 @@ function rememberedRuns(): PromptRun[] {
 /** A placement nobody has corrected yet. */
 const FRESH: PlacementOverrides = {
   pinned: false,
+  crowdOk: false,
   arrangement: null,
   displayName: null,
   description: null,
@@ -2191,6 +2272,199 @@ function reseat(
     });
 }
 
+/* -------------------------------------------------- the week, carried */
+
+const DIFF_NAMES: Record<string, string> = {
+  price: 'pris', prePrice: 'førpris', savings: 'besparelse', savingsMax: 'besparelse',
+  priceFrom: '"fra"', comparison: 'enhedspris', validFrom: 'gyldighed', validTo: 'gyldighed',
+  name: 'navn', description: 'underlinje', imageUrl: 'billede',
+};
+
+function kroner(value: unknown): string {
+  return typeof value === 'number'
+    ? value.toLocaleString('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '—';
+}
+
+/**
+ * Whether a file is corrections to the open avis or another leaflet.
+ *
+ * Half of what the pages show must be in the file. Wednesday's
+ * corrections to this week keep nearly every product; a different
+ * leaflet — another week, another edition — shares a handful, and
+ * applying it would mark the rest as pulled from the shelves.
+ */
+export function sameAvis(arrival: { onPages: number; matched: number }): boolean {
+  return arrival.onPages > 0 && arrival.matched / arrival.onPages >= 0.5;
+}
+
+/**
+ * A published page learns which of its cells held which offer, the
+ * first time one of them is refilled.
+ *
+ * Pages imported before `IncitoSource.slots` existed only know it by
+ * id — the placement names the publication's own offer — and a refill
+ * erases exactly that. Read off the page as it was the moment before,
+ * the cell keeps its layout for whatever is put in it.
+ */
+function rememberCells(before: CatalogDocument, after: CatalogDocument): CatalogDocument {
+  if (before === after) return after;
+  let changed = false;
+  /*
+   * Products leaving the avis — a feed's "udgået", a new week — may be
+   * the ones a published page printed. The page writes down what it
+   * printed first, so it can still put the new product in its place.
+   */
+  const learned = before.offers === after.offers
+    ? after.pages
+    : after.pages.map((page) => rememberPrinted(page, before.offers));
+  if (learned.some((page, index) => page !== after.pages[index])) changed = true;
+  /*
+   * A published page's cells, the first time "Rediger layout" moves one:
+   * where they stood before, so the offer in each follows by the change —
+   * see `incitoCellBoxes`. A cell already far from its offer's printed box
+   * was moved before this was kept, and starts from the printed box.
+   */
+  const based = before.templates === after.templates ? learned : learned.map((page) => {
+    if (!page.incito || page.incito.cellBase || (page.incito.view as { paged?: unknown }).paged) return page;
+    const was = before.templates.find((entry) => entry.id === page.templateId);
+    const now = after.templates.find((entry) => entry.id === page.templateId);
+    if (!was || !now || was === now) return page;
+    const drawn = incitoOfferBoxes(page.incito);
+    const cellBase: Record<string, { x: number; y: number; w: number; h: number }> = {};
+    for (const slot of was.slots) {
+      if (!slot.rect) continue;
+      const viewId = page.incito.slots?.[slot.id]
+        ?? page.placements.find((entry) => entry.slotId === slot.id)?.offerId;
+      const printed = viewId ? drawn.get(viewId) : undefined;
+      const apart = printed && ['x', 'y', 'w', 'h'].some((key) => (
+        Math.abs(printed[key as 'x'] - slot.rect![key as 'x']) > 0.03));
+      cellBase[slot.id] = apart && printed ? printed : slot.rect;
+    }
+    changed = true;
+    return { ...page, incito: { ...page.incito, cellBase } };
+  });
+  const pages = based.map((page) => {
+    if (!page.incito || Object.keys(page.incito.slots ?? {}).length > 0) return page;
+    const was = before.pages.find((entry) => entry.id === page.id);
+    if (!was || was.placements === page.placements) return page;
+    const views = offerViewIds(page.incito.view as never);
+    const slots = Object.fromEntries(was.placements
+      .filter((placement) => views.has(placement.offerId))
+      .map((placement) => [placement.slotId, placement.offerId]));
+    if (Object.keys(slots).length === 0) return page;
+    changed = true;
+    return { ...page, incito: { ...page.incito, slots } };
+  });
+  return changed ? { ...after, pages } : after;
+}
+
+/** Every correction field of an element, filled in — see `IncitoEdit`. */
+const UNEDITED: IncitoEdit = { hidden: false, dx: 0, dy: 0, scale: 1 };
+
+/**
+ * One change to some elements of one published page.
+ *
+ * An element whose record ends up saying nothing — shown, unmoved, at
+ * its own size, in its own words — loses the record, so the page's
+ * edits list only what somebody actually changed.
+ */
+function withIncitoEdit(
+  document: CatalogDocument, pageId: string, paths: string[], change: (was: IncitoEdit) => IncitoEdit,
+): CatalogDocument {
+  return {
+    ...document,
+    pages: document.pages.map((page) => {
+      if (page.id !== pageId) return page;
+      const edits = { ...(page.incitoEdits ?? {}) };
+      for (const path of paths) {
+        const next = change({ ...UNEDITED, ...edits[path] });
+        if (!next.texts) delete next.texts;
+        const plain = !next.hidden && !next.texts && next.dx === 0 && next.dy === 0 && next.scale === 1;
+        if (plain) delete edits[path];
+        else edits[path] = next;
+      }
+      return { ...page, incitoEdits: edits };
+    }),
+  };
+}
+
+/** Offers the avis carries and no page shows, alone or inside a grouped tile. */
+function unplaced(document: CatalogDocument): Offer[] {
+  const placed = new Set(document.pages.flatMap((page) => page.placements)
+    .map((placement) => placement.offerId));
+  const shown = new Set(document.offers
+    .filter((offer) => placed.has(offer.id))
+    .flatMap((offer) => offer.members));
+  return document.offers.filter((offer) => !placed.has(offer.id) && !shown.has(offer.id));
+}
+
+/** The products a page prints, grouped tiles read as their members. */
+function offersOnPage(document: CatalogDocument, pageId: string): Offer[] {
+  const byId = new Map(document.offers.map((offer) => [offer.id, offer]));
+  const page = document.pages.find((entry) => entry.id === pageId);
+  return (page?.placements ?? [])
+    .map((placement) => byId.get(placement.offerId))
+    .filter((offer): offer is Offer => Boolean(offer));
+}
+
+/** What a page is about, for naming it in the gallery and the book. */
+export function departmentOfPage(document: CatalogDocument, pageId: string): Department | null {
+  const byId = new Map(document.offers.map((offer) => [offer.id, offer]));
+  const products = offersOnPage(document, pageId).flatMap((offer) => (offer.members.length > 0
+    ? offer.members.map((id) => byId.get(id)).filter((m): m is Offer => Boolean(m))
+    : [offer]));
+  return pageDepartment(products);
+}
+
+/** A default name and tags for page N, when nobody has typed one. */
+export function sectionNaming(document: CatalogDocument, index: number): { name: string; tags: string[] } {
+  const page = document.pages[index]!;
+  if (page.kind === 'image') {
+    return { name: page.background?.subject || `Billedside ${index + 1}`, tags: ['billedside'] };
+  }
+  const department = departmentOfPage(document, page.id);
+  const label = department ? DEPARTMENT_NAMES[department] : 'Blandet';
+  return {
+    name: page.title || `${label} · side ${index + 1}`,
+    tags: [department ?? 'blandet', ...(index === 0 ? ['forside'] : [])],
+  };
+}
+
+/** One page, packaged for the section library. */
+function sectionOf(
+  document: CatalogDocument, pageId: string, name: string, tags: string[],
+): api.Section | null {
+  const page = document.pages.find((entry) => entry.id === pageId);
+  if (!page) return null;
+  const onPage = offersOnPage(document, pageId);
+  const members = new Set(onPage.flatMap((offer) => offer.members));
+  const preview = [...onPage, ...document.offers.filter((offer) => members.has(offer.id))].slice(0, 40);
+  return {
+    id: `sec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    name: name.trim() || 'Uden navn',
+    tags: [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 12),
+    // A section travels without the avis it came from — it takes what it printed along.
+    page: rememberPrinted(page, document.offers),
+    template: document.templates.find((entry) => entry.id === page.templateId) ?? null,
+    preview,
+    createdAt: '',
+  };
+}
+
+/** The week most of a feed's offers start in. */
+function feedWeek(offers: Offer[]): CatalogWeek | null {
+  const counts = new Map<string, { week: CatalogWeek; n: number }>();
+  for (const offer of offers) {
+    const week = weekOf(new Date(`${offer.validFrom}T12:00:00Z`));
+    const key = `${week.year}-${week.week}`;
+    const entry = counts.get(key) ?? { week, n: 0 };
+    entry.n += 1;
+    counts.set(key, entry);
+  }
+  return [...counts.values()].sort((a, b) => b.n - a.n)[0]?.week ?? null;
+}
+
 export const useStudio = create<StudioState>((set, get) => {
   /*
    * The open gesture, if one is running. Not part of the public state:
@@ -2234,7 +2508,20 @@ export const useStudio = create<StudioState>((set, get) => {
   ): Promise<void> {
     if (announce) set({ busy: 'Læser feedet…' });
     try {
-      const reading = await api.readFeed(brandId, text, name);
+      /*
+       * Read again, a few times, before giving up. On a reload the API
+       * may still be starting, and a single miss left the list of the
+       * week's products empty with nothing on screen to say why.
+       */
+      let reading: Awaited<ReturnType<typeof api.readFeed>> | null = null;
+      for (let attempt = 0; !reading; attempt += 1) {
+        try {
+          reading = await api.readFeed(brandId, text, name);
+        } catch (error) {
+          if (attempt >= 3) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
+        }
+      }
       set({
         feedOffers: reading.offers,
         feedReading: { source: reading.source, withImage: reading.withImage },
@@ -2257,7 +2544,7 @@ export const useStudio = create<StudioState>((set, get) => {
         feedReading: null,
         ...(announce
           ? { busy: null, error: `${name} kunne ikke læses: ${message(error)}` }
-          : {}),
+          : { error: 'Ugens varer kunne ikke hentes — genindlæs siden om lidt.' }),
       });
     }
   }
@@ -2291,7 +2578,7 @@ export const useStudio = create<StudioState>((set, get) => {
     if (!document) return;
     const continues = name !== undefined && name === gesture;
     gesture = name ?? null;
-    const next = change(document);
+    const next = rememberCells(document, change(document));
     set({
       ...(continues ? {} : { past: [...past.slice(-29), document], future: [] }),
       document: next,
@@ -2393,7 +2680,6 @@ export const useStudio = create<StudioState>((set, get) => {
         const same = ordered.every((member, index) => member.id === offer.members[index]);
         if (!same) {
           const rebuilt = groupOffers(ordered, offer.id);
-          gesture = null;
           mutate((doc) => ({
             ...doc,
             offers: doc.offers.map((entry) => (entry.id === offer.id ? rebuilt : entry)),
@@ -2788,6 +3074,51 @@ export const useStudio = create<StudioState>((set, get) => {
     return true;
   }
 
+  /**
+   * What the last applied feed changed, as lines in the checklist.
+   *
+   * A changed price is worth a look, not a stop: the tile already
+   * prints the new number. A product pulled from the feed IS a stop —
+   * printing it is advertising something the shop will not have.
+   */
+  function changeFindings(): Finding[] {
+    const { feedChanges, document } = get();
+    if (!feedChanges || !document) return [];
+    const numberOf = new Map(document.pages.map((page, index) => [page.id, index + 1]));
+    const found: Finding[] = [];
+    for (const change of feedChanges.changed) {
+      if (!change.pageId || !numberOf.has(change.pageId)) continue;
+      const price = change.fields.find((entry) => entry.field === 'price');
+      found.push({
+        id: `feed:${change.offerId}:ændret`,
+        kind: 'pris',
+        said: `Side ${numberOf.get(change.pageId)}: ${change.next.name} — `
+          + (price
+            ? `ny pris ${kroner(price.before)} → ${kroner(price.after)}`
+            : `${change.fields.map((entry) => DIFF_NAMES[entry.field] ?? entry.field).join(', ')} ændret`),
+        pageId: change.pageId,
+        pageNumber: numberOf.get(change.pageId) ?? null,
+        offerId: change.offerId,
+        weight: 'se',
+      });
+    }
+    for (const gone of feedChanges.removed) {
+      const still = document.pages.find((page) => page.id === gone.pageId)
+        ?.placements.some((placement) => placement.offerId === gone.offer.id);
+      if (!still) continue;
+      found.push({
+        id: `feed:${gone.offer.id}:udgået`,
+        kind: 'pris',
+        said: `Side ${numberOf.get(gone.pageId)}: ${gone.offer.name} er udgået af feedet`,
+        pageId: gone.pageId,
+        pageNumber: numberOf.get(gone.pageId) ?? null,
+        offerId: gone.offer.id,
+        weight: 'stop',
+      });
+    }
+    return found;
+  }
+
   /** Where week 39's avis is stored. One avis per week, per chain. */
   function weekId(brandId: string, week: CatalogWeek): string {
     return `${brandId}-${week.year}-u${String(week.week).padStart(2, '0')}`;
@@ -2868,6 +3199,13 @@ export const useStudio = create<StudioState>((set, get) => {
     reproductions: [],
     feedOffers: [],
     feedReading: null,
+    sections: [],
+    sectionsOpen: false,
+    sectionsAt: 0,
+    feedArrival: null,
+    feedChanges: null,
+    carryReport: null,
+    selectedIncito: null,
     libraryOpen: false,
     librarySearch: '',
     librarySelection: [],
@@ -2992,7 +3330,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const measured = document
         ? measureFindings(window.document, document.pages.map((page) => page.id), untouched)
         : [];
-      set({ findings: [...read, ...measured].sort(bySeverity) });
+      set({ findings: [...read, ...measured, ...changeFindings()].sort(bySeverity) });
     },
 
     /**
@@ -3033,6 +3371,12 @@ export const useStudio = create<StudioState>((set, get) => {
     },
 
     goToFinding(finding) {
+      // Stand at the page itself, not at its thumbnail in the book.
+      if (finding.pageId && get().openPageId !== finding.pageId) {
+        get().openPage(finding.pageId);
+        window.setTimeout(() => get().goToFinding(finding), 350);
+        return;
+      }
       set({
         ...(finding.pageId ? { activePageId: finding.pageId } : {}),
         selectedOfferId: finding.offerId,
@@ -3054,14 +3398,28 @@ export const useStudio = create<StudioState>((set, get) => {
     },
 
     async start() {
-      try {
-        const brands = await api.fetchBrands();
-        set({ brands });
-        const remembered = rememberedBrand();
-        const chosen = brands.find((b) => b.id === remembered) ?? brands[0];
-        if (chosen) await get().signInAs(chosen.id);
-      } catch (error) {
-        set({ error: `Kunne ikke nå API-serveren — kør \`npm run dev:api\`. (${message(error)})` });
+      /*
+       * Patient on the way in. The API restarts whenever its code
+       * changes, and a studio opened in those few seconds came up as an
+       * empty avis and an error — which reads as lost work. It waits,
+       * and says it is waiting, before it gives up.
+       */
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          if (attempt > 0) set({ busy: 'Starter op…', error: null });
+          const brands = await api.fetchBrands();
+          set({ brands, busy: null });
+          const remembered = rememberedBrand();
+          const chosen = brands.find((b) => b.id === remembered) ?? brands[0];
+          if (chosen) await get().signInAs(chosen.id);
+          if (get().brand || attempt >= 8) return;
+        } catch (error) {
+          if (attempt >= 8) {
+            set({ busy: null, error: `Kunne ikke nå API-serveren — kør \`npm run dev:api\`. (${message(error)})` });
+            return;
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     },
 
@@ -3086,6 +3444,10 @@ export const useStudio = create<StudioState>((set, get) => {
         // came out of does — see the note above.
         feedOffers: [],
         feedReading: null,
+        sections: [],
+        feedArrival: null,
+        feedChanges: null,
+        carryReport: null,
         librarySelection: [],
         libraryClosedGroups: [],
         activePageId: null,
@@ -3124,6 +3486,7 @@ export const useStudio = create<StudioState>((set, get) => {
         ]);
         void get().refreshCatalogues();
         void get().refreshUploads();
+        void get().refreshSections();
         const parked = parkedWork(brandId);
         set({
           brandId,
@@ -3162,16 +3525,17 @@ export const useStudio = create<StudioState>((set, get) => {
            * must not undo the last ten minutes.
            */
           ...(!get().document && parked
-            ? { document: parked.document, past: [], future: [] }
-            : {}),
-          busy: null,
-          ...(parked && !get().document
             ? {
-              note: `Genoptog arbejdet fra ${new Date(parked.at).toLocaleTimeString('da-DK', {
-                hour: '2-digit', minute: '2-digit',
-              })} — ${parked.document.pages.length} sider`,
+              document: healLabelPrices(parked.document).document,
+              // The parked avis's own week, as opening it would set —
+              // otherwise the bar names one week and the checks another.
+              ...(parked.document.week ? { week: parked.document.week } : {}),
+              past: [],
+              future: [],
             }
             : {}),
+          // Back where you were, without saying so: the pages on screen say it.
+          busy: null,
         });
         // The shipped sample fills the library too, quietly: it is what
         // the editor opens with, not something somebody just did.
@@ -3198,6 +3562,48 @@ export const useStudio = create<StudioState>((set, get) => {
        * to "did it parse" and the library of products.
        */
       await loadFeed(brandId, name, text, true);
+
+      /*
+       * A file arriving over an open avis is one of two things, and only
+       * the person knows which: Wednesday's corrections to this week, or
+       * next week's products. Both answers are prepared here, and the
+       * banner over the book asks.
+       */
+      const { document, feedOffers } = get();
+      /*
+       * Asked over any avis with cells — also one whose cells are still
+       * empty, as a picture-only publication's are when it arrives: the
+       * file is then plainly for filling them.
+       */
+      const placed = document?.pages.some((page) => page.placements.length > 0 || page.kind === 'offers');
+      if (document && placed && feedOffers.length > 0) {
+        const diff = feedDiff(document, feedOffers);
+        /*
+         * Measured on what the PAGES show, not on everything the avis
+         * carries: the question is whether the products a shopper would
+         * see are in this file. An import brings a hundred products that
+         * never reached a page, and counting them made a different
+         * leaflet look like a third of a match.
+         */
+        const shown = new Set<string>();
+        const byId = new Map(document.offers.map((offer) => [offer.id, offer]));
+        for (const placement of document.pages.flatMap((page) => page.placements)) {
+          const offer = byId.get(placement.offerId);
+          for (const id of offer?.members.length ? offer.members : [placement.offerId]) shown.add(id);
+        }
+        const onPages = shown.size;
+        set({
+          feedArrival: {
+            name,
+            diff,
+            count: feedOffers.length,
+            onPages,
+            matched: Math.max(0, onPages - diff.removed.length),
+          },
+          view: 'bog',
+          openPageId: null,
+        });
+      }
     },
 
     async build(options = {}) {
@@ -3306,11 +3712,14 @@ export const useStudio = create<StudioState>((set, get) => {
       if (!brandId || !id) return;
       set({ busy: 'Åbner…', error: null, note: null });
       try {
-        const document = await api.fetchCatalogue(brandId, id);
-        if (!document) {
+        const stored = await api.fetchCatalogue(brandId, id);
+        if (!stored) {
           set({ busy: null, error: 'Den avis findes ikke længere' });
           return;
         }
+        // Prices an older publication import filed under the name — see
+        // `healLabelPrices`. Healed on open, saved with the next save.
+        const { document, healed } = healLabelPrices(stored);
         set({
           document,
           /*
@@ -3339,7 +3748,8 @@ export const useStudio = create<StudioState>((set, get) => {
            * pages — the part that cost money — do come back.
            */
           reproductions: [],
-          note: `Åbnede ${document.name} · ${count(document.pages.length, 'side', 'sider')}`,
+          note: `Åbnede ${document.name} · ${count(document.pages.length, 'side', 'sider')}`
+            + (healed ? ` · ${count(healed, 'pris', 'priser')} hentet ud af varenavnene` : ''),
         });
         get().refreshFindings();
       } catch (error) {
@@ -3352,20 +3762,24 @@ export const useStudio = create<StudioState>((set, get) => {
      * an unsaved edit would hand back the previous version — silently,
      * and only visible once someone compared the PDF to the screen.
      */
-    async downloadPdf() {
+    async downloadPdf(forPrint = false) {
       const { brandId, document } = get();
       if (!brandId || !document) return;
-      set({ busy: 'Printer PDF…', error: null });
+      set({ busy: forPrint ? 'Printer tryk-PDF med beskæring…' : 'Printer PDF…', error: null });
       try {
-        await api.saveCatalogue(brandId, document, 'før print');
-        const blob = await api.fetchCataloguePdf(brandId, document.id);
+        await api.saveCatalogue(brandId, document, forPrint ? 'til tryk' : 'før print');
+        const blob = await api.fetchCataloguePdf(brandId, document.id, forPrint);
         const url = URL.createObjectURL(blob);
         const link = window.document.createElement('a');
         link.href = url;
-        link.download = `${document.id}.pdf`;
+        link.download = `${document.id}${forPrint ? '-tryk' : ''}.pdf`;
         link.click();
         URL.revokeObjectURL(url);
-        set({ busy: null, note: 'PDF hentet' });
+        set({
+          busy: null,
+          note: forPrint ? 'Tryk-PDF hentet · 3 mm beskæring og skæremærker' : 'PDF hentet',
+          savedAt: new Date().toISOString(),
+        });
       } catch (error) {
         set({ busy: null, error: message(error) });
       }
@@ -3899,8 +4313,9 @@ export const useStudio = create<StudioState>((set, get) => {
         // A picture and a tile are never both in hand: the arrow keys
         // would have two things to move and the inspector two things to
         // describe.
-        ? { selectedOfferId: offerId, selectedDecorId: null, selectedText: null, selectedNoteId: null }
+        ? { selectedOfferId: offerId, selectedDecorId: null, selectedText: null, selectedNoteId: null, selectedIncito: null }
         : {
+          selectedIncito: null,
           selectedOfferId: offerId,
           selectedPart: null,
           // Another tile's variant index means nothing on this one.
@@ -4634,7 +5049,353 @@ export const useStudio = create<StudioState>((set, get) => {
       }
     },
 
+    setSectionsOpen: (sectionsOpen, at) => {
+      /*
+       * Aimed where it was opened from — after the page whose menu asked,
+       * else after the page last worked on, else at the end — and always
+       * changeable in the gallery before anything is inserted.
+       */
+      const pages = get().document?.pages ?? [];
+      const active = pages.findIndex((page) => page.id === get().activePageId);
+      const where = at ?? (active >= 0 ? active + 1 : pages.length);
+      set({ sectionsOpen, sectionsAt: Math.max(0, Math.min(where, pages.length)) });
+      if (sectionsOpen) void get().refreshSections();
+    },
+
+    setSectionsAt: (sectionsAt) => set({ sectionsAt }),
+
+    async refreshSections() {
+      const { brandId } = get();
+      if (!brandId) return;
+      try {
+        set({ sections: await api.fetchSections(brandId) });
+      } catch {
+        // The gallery is a convenience; the book works without it.
+      }
+    },
+
+    async saveSection(pageId, name, tags) {
+      const { brandId, document } = get();
+      if (!brandId || !document) return;
+      const section = sectionOf(document, pageId, name, tags);
+      if (!section) return;
+      try {
+        await api.saveSection(brandId, section);
+        set({ note: `Gemt som sektion: ${name}` });
+        await get().refreshSections();
+      } catch (error) {
+        set({ error: message(error) });
+      }
+    },
+
+    async saveAllSections() {
+      const { brandId, document } = get();
+      if (!brandId || !document) return;
+      set({ busy: 'Gemmer siderne som sektioner…', error: null });
+      try {
+        let n = 0;
+        for (const [index, page] of document.pages.entries()) {
+          const { name, tags } = sectionNaming(document, index);
+          const section = sectionOf(document, page.id, name, tags);
+          if (!section) continue;
+          await api.saveSection(brandId, section);
+          n += 1;
+        }
+        set({ busy: null, note: `${count(n, 'sektion', 'sektioner')} gemt fra ${document.name}` });
+        await get().refreshSections();
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+      }
+    },
+
+    async removeSection(id) {
+      const { brandId } = get();
+      if (!brandId) return;
+      try {
+        await api.removeSection(brandId, id);
+        set({ sections: get().sections.filter((section) => section.id !== id) });
+      } catch (error) {
+        set({ error: message(error) });
+      }
+    },
+
+    insertSection(id, at) {
+      const { brand, sections, brandId } = get();
+      const section = sections.find((entry) => entry.id === id);
+      if (!brand || !brandId || !section) return;
+      /*
+       * A section is a way to START an avis, not only to add to one: on
+       * an empty studio it opens this week's paper, with the feed as its
+       * reserve, and the section is its first page.
+       */
+      if (!get().document) {
+        const week = get().week;
+        const now = new Date().toISOString();
+        set({
+          document: CatalogDocumentSchema.parse({
+            id: week ? weekId(brandId, week) : `${brandId}-${Date.now().toString(36)}`,
+            schemaVersion: 2,
+            name: week ? weekName(brand.name, week) : `${brand.name} · ny avis`,
+            brandId,
+            week,
+            pages: [],
+            offers: get().feedOffers,
+            templates: [],
+            createdAt: now,
+            updatedAt: now,
+          }),
+          past: [],
+          future: [],
+        });
+      }
+      const document = get().document!;
+
+      const template = resolveTemplate(brand, section.page.templateId)
+        ?? document.templates.find((entry) => entry.id === section.page.templateId)
+        ?? section.template
+        ?? undefined;
+      const cells = section.page.kind === 'image' || !template
+        ? []
+        : slotAssignmentOrder(template).map((slot) => slot.id);
+
+      /*
+       * Dealt from the reserve by the section's own tags — a "frost"
+       * section takes the strongest frozen products nobody has placed.
+       * A section tagged with no department takes the strongest of
+       * anything. Cells it cannot fill stay empty and say so.
+       */
+      const wanted = section.tags.filter((tag): tag is Department => (DEPARTMENTS as readonly string[]).includes(tag));
+      const related = new Set(wanted.flatMap(familyOf));
+      /*
+       * The reserve is what the shelf shows: the avis's own products and
+       * this week's feed. An avis fetched from a link carries only what it
+       * printed, and a section dealt from that alone came out empty with
+       * the whole feed sitting unplaced beside it.
+       */
+      const inAvis = new Set(document.offers.map((offer) => offer.id));
+      const fromFeed = get().feedOffers.filter((offer) => !inAvis.has(offer.id) && offer.members.length === 0);
+      const free = [...unplaced(document), ...fromFeed].filter((offer) => offer.imageUrl).sort(compareByImportance);
+      // Its own departments first, then their neighbours — never the whole shop.
+      const own = free.filter((offer) => wanted.length === 0 || wanted.includes(departmentOf(offer)));
+      const near = wanted.length === 0 ? [] : free.filter((offer) => !own.includes(offer) && related.has(departmentOf(offer)));
+      const reserve = [...own, ...near];
+      const placements = cells.slice(0, reserve.length).map((slotId, n) => ({
+        offerId: reserve[n]!.id,
+        slotId,
+        overrides: {},
+      }));
+
+      const pageId = `sec-${Date.now().toString(36)}`;
+      const page = CatalogPage.parse({ ...rememberPrinted(section.page, section.preview ?? []), id: pageId, placements });
+      const where = Math.max(0, Math.min(at ?? document.pages.length, document.pages.length));
+
+      gesture = null;
+      mutate((doc) => {
+        const pages = [...doc.pages];
+        pages.splice(where, 0, page);
+        const templates = template && !resolveTemplate(brand, template.id)
+          && !doc.templates.some((entry) => entry.id === template.id)
+          ? [...doc.templates, template]
+          : doc.templates;
+        // A document embeds the offers it prints — see `addOffersToPage`.
+        const known = new Set(doc.offers.map((offer) => offer.id));
+        const incoming = placements
+          .map((placement) => fromFeed.find((offer) => offer.id === placement.offerId))
+          .filter((offer): offer is Offer => Boolean(offer) && !known.has(offer!.id));
+        return { ...doc, pages, templates, offers: [...doc.offers, ...incoming] };
+      });
+      set({
+        sectionsOpen: false,
+        scrollToPageId: pageId,
+        activePageId: pageId,
+        note: `${section.name} lagt ind som side ${where + 1}`
+          + (cells.length ? ` · ${placements.length} af ${cells.length} pladser fyldt fra reserven` : '')
+          + (cells.length > placements.length && wanted.length
+            ? ` — reserven har ikke flere ${wanted.map((tag) => DEPARTMENT_NAMES[tag].toLowerCase()).join('/')}-varer`
+            : ''),
+      });
+    },
+
+    dismissFeedArrival: () => set({ feedArrival: null }),
+
+    applyFeedChanges() {
+      const arrival = get().feedArrival;
+      if (!arrival || !get().document) return;
+      // Another leaflet's file is not a correction to this one — see `sameAvis`.
+      if (!sameAvis(arrival)) return;
+      gesture = null;
+      mutate((document) => applyFeedDiff(document, arrival.diff));
+      const { changed, removed, added } = arrival.diff;
+      set({
+        feedArrival: null,
+        feedChanges: arrival.diff,
+        note: [
+          `${arrival.name} lagt ind`,
+          count(changed.length, 'ændring', 'ændringer'),
+          `${removed.length} udgået`,
+          `${added.length} nye i reserven`,
+        ].join(' · '),
+      });
+      get().refreshFindings();
+    },
+
+    clearFeedChanges: () => {
+      set({ feedChanges: null });
+      get().refreshFindings();
+    },
+
+    carryWeek() {
+      const { document, brand, brandId, feedOffers, past } = get();
+      if (!document || !brand || !brandId || feedOffers.length === 0) return;
+
+      // The week the file is FOR, read off its own dates; next week when
+      // it does not say.
+      const week = feedWeek(feedOffers) ?? (document.week ? nextWeek(document.week) : get().week);
+      let id = week ? weekId(brandId, week) : `${brandId}-${Date.now().toString(36)}`;
+      if (id === document.id) id = `${id}-${Date.now().toString(36)}`;
+
+      const { document: carried, report } = carryForward(document, feedOffers, {
+        templateFor: (templateId) => resolveTemplate(brand, templateId)
+          ?? document.templates.find((entry) => entry.id === templateId),
+        week,
+        brandName: brand.name,
+        id,
+      });
+      // Published pages keep their cells' layouts for the new products.
+      const next = rememberCells(document, carried);
+
+      if (week) {
+        try {
+          window.localStorage.setItem(WEEK_KEY, JSON.stringify(week));
+        } catch { /* private browsing; it holds for this session */ }
+      }
+      gesture = null;
+      set({
+        document: next,
+        ...(week ? { week } : {}),
+        // Undo goes back to last week's avis, as it was.
+        past: [...past.slice(-29), document],
+        future: [],
+        feedArrival: null,
+        feedChanges: null,
+        carryReport: { ...report, from: document.name },
+        view: 'bog',
+        openPageId: null,
+        activePageId: next.pages[0]?.id ?? null,
+        selectedOfferId: null,
+        selectedPart: null,
+        selectedPack: null,
+        selectedText: null,
+        savedAt: null,
+        note: `${next.name} startet fra ${document.name}`,
+      });
+      get().refreshFindings();
+    },
+
+    dismissCarryReport: () => set({ carryReport: null }),
+
+    clearNote: () => set({ note: null }),
+
+    startOver() {
+      gesture = null;
+      set({
+        document: null,
+        past: [],
+        future: [],
+        feedArrival: null,
+        feedChanges: null,
+        carryReport: null,
+        reproductions: [],
+        view: 'bog',
+        openPageId: null,
+        activePageId: null,
+        selectedOfferId: null,
+        selectedPart: null,
+        selectedPack: null,
+        selectedText: null,
+        savedAt: null,
+        findings: [],
+        error: null,
+        note: 'Startet forfra — den gemte avis er ikke rørt',
+      });
+    },
+
+    selectIncito(pageId, path) {
+      set({
+        selectedIncito: path ? { pageId, path } : null,
+        // One thing in hand at a time: a tile, a note or an element.
+        ...(path ? {
+          selectedOfferId: null, selectedPart: null, selectedPack: null,
+          selectedDecorId: null, selectedNoteId: null,
+        } : {}),
+      });
+    },
+
+    editIncito(pageId, path, patch, name) {
+      mutate((document) => withIncitoEdit(document, pageId, [path], (was) => ({
+        ...was,
+        ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
+        ...(patch.texts === null ? { texts: undefined } : patch.texts ? { texts: patch.texts } : {}),
+      })), name);
+    },
+
+    moveIncito(pageId, path, move, name) {
+      mutate((document) => withIncitoEdit(document, pageId, [path], (was) => {
+        if ('reset' in move) return { ...was, dx: 0, dy: 0, scale: 1 };
+        return {
+          ...was,
+          dx: 'dx' in move && move.dx !== undefined ? (move.absolute ? move.dx : was.dx + move.dx) : was.dx,
+          dy: 'dy' in move && move.dy !== undefined ? (move.absolute ? move.dy : was.dy + move.dy) : was.dy,
+          scale: 'scaleBy' in move ? Math.min(5, Math.max(0.2, was.scale + move.scaleBy)) : was.scale,
+        };
+      }), name);
+    },
+
+    hideIncito(pageId, path, hidden) {
+      const page = get().document?.pages.find((entry) => entry.id === pageId);
+      if (!page?.incito) return;
+      const doc = get().document;
+      const block = pageBlocks(
+        page as CatalogPage & { incito: NonNullable<CatalogPage['incito']> },
+        doc?.offers ?? [],
+        doc?.templates.find((t) => t.id === page.templateId),
+      ).find((entry) => entry.path === path);
+      gesture = null;
+      mutate((document) => withIncitoEdit(
+        document, pageId, [path, ...(block?.companions ?? [])], (was) => ({ ...was, hidden }),
+      ));
+      if (hidden) {
+        set({ selectedIncito: null, note: 'Taget af siden — ⌘Z fortryder, eller vis det igen i panelet' });
+      }
+    },
+
+    setPageExact(pageId, exact) {
+      gesture = null;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId ? { ...page, exact } : page)),
+      }));
+      set({
+        note: exact
+          ? 'Siden vises som udgivet — præcis som i Tjeks viewer'
+          : 'Siden er tegnet med fliser — nu kan den redigeres',
+      });
+    },
+
+    clearPage(pageId) {
+      const index = get().document?.pages.findIndex((page) => page.id === pageId) ?? -1;
+      gesture = null;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId ? { ...page, placements: [] } : page)),
+      }));
+      if (index >= 0) set({ note: `Side ${index + 1} tømt — varerne ligger i reserven · ⌘Z fortryder` });
+    },
+
     removePage(pageId) {
+      const index = get().document?.pages.findIndex((page) => page.id === pageId) ?? -1;
+      if (index >= 0) set({ note: `Side ${index + 1} slettet — varerne ligger i reserven · ⌘Z fortryder` });
+      if (get().openPageId === pageId) set({ view: 'bog', openPageId: null });
       gesture = null;
       mutate((document) => ({
         ...document,
@@ -5354,6 +6115,14 @@ export const useStudio = create<StudioState>((set, get) => {
        * the wording is worth having.
        */
       if (seated.length > 1 && !options.compose) {
+        /*
+         * The model's order and wording finish THIS step: left open as
+         * the current gesture, they land in the same history entry as
+         * the fill, so one ⌘Z takes the whole cluster back. Anything
+         * the editor does in between closes it, and then the answer is
+         * a step of its own.
+         */
+        gesture = `settle/${assembled.id}`;
         void settleGroup(pageId, slotId, assembled.id, options.arrange !== false);
       }
     },
@@ -5510,12 +6279,15 @@ export const useStudio = create<StudioState>((set, get) => {
       if (!template) return [];
 
       const names = new Map(document.offers.map((offer) => [offer.id, offer.name]));
+      const sheet = pagedSheet(page.incito);
       // Reading order, which is the order the cells are drawn in — a
       // picker numbered by the template's declaration order would count
       // differently from the page in front of the person using it.
       return slotAssignmentOrder(template).map((slot, index) => {
         const sitting = page.placements.find((placement) => placement.slotId === slot.id);
-        const name = sitting ? names.get(sitting.offerId) ?? sitting.offerId : 'tom';
+        // A page picture's cell shows what was printed there until it is filled.
+        const printed = !sitting && sheet && !sheet.printed?.[slot.id];
+        const name = sitting ? names.get(sitting.offerId) ?? sitting.offerId : printed ? 'som trykt' : 'tom';
         return { slotId: slot.id, label: `${index + 1} · ${name.slice(0, 28)}` };
       });
     },
@@ -5583,12 +6355,32 @@ export const useStudio = create<StudioState>((set, get) => {
             `${count(read, 'side', 'sider')} hentet fra udgivelsen`,
             skipped > 0 ? `${skipped} uden gitter` : '',
             `${document.offers.length} varer`,
+            reply.publication.paged
+              ? (reply.publication.known ? 'varer og pladser fra Tjek' : `${cellCount(document)} pladser fundet i billederne`)
+              : '',
             'ingen modelkald',
           ].filter(Boolean).join(' · '),
         });
+        // A catalogue from another chain than the one being worked in is
+        // most likely a mistake — said, not refused.
+        const chain = reply.publication.title?.trim();
+        const mine = get().brand?.name ?? '';
+        if (chain && mine && !chain.toLowerCase().includes(mine.split(/\s+/)[0]!.toLowerCase())
+          && !mine.toLowerCase().includes(chain.toLowerCase())) {
+          set({ error: `Udgivelsen er fra ${chain}, men du arbejder i ${mine} — skift kæde øverst, hvis det ikke var meningen.` });
+        }
       } catch (error) {
         set({ busy: null, error: message(error) });
       }
+    },
+
+    setOfferPrice(offerId, price) {
+      if (!Number.isFinite(price) || price < 0 || price > 100000) return;
+      mutate((doc) => ({
+        ...doc,
+        offers: doc.offers.map((offer) => (offer.id === offerId ? { ...offer, price } : offer)),
+      }), `price-${offerId}`);
+      get().refreshFindings();
     },
 
     setLayoutCells: (cells) => set({ layoutCells: cells }),
@@ -5853,7 +6645,11 @@ export const useStudio = create<StudioState>((set, get) => {
       const { past, future, document } = get();
       const previous = past[past.length - 1];
       if (!previous || !document) return;
-      set({ past: past.slice(0, -1), document: previous, future: [document, ...future], ...templatesFollow(document, previous) });
+      set({
+        past: past.slice(0, -1), document: previous, future: [document, ...future], ...templatesFollow(document, previous),
+        // Undoing a new week goes back to last week's week, not only its pages.
+        ...(previous.week ? { week: previous.week } : {}),
+      });
     },
 
     redo() {
@@ -5861,7 +6657,10 @@ export const useStudio = create<StudioState>((set, get) => {
       const { past, future, document } = get();
       const next = future[0];
       if (!next || !document) return;
-      set({ past: [...past, document], document: next, future: future.slice(1), ...templatesFollow(document, next) });
+      set({
+        past: [...past, document], document: next, future: future.slice(1), ...templatesFollow(document, next),
+        ...(next.week ? { week: next.week } : {}),
+      });
     },
   };
 });

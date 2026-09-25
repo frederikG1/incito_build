@@ -24,6 +24,105 @@ export interface PrintOptions {
   imageTimeoutMs?: number;
   /** Reuse a browser across several catalogues. One is launched if absent. */
   browser?: Browser;
+  /**
+   * Print the sheet for a printer rather than for a screen: the page
+   * grown by `bleedMm` on every side, crop marks in a slug around it,
+   * and a line saying what the sheet is. Omit for a proof.
+   */
+  marks?: PrintMarks;
+}
+
+export interface PrintMarks {
+  /** How far the ground runs past the trim. 3 mm is what Danish printers ask for. */
+  bleedMm?: number;
+  /** Written in the slug of every sheet — chain, week, when it was printed. */
+  slug?: string;
+}
+
+/** The white margin the crop marks stand in. */
+const SLUG_MM = 10;
+
+/**
+ * Stand every page on a larger sheet with bleed and crop marks.
+ *
+ * Done in the browser after load rather than in the markup, because
+ * the page's ground is only known once the stylesheet has run: it is
+ * a CSS variable that depends on the page's place in the book. The
+ * bleed is the page's own computed ground, plus its background picture
+ * when it has one, drawn 3 mm larger underneath the trimmed page — so
+ * nothing on the page moves, and nothing is re-laid out for print.
+ */
+function markSheets(input: { bleed: number; slug: number; label: string }): void {
+  const mm = (n: number) => `${n}mm`;
+  const pages = [...document.querySelectorAll<HTMLElement>('.catalog > .page, .catalog .page')];
+  pages.forEach((page, index) => {
+    // Read while the page still stands in the book: its ground depends
+    // on where it sits, and a detached element has no computed style.
+    const ground = getComputedStyle(page).backgroundColor;
+    const sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    page.replaceWith(sheet);
+
+    const bleed = document.createElement('div');
+    bleed.className = 'sheet__bleed';
+    bleed.style.background = ground;
+    const picture = page.querySelector(':scope > .page__bg');
+    if (picture) bleed.append(picture.cloneNode(true));
+    sheet.append(bleed, page);
+
+    const at = input.slug + input.bleed;
+    const length = input.slug - 3;
+    const marks: [string, string, string, string][] = [];
+    for (const x of ['left', 'right'] as const) {
+      for (const y of ['top', 'bottom'] as const) {
+        // Horizontal mark, level with the trim, out in the slug.
+        marks.push([`${x}:0`, `${y}:${mm(at)}`, `width:${mm(length)}`, 'height:0;border-top:0.25pt solid #000']);
+        // Vertical mark, level with the trim, out in the slug.
+        marks.push([`${x}:${mm(at)}`, `${y}:0`, `height:${mm(length)}`, 'width:0;border-left:0.25pt solid #000']);
+      }
+    }
+    for (const style of marks) {
+      const mark = document.createElement('i');
+      mark.className = 'sheet__mark';
+      mark.setAttribute('style', style.join(';'));
+      sheet.append(mark);
+    }
+
+    const said = document.createElement('span');
+    said.className = 'sheet__slug';
+    said.textContent = `${input.label} · side ${index + 1} af ${pages.length}`;
+    sheet.append(said);
+  });
+}
+
+function sheetCss(widthMm: number, heightMm: number, bleed: number): string {
+  const edge = SLUG_MM + bleed;
+  return `
+  @page { size: ${(widthMm + 2 * edge).toFixed(2)}mm ${(heightMm + 2 * edge).toFixed(2)}mm; margin: 0; }
+  @media print {
+    .sheet {
+      position: relative;
+      width: ${(widthMm + 2 * edge).toFixed(2)}mm;
+      height: ${(heightMm + 2 * edge).toFixed(2)}mm;
+      background: #fff;
+      break-after: page;
+      overflow: hidden;
+    }
+    .sheet:last-child { break-after: auto; }
+    .sheet__bleed {
+      position: absolute;
+      left: ${SLUG_MM}mm; top: ${SLUG_MM}mm;
+      width: ${(widthMm + 2 * bleed).toFixed(2)}mm;
+      height: ${(heightMm + 2 * bleed).toFixed(2)}mm;
+      container-type: size;
+    }
+    .sheet > .page { position: absolute; left: ${edge}mm; top: ${edge}mm; break-after: auto; }
+    .sheet__mark { position: absolute; display: block; }
+    .sheet__slug {
+      position: absolute; left: ${edge}mm; bottom: 3mm;
+      font: 6.5pt/1 system-ui, sans-serif; color: #000;
+    }
+  }`;
 }
 
 /**
@@ -42,9 +141,11 @@ export async function renderCataloguePdf(
 ): Promise<Buffer> {
   const widthMm = options.widthMm ?? 210;
   const heightMm = widthMm / brand.pageAspect;
+  const bleed = options.marks ? options.marks.bleedMm ?? 3 : 0;
   const html = renderCatalogueHtml(document, brand, {
     widthMm,
     ...(options.assetDir ? { assetBase: pathToFileURL(`${options.assetDir}/`).href } : {}),
+    ...(options.marks ? { extraCss: sheetCss(widthMm, heightMm, bleed) } : {}),
   });
 
   const browser = options.browser ?? (await chromium.launch());
@@ -69,9 +170,18 @@ export async function renderCataloguePdf(
     await settleImages(page, options.imageTimeoutMs ?? 20_000);
     await settleBackgrounds(page, options.imageTimeoutMs ?? 20_000);
 
+    if (options.marks) {
+      await page.evaluate(markSheets, {
+        bleed,
+        slug: SLUG_MM,
+        label: options.marks.slug ?? document.name,
+      });
+    }
+    const edge = options.marks ? 2 * (SLUG_MM + bleed) : 0;
+
     return await page.pdf({
-      width: `${widthMm}mm`,
-      height: `${heightMm.toFixed(2)}mm`,
+      width: `${(widthMm + edge).toFixed(2)}mm`,
+      height: `${(heightMm + edge).toFixed(2)}mm`,
       printBackground: true,
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
     });

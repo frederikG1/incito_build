@@ -45,8 +45,8 @@ export function LayoutThumb({ template }: { template: PageTemplate }) {
  * products for leaves cells empty, to be filled from the list.
  */
 export function LayoutGallery({
-  page, template, counts, spare,
-}: { page: CatalogPage; template: PageTemplate; counts: number[]; spare: number }) {
+  page, template, spare,
+}: { page: CatalogPage; template: PageTemplate; spare: number }) {
   const s = useStudio();
   const [open, setOpen] = useState(false);
   const brand = s.brand;
@@ -64,7 +64,6 @@ export function LayoutGallery({
       : options;
     return { count, list, reachable: true, fills: Math.min(count, here + spare) };
   });
-  void counts;
 
   return (
     <div className="gallery">

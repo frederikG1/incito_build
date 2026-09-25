@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CatalogDocument, CatalogPage, PAGE_PARTS, PAGE_PART_NAMES, PAGE_TEXT_DEFAULTS,
   PART_DEFAULTS, PlacementOverrides, TILE_PARTS, TILE_PART_NAMES,
-  isImagePage,
+  healLabelPrices, isImagePage,
   mergeCatalogDocuments, pageTextOverride, pageTextPatch, pageTextTouched, pageTextsFreed,
   packStack, partLimits, partOverride, partPatch, partTouched, tileArranged,
 } from '../catalog.js';
@@ -281,5 +281,36 @@ describe('which product of a cluster paints over which', () => {
     expect(Math.min(...all)).toBeGreaterThanOrEqual(0);
     // `.tile__info` sits at 20 and the price mark at 30.
     expect(Math.max(...all)).toBeLessThan(20);
+  });
+});
+
+describe('healLabelPrices', () => {
+  const offer = (id: string, name: string, price: number, description = '') => ({
+    id, name, price, description,
+    quantity: { size: null, unit: 'pcs' }, validFrom: '2026-09-28', validTo: '2026-10-04',
+  });
+  const doc = CatalogDocument.parse({
+    id: 'u40', schemaVersion: 2, name: 'uge 40', brandId: 'superbrugsen', pages: [],
+    offers: [
+      offer('a', 'Spangsberg is\n, DKK 32', 0, 'Dybfrost. 360-450 ml.'),
+      offer('b', 'Coop koteletter, skinkeschnitzler eller stegeflæsk\n, DKK 39', 0, 'Coop koteletter, skinkeschnitzler eller stegeflæsk'),
+      offer('c', 'Udvalgt Fiskars til køkkenet*', 0),
+      offer('d', 'Coop bacon', 25),
+    ],
+    createdAt: '', updatedAt: '',
+  });
+
+  it('moves the price out of the name, and drops fine print that only repeated it', () => {
+    const { document, healed } = healLabelPrices(doc);
+    expect(healed).toBe(2);
+    expect(document.offers[0]).toMatchObject({ name: 'Spangsberg is', price: 32, description: 'Dybfrost. 360-450 ml.' });
+    expect(document.offers[1]).toMatchObject({ price: 39, description: '' });
+    // A display ad with no price stays priceless — and stays flagged.
+    expect(document.offers[2]!.price).toBe(0);
+  });
+
+  it('hands back the same document when there is nothing to heal', () => {
+    const clean = { ...doc, offers: [doc.offers[3]!] };
+    expect(healLabelPrices(clean).document).toBe(clean);
   });
 });

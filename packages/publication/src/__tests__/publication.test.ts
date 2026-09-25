@@ -154,6 +154,23 @@ describe('reading a publication', () => {
   });
 });
 
+describe('the price in a label broken over two lines', () => {
+  it('reads the price and leaves the name clean', () => {
+    const wrapped = { ...PUBLICATION, root_view: JSON.parse(JSON.stringify(PUBLICATION.root_view)) };
+    const walk = (node: Record<string, unknown>) => {
+      if (node['role'] === 'offer') node['accessibility_label'] = String(node['accessibility_label']).replace(', DKK', '\n, DKK');
+      for (const child of (node['child_views'] as Record<string, unknown>[] | undefined) ?? []) walk(child);
+    };
+    walk(wrapped.root_view as Record<string, unknown>);
+    const offers = readIncito(wrapped as never).pages.flatMap((page) => page.offers);
+    expect(offers.length).toBeGreaterThan(0);
+    for (const entry of offers) {
+      expect(entry.price).toBeGreaterThan(0);
+      expect(entry.name).not.toMatch(/DKK|\n/);
+    }
+  });
+});
+
 describe('a publication page as a template', () => {
   const page = readIncito(PUBLICATION).pages[0]!;
   const read = pageTemplate(page, 'pub/abc123/p1')!;
@@ -355,6 +372,10 @@ describe('a page wrapped in an oversized section', () => {
     expect(bottom).toBeCloseTo(1, 6);
   });
 
+  it('prints the page itself, not the box around it', () => {
+    expect(page.view['layout_width']).toBe(600);
+  });
+
   it('finds the ground the wrapper was hiding', () => {
     expect(page.ground).toBe('#d5e4ed');
   });
@@ -527,5 +548,28 @@ describe('words on the page outside every offer', () => {
     expect(page.labels.map((label) => label.lines.map((line) => line.text).join('|'))).toEqual(['', 'Storkøb\nMin.\n1,3 kg']);
     expect(page.labels[0]!.fill).toBe('#c31414');
     expect(page.offers).toHaveLength(1);
+  });
+});
+
+describe('a page in a section smaller than itself', () => {
+  // The viewer scales the 600-wide page into a 375-wide section; the scale is not in the file.
+  const small = {
+    id: 'small', locale: 'da-DK',
+    root_view: view({
+      view_name: 'HTMLView', role: 'paged-proximity',
+      child_views: [view({
+        role: 'section', id: 's1', view_name: 'View', layout_width: 375, layout_height: 625,
+        child_views: [view({
+          view_name: 'HTMLView', layout_width: 600, layout_height: 1000,
+          child_views: [offer('1', 'Coop kylling', 49, [0, 0, 300, 1000]), offer('2', 'Irma focaccia', 29, [300, 0, 300, 1000])],
+        })],
+      })],
+    }),
+  };
+
+  it('prints the 600-wide page, so fitting it to the frame is ours to do', () => {
+    const page = readIncito(small).pages[0]!;
+    expect(page.view['layout_width']).toBe(600);
+    expect(page.view['layout_height']).toBe(1000);
   });
 });

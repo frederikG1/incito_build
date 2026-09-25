@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ImagePage, PageView } from "@incitio/renderer";
-import {
-  brandCapacities,
-  resolveTemplate,
-  templatesForCount,
-} from "@incitio/brands";
+import { ImagePage, PageView, incitoSlotOf } from "@incitio/renderer";
+import { resolveTemplate } from "@incitio/brands";
 import { packLimits, pageTextLimits, partLimits } from "@incitio/schema";
 import { useStudio } from "./state.js";
 
@@ -19,10 +15,12 @@ import { DecorBar } from "./DecorBar.js";
 import { Ways } from "./Ways.js";
 import { Book } from "./Book.js";
 import { Pictures } from "./Pictures.js";
-import { Tray } from "./Tray.js";
+import { OFFER_MIME, Tray, droppedOffers } from "./Tray.js";
 import { Top } from "./Shell.js";
 import { Checklist } from "./Checklist.js";
 import { AskWeek } from "./Week.js";
+import { SaveSection } from "./Weekly.js";
+import { Keys, Palette } from "./Palette.js";
 
 /**
  * Put a whole-sheet picture into the book here.
@@ -64,31 +62,69 @@ function InsertImage({ at }: { at: number }) {
  */
 function PageMore({ pageId, index }: { pageId: string; index: number }) {
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const count = useStudio((s) => s.document?.pages.length ?? 0);
   const movePage = useStudio((s) => s.movePage);
   const removePage = useStudio((s) => s.removePage);
+  const setSectionsOpen = useStudio((s) => s.setSectionsOpen);
+  const clearPage = useStudio((s) => s.clearPage);
 
   return (
     <div className="more">
-      <button onClick={() => setOpen(!open)} aria-expanded={open} title="Mere">
+      <button onClick={() => { setOpen(!open); setSaving(false); }} aria-expanded={open} title="Mere">
         ⋯
       </button>
       {open && (
         <>
           <div className="more__away" onPointerDown={() => setOpen(false)} />
           <div className="more__menu" onClick={() => setOpen(false)}>
+            {saving ? (
+              <SaveSection pageId={pageId} onDone={() => { setSaving(false); setOpen(false); }} />
+            ) : (
+              <button onClick={(event) => { event.stopPropagation(); setSaving(true); }}>
+                ☆ Gem som sektion…
+              </button>
+            )}
+            <button onClick={() => setSectionsOpen(true, index + 1)}>
+              ＋ Indsæt sektion efter denne side…
+            </button>
             <button disabled={index === 0} onClick={() => movePage(pageId, -1)}>
               ↑ Tidligere i avisen
             </button>
             <button disabled={index === count - 1} onClick={() => movePage(pageId, 1)}>
               ↓ Senere i avisen
             </button>
+            <button onClick={() => clearPage(pageId)}>
+              ⌫ Tøm siden — behold designet
+            </button>
             <button className="more__drop" onClick={() => removePage(pageId)}>
-              × Tag siden ud af avisen
+              × Slet siden
             </button>
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * What just happened, said once and then gone.
+ *
+ * It was a bar across the top that stayed until the next message, and
+ * pushed the whole studio down by its height for a sentence nobody
+ * needed a second time. A note floats over the corner of the canvas
+ * instead and clears itself; errors and work in progress keep their
+ * bars, because those are still true until they are dealt with.
+ */
+function Toast({ note }: { note: string }) {
+  const clear = useStudio((s) => s.clearNote);
+  useEffect(() => {
+    const at = window.setTimeout(clear, 4500);
+    return () => window.clearTimeout(at);
+  }, [note, clear]);
+  return (
+    <div className="toast" role="status" onClick={clear}>
+      {note}
     </div>
   );
 }
@@ -192,6 +228,13 @@ export function App() {
         return;
       }
 
+      // ⌘S saves — promised on the save button and in the menu, and never wired.
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        if (s.document && !s.busy) void s.save();
+        return;
+      }
+
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) s.redo();
@@ -200,6 +243,28 @@ export function App() {
       }
 
       if (typing || event.metaKey || event.ctrlKey) return;
+
+      /* An element of a published page: ⌫ deletes it, Esc lets go. */
+      const element = s.selectedIncito;
+      if (element) {
+        if (event.key === "Escape") { event.preventDefault(); s.selectIncito(element.pageId, null); return; }
+        if (event.key === "Backspace" || event.key === "Delete") {
+          event.preventDefault();
+          s.hideIncito(element.pageId, element.path, true);
+          return;
+        }
+        // Arrows move it a point at a time, shift ten; + / − resize; 0 puts it back.
+        const far = event.shiftKey ? 10 : 1;
+        const step = ({ ArrowLeft: [-far, 0], ArrowRight: [far, 0], ArrowUp: [0, -far], ArrowDown: [0, far] } as Record<string, [number, number]>)[event.key];
+        if (step) {
+          event.preventDefault();
+          s.moveIncito(element.pageId, element.path, { dx: step[0], dy: step[1] }, `incito-key-${element.path}`);
+          return;
+        }
+        if (event.key === "+" || event.key === "=") { event.preventDefault(); s.moveIncito(element.pageId, element.path, { scaleBy: 0.05 }); return; }
+        if (event.key === "-") { event.preventDefault(); s.moveIncito(element.pageId, element.path, { scaleBy: -0.05 }); return; }
+        if (event.key === "0") { event.preventDefault(); s.moveIncito(element.pageId, element.path, { reset: true }); return; }
+      }
 
       /*
        * A page's own line answers the same keys as a tile's box.
@@ -541,31 +606,6 @@ export function App() {
    */
   const bench = s.benched();
 
-  /*
-   * How many tiles in the WHOLE book could be one photograph.
-   *
-   * Counted here so the toolbar can offer to compose the lot in one
-   * run — see `standUpAllClusters`. A book has as many of these as it
-   * has multi-product offers, and doing them a page at a time was the
-   * real cost of the feature: the waiting is the model's, but the
-   * coming back to press the next page's button was ours.
-   *
-   * Counted per page as well as in total, because the toolbar pair is
-   * only worth having when there is more than one page to save a trip
-   * to. On a single sheet they would say exactly what the sheet's own
-   * two buttons say, one line above them — see the render below.
-   */
-  const clusterPages = (s.document?.pages ?? [])
-    .map(
-      (page) =>
-        page.placements.filter(
-          (placement) =>
-            (s.document?.offers.find((o) => o.id === placement.offerId)?.members
-              .length ?? 0) > 1,
-        ).length,
-    )
-    .filter((tiles) => tiles > 0);
-  const clusterTiles = clusterPages.reduce((total, tiles) => total + tiles, 0);
 
   return (
     <div className="shell">
@@ -632,27 +672,17 @@ export function App() {
         </div>
       )}
       {s.error && <div className="banner banner--error">{s.error}</div>}
-      {s.note && !s.error && !s.busy && (
-        <div className="banner banner--ok">{s.note}</div>
-      )}
-      {s.brand && !s.curationReady && (
+      {s.note && !s.error && !s.busy && <Toast note={s.note} />}
+      {/* One quiet line, not a set-up guide: everything but the AI help works without keys. */}
+      {s.brand && (!s.curationReady || !s.decorReady) && (
         <div className="banner banner--hint">
-          Sider kan ikke genskabes uden nøgle. Læg din i <code>.env</code> som{" "}
-          <code>ANTHROPIC_API_KEY=sk-ant-…</code> og genstart API-serveren.
-        </div>
-      )}
-      {s.brand && s.curationReady && !s.decorReady && (
-        <div className="banner banner--hint">
-          Billedmodellen er slået fra. Indsæt din egen nøgle under{" "}
-          <b>Stemningsbillede</b> herover — den bliver i denne browser og kommer
-          hverken i projektet eller på serveren — eller læg{" "}
-          <code>GEMINI_API_KEY=…</code> i <code>.env</code> og genstart
-          API-serveren. Billedmodellerne kræver desuden fakturering på
-          Google-projektet.
+          AI-hjælpen er slået fra på denne maskine — alt andet virker som normalt.
         </div>
       )}
 
       <Checklist />
+      <Palette />
+      <Keys />
 
       <Reproduce />
 
@@ -790,46 +820,7 @@ export function App() {
               // How this page was read, when it was rebuilt from one. A
               // page from the plain draft simply has none.
               const run = s.reproductions.find((r) => r.pageId === page.id);
-              /*
-               * The sheet the pointer last landed on.
-               *
-               * It decides which sheet shows its full bar — see the
-               * note there. Already the thing that decides where the
-               * library deals, so there is nothing new to learn: the
-               * sheet you are working on is the one with the tools.
-               */
-              const here = s.activePageId === page.id;
 
-              /*
-               * The two pickers have to describe THIS page, not only the
-               * chain's vocabulary.
-               *
-               * A page read off a published leaflet — or grown a cell by
-               * hand — sits on a layout the chain does not have and at a
-               * count the chain may not offer. Listing only the chain's
-               * answers made both selects show something that was not
-               * true of the page in front of you: nine offers displayed
-               * as "2", and a layout name that belonged to a different
-               * grid. The page's own count and its own layout are added
-               * to the lists so the controls say what is actually there;
-               * picking one of the chain's remains exactly as it was.
-               */
-              const counts = brandCapacities(brand).includes(
-                page.placements.length,
-              )
-                ? brandCapacities(brand)
-                : [...brandCapacities(brand), page.placements.length].sort(
-                    (a, b) => a - b,
-                  );
-              const layouts = templatesForCount(
-                brand,
-                page.placements.length,
-              ).some((option) => option.id === template.id)
-                ? templatesForCount(brand, page.placements.length)
-                : [
-                    template,
-                    ...templatesForCount(brand, page.placements.length),
-                  ];
               return (
                 /*
                  * A picture can simply be dropped on the sheet.
@@ -889,14 +880,14 @@ export function App() {
                     <input
                       className="pagehead__theme"
                       value={page.subtitle}
-                      placeholder="Stemningslinje (valgfri)"
+                      placeholder="Underoverskrift (valgfri)"
                       onChange={(event) => s.setPageSubtitle(page.id, event.target.value)}
                     />
                   </div>
                   <div className="pagebar">
                     {/* How many products, in which shape — drawn, one
                         click; see `LayoutGallery`. */}
-                    <LayoutGallery page={page} template={template} counts={counts} spare={bench.length} />
+                    <LayoutGallery page={page} template={template} spare={bench.length} />
                     <div className="pagebar__rule" />
 
                     {/*
@@ -915,7 +906,7 @@ export function App() {
                         s.togglePanel("stemning");
                       }}
                     >
-                      Billeder{page.background ? " · baggrund ✓" : ""}
+                      Billeder og baggrund
                     </button>
 
                     {/*
@@ -959,15 +950,22 @@ export function App() {
                         className="pagebar__model"
                         title={
                           s.decorReady
-                            ? "Lad billedmodellen stille alle sidens klynger op"
-                            : "Kræver GEMINI_API_KEY på serveren"
+                            ? "Lad AI stille alle sidens samlede tilbud pænt op"
+                            : "AI-hjælpen er slået fra på denne maskine"
                         }
                         disabled={Boolean(s.busy) || !s.decorReady}
                         onClick={() => void s.standUpClusters(page.id)}
                       >
-                        Stil klynger op
+                        Stil samlede tilbud op
                       </button>
                     )}
+                    <button
+                      className="pagebar__btn pagebar__drop"
+                      onClick={() => s.removePage(page.id)}
+                      title="Slet siden (⌘Z fortryder)"
+                    >
+                      Slet side
+                    </button>
                     <PageMore pageId={page.id} index={index} />
                   </div>
 
@@ -1034,9 +1032,6 @@ export function App() {
                       ))}
                     </div>
                   )}
-                  {page.rationale && (
-                    <p className="sheet__why">{page.rationale}</p>
-                  )}
                   <div className="sheet__paper">
                   <PageView
                     page={page}
@@ -1048,6 +1043,19 @@ export function App() {
                     selectedOfferId={s.selectedOfferId}
                     selectedPart={s.selectedPart}
                     onSelectOffer={s.select}
+                    selectedIncitoBlock={s.selectedIncito?.pageId === page.id ? s.selectedIncito.path : null}
+                    onSelectIncitoBlock={(path) => s.selectIncito(page.id, path)}
+                    onMoveIncitoBlock={(path, at, gesture) => s.moveIncito(page.id, path, { ...at, absolute: true }, gesture)}
+                    onScaleIncitoBlock={(path, by) => s.moveIncito(page.id, path, { scaleBy: by })}
+                    onIncitoMoveEnd={s.endGesture}
+                    incitoDropType={OFFER_MIME}
+                    onDropOnIncitoOffer={(viewId, event) => {
+                      const dragged = event.dataTransfer?.getData(OFFER_MIME);
+                      if (!dragged || !page.incito) return;
+                      // The cell that offer stands in — by the publication's record, or by its own id.
+                      const slotId = incitoSlotOf(page, viewId);
+                      if (slotId) void s.fillSlot(page.id, slotId, droppedOffers(dragged, s.librarySelection));
+                    }}
                     /* The composed pictures the page's clusters were
                      stood up from, each laid over its own tile — see
                      `Ghost`. The answer to "did it use my picture?",

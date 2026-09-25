@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DARK, LOUD, QUIET, chooseBackdrop, type Backdrop } from '../backdrop.js';
+import { DARK, QUIET, chooseBackdrop, type Backdrop } from '../backdrop.js';
 
 /** An A4 sheet, which is what every chain in here prints on. */
 const A4 = 0.707;

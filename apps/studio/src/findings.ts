@@ -1,7 +1,9 @@
-import { coversWeek, isImagePage } from '@incitio/schema';
+import { freeSlots } from './grid.js';
+import { isImagePage, weekDates } from '@incitio/schema';
+import { departmentOf } from '@incitio/compose';
 import type { Brand, CatalogDocument, CatalogWeek, Offer } from '@incitio/schema';
 import { resolveTemplate } from '@incitio/brands';
-import { OUT_OF_PROPORTION, SAME_HEIGHT } from './cluster-layout.js';
+import { OUT_OF_PROPORTION } from './cluster-layout.js';
 
 /**
  * What is wrong with the avis, as a line somebody can act on.
@@ -46,7 +48,7 @@ export interface Finding {
 }
 
 export const FINDING_KINDS = [
-  'billede', 'plads', 'tekst', 'pris', 'klynge', 'ark', 'uge', 'skabelon',
+  'billede', 'plads', 'tekst', 'pris', 'klynge', 'ark', 'uge', 'skabelon', 'regler',
 ] as const;
 export type FindingKind = (typeof FINDING_KINDS)[number];
 
@@ -127,8 +129,8 @@ export function readFindings(
      * on it prints a grey rectangle saying "Tom plads", and nothing in
      * the document itself is wrong.
      */
-    const filled = new Set(page.placements.map((placement) => placement.slotId));
-    const empty = template.slots.filter((slot) => !filled.has(slot.id));
+    // Filled, or — on a page picture — still showing what was printed.
+    const empty = freeSlots(page, template);
     if (empty.length > 0) {
       found.push({
         id: `${page.id}:tomme-pladser`,
@@ -140,7 +142,34 @@ export function readFindings(
       });
     }
 
-    if (!page.title.trim()) {
+    /*
+     * Words on the page that name another week's dates.
+     *
+     * The band "Gælder fra fredag d. 18. september" is typed once and
+     * then carried from week to week with the design — which is exactly
+     * what makes it the easiest thing on the page to print wrong.
+     */
+    if (week) {
+      const lines = [page.title, page.subtitle, ...page.notes.map((note) => note.text)];
+      for (const line of lines) {
+        const stale = staleDates(line, week);
+        if (!stale) continue;
+        found.push({
+          id: `${page.id}:dato:${line.slice(0, 24)}`,
+          kind: 'uge',
+          said: `Side ${number}: "${line.replace(/\s+/g, ' ').trim().slice(0, 40)}…" nævner ${stale} — ugen er ${weekSpan(week)}`,
+          ...at,
+          offerId: null,
+          weight: 'stop',
+        });
+      }
+    }
+
+    // A page whose headline is printed artwork has one, even with no title.
+    const drawnHeadline = page.decorations.some((decor) => decor.rect);
+    // A page read off a publication has the headline it was printed with — often none.
+    const published = Boolean(page.incito) || page.templateId.startsWith('pub/');
+    if (!page.title.trim() && !drawnHeadline && !published) {
       found.push({
         id: `${page.id}:uden-overskrift`,
         kind: 'tekst',
@@ -188,32 +217,51 @@ export function readFindings(
         });
       }
 
+      /*
+       * The price-marking rules, as the checks a proof-reader runs.
+       *
+       * Goods sold by weight or volume must print a unit price, and a
+       * bottle or can with a deposit must say "+ pant". Both are the
+       * sort of line that is right in the feed and lost on the way to
+       * the page — a hand-edited underline, a tile made by hand.
+       */
+      if (offer.members.length === 0) {
+        const text = `${offer.description} ${offer.pack}`.toLowerCase();
+        const byMeasure = ['g', 'kg', 'ml', 'l'].includes(offer.quantity.unit) && offer.quantity.size !== null;
+        const saysUnit = /(kg|liter|stk|l)-?pris|pr\.?\s?(kg|l|liter|stk)/u.test(text);
+        if (byMeasure && !offer.comparison && !saysUnit) {
+          found.push({
+            id: `${page.id}:${offer.id}:enhedspris`,
+            kind: 'regler',
+            said: `Side ${number}: ${tileSaid(offer, document)} mangler enhedspris (kg-/literpris)`,
+            ...at,
+            offerId: offer.id,
+            weight: 'stop',
+          });
+        }
+        const department = departmentOf(offer);
+        const bottled = department === 'drikke'
+          ? !/kaffe|kapsl|kakao|(?<![a-zæøå])te(?![a-zæøå])|bønner|instant|espresso/u.test(offer.name.toLowerCase())
+          : department === 'vin' && /øl|pilsner|cider|tuborg|carlsberg|breezer|smirnoff|pepsi|cola|faxe/u.test(offer.name.toLowerCase());
+        const inBottles = /\d\s*(cl|l|ml|liter)(?![a-zæøå])|flaske|dåse/u.test(`${offer.name} ${text}`.toLowerCase());
+        if (bottled && inBottles && !/pant/u.test(text)) {
+          found.push({
+            id: `${page.id}:${offer.id}:pant`,
+            kind: 'regler',
+            said: `Side ${number}: ${tileSaid(offer, document)} nævner ikke pant`,
+            ...at,
+            offerId: offer.id,
+            weight: 'se',
+          });
+        }
+      }
+
       // A price of nothing is a feed that did not parse, not a giveaway.
       if (offer.price <= 0) {
         found.push({
           id: `${page.id}:${offer.id}:uden-pris`,
           kind: 'pris',
           said: `Side ${number}: ${tileSaid(offer, document)} har ingen pris`,
-          ...at,
-          offerId: offer.id,
-          weight: 'stop',
-        });
-      }
-
-      /*
-       * On the page, off the week.
-       *
-       * Only asked once a week has been chosen — see `CatalogWeek`.
-       * This is the check that pays for the week existing at all: an
-       * offer that stopped on Sunday printed in Monday's paper is the
-       * kind of mistake that costs the chain money at the till.
-       */
-      if (week && !coversWeek(offer, week)) {
-        found.push({
-          id: `${page.id}:${offer.id}:uden-for-ugen`,
-          kind: 'uge',
-          said: `Side ${number}: ${tileSaid(offer, document)} gælder ikke i ugen `
-            + `(${offer.validFrom} – ${offer.validTo})`,
           ...at,
           offerId: offer.id,
           weight: 'stop',
@@ -553,4 +601,58 @@ export function measureFindings(
   const once = new Map<string, Finding>();
   for (const finding of found) if (!once.has(finding.id)) once.set(finding.id, finding);
   return [...once.values()].sort(bySeverity);
+}
+
+/* ------------------------------------------------------------ dates */
+
+const MONTH_NUMBERS: Record<string, number> = {
+  januar: 1, februar: 2, marts: 3, april: 4, maj: 5, juni: 6,
+  juli: 7, august: 8, september: 9, oktober: 10, november: 11, december: 12,
+};
+const DAY = 86_400_000;
+
+/** Every day-and-month a line of Danish names, as dates in the week's year. */
+export function datesIn(text: string, year: number): Date[] {
+  const found: Date[] = [];
+  const lower = text.toLowerCase();
+  for (const match of lower.matchAll(/(\d{1,2})\.\s*(januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)/gu)) {
+    found.push(new Date(Date.UTC(year, MONTH_NUMBERS[match[2]!]! - 1, Number(match[1]))));
+  }
+  for (const match of lower.matchAll(/(?<![\d.])(\d{1,2})[./](\d{1,2})(?![\d./])/gu)) {
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      found.push(new Date(Date.UTC(year, month - 1, day)));
+    }
+  }
+  return found;
+}
+
+/**
+ * The dates a line names, when they cannot be this week's.
+ *
+ * Two or more dates are read as a span ("fra 18. til 24. september")
+ * and may overlap the week anywhere; a lone date must fall within a few
+ * days of it, since chains start their week on a Wednesday or a Friday
+ * as often as on a Monday. Returns the words to say, or null.
+ */
+export function staleDates(text: string, week: CatalogWeek): string | null {
+  const dates = datesIn(text, week.year);
+  if (dates.length === 0) return null;
+  const { from, to } = weekDates(week);
+  const start = Date.parse(`${from}T00:00:00Z`) - 3 * DAY;
+  const end = Date.parse(`${to}T00:00:00Z`) + 3 * DAY;
+  const times = dates.map((date) => date.getTime()).sort((a, b) => a - b);
+  const low = times[0]!;
+  const high = times[times.length - 1]!;
+  const fine = times.length > 1 ? low <= end && high >= start : low >= start && low <= end;
+  if (fine) return null;
+  const say = (time: number) => new Date(time).toLocaleDateString('da-DK', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  return times.length > 1 ? `${say(low)}–${say(high)}` : say(low);
+}
+
+function weekSpan(week: CatalogWeek): string {
+  const { from, to } = weekDates(week);
+  const say = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('da-DK', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return `${say(from)}–${say(to)}`;
 }

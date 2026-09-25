@@ -1,5 +1,5 @@
 import type { Offer } from '@incitio/schema';
-import { compareByImportance, offerImportance } from './importance.js';
+import { compareByImportance } from './importance.js';
 
 /**
  * Which offers make the catalog at all.

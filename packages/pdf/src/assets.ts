@@ -52,9 +52,30 @@ export function withAssetBase(document: CatalogDocument, base: string): CatalogD
       ...(page.background && {
         background: { ...page.background, imageUrl: resolve(page.background.imageUrl) },
       }),
+      /*
+       * A page printed from its own tree carries its pictures inside the
+       * tree — and a page made from a publication's picture carries
+       * that picture as `/uploads/…`, which breaks the same way.
+       */
+      ...(page.incito && {
+        incito: { ...page.incito, view: rewriteTree(page.incito.view, resolve) as Record<string, unknown> },
+      }),
       ...((page.notes ?? []).some((note) => note.image) && {
         notes: page.notes.map((note) => (note.image ? { ...note, image: resolve(note.image) } : note)),
       }),
     })),
   };
+}
+
+/** Every picture in an incito tree, resolved — `src` and `background_image`. */
+function rewriteTree(node: unknown, resolve: (ref: string) => string): unknown {
+  if (Array.isArray(node)) return node.map((child) => rewriteTree(child, resolve));
+  if (!node || typeof node !== 'object') return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    out[key] = (key === 'src' || key === 'background_image' || key === 'image') && typeof value === 'string'
+      ? resolve(value)
+      : rewriteTree(value, resolve);
+  }
+  return out;
 }

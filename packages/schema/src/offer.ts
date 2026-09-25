@@ -390,3 +390,28 @@ export function packSizeOf(offer: {
   const read = readPackSize(offer.description ?? '') ?? readPackSize(offer.name ?? '');
   return read ? read.said : null;
 }
+
+/**
+ * A name with its price still attached — "Spangsberg is\n, DKK 32".
+ *
+ * That is how a publication's accessibility label states an offer: the
+ * name, a comma, the currency code and the price. The page sets the
+ * price as "32,-", which is typography; the label is the one place it
+ * is a number. The label is often broken over two lines exactly where
+ * the comma is, so the match runs across line breaks.
+ *
+ * Danish or English decimals, and a thousands point: "1.295" is one
+ * thousand two hundred and ninety-five kroner, not one and a bit.
+ */
+export function splitLabelPrice(
+  label: string,
+): { name: string; price: number; currency: string } | null {
+  const found = /^([\s\S]*?)\s*,\s*([A-Z]{3})\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:[.,](\d{1,2}))?\s*(?:,-)?\s*$/u
+    .exec(label.trim());
+  if (!found) return null;
+  const whole = Number(found[3]!.replace(/\./g, ''));
+  const price = found[4] ? Number(`${whole}.${found[4]}`) : whole;
+  const name = found[1]!.replace(/\s+/g, ' ').trim();
+  if (!name || !Number.isFinite(price)) return null;
+  return { name, price, currency: found[2]! };
+}

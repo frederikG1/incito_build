@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import type { Brand, CatalogPage } from '@incitio/schema';
 import { brandCssVars } from '@incitio/schema';
 import { cssUrl } from './format.js';
+import { IncitoPage, printsExactly } from './IncitoPage.js';
 
 export interface ImagePageProps {
   page: CatalogPage;
@@ -18,6 +19,9 @@ export interface ImagePageProps {
  * fit and crop controls work here for free.
  */
 export function ImagePage({ page, brand, pageIndex = 0 }: ImagePageProps) {
+  // A published cover or advert is printed from its own tree, like any page.
+  if (printsExactly(page)) return <IncitoPage page={page} />;
+
   const style: CSSProperties = {
     ...brandCssVars(brand, pageIndex),
     aspectRatio: String(brand.pageAspect),

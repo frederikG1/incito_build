@@ -1,6 +1,9 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { IncitoPage, printsExactly } from './IncitoPage.js';
+import { cellStates, pagedSheet } from './paged.js';
+import { incitoPacks } from './incito.js';
 import type {
-  Brand, CatalogPage, Offer, PageNote, PagePart, PageTemplate, PageTextOverride, TilePart,
+  Brand, CatalogPage, Offer, PageNote, PagePart, PageTemplate, PageTextOverride, TileFrame, TilePart,
 } from '@incitio/schema';
 import {
   artworkGrowth, brandCssVars, pageTextOverride, pageTextsFreed,
@@ -8,6 +11,9 @@ import {
 } from '@incitio/schema';
 import { OfferTile } from './OfferTile.js';
 import { cssUrl, splitHeading } from './format.js';
+
+/** A cluster's products fill the packshot's box — see `incitoPacks`. */
+const PACK_FRAME: TileFrame = { media: { x: 0, y: 0, w: 1, h: 1 }, wordsAlign: 'start' };
 
 /**
  * How high a moved heading rides.
@@ -51,6 +57,14 @@ function textStyle(part: PageTextOverride): CSSProperties | undefined {
 
 export interface PageViewProps {
   page: CatalogPage;
+  /** Editor only, for a page printed as published — see `IncitoPage`. */
+  selectedIncitoBlock?: string | null;
+  onSelectIncitoBlock?: (path: string | null) => void;
+  onMoveIncitoBlock?: (path: string, at: { dx: number; dy: number }, gesture: string) => void;
+  onScaleIncitoBlock?: (path: string, by: number) => void;
+  onIncitoMoveEnd?: () => void;
+  onDropOnIncitoOffer?: (offerViewId: string, event: DragEvent) => void;
+  incitoDropType?: string;
   template: PageTemplate;
   brand: Brand;
   offers: Map<string, Offer>;
@@ -156,7 +170,203 @@ export function PageView({
   onMoveNote,
   onNoteMoveEnd,
   ghosts,
+  selectedIncitoBlock,
+  onSelectIncitoBlock,
+  onMoveIncitoBlock,
+  onScaleIncitoBlock,
+  onIncitoMoveEnd,
+  onDropOnIncitoOffer,
+  incitoDropType,
 }: PageViewProps) {
+  const slots = new Map(template.slots.map((s) => [s.id, s]));
+  /*
+   * One cell and its tile. A factory over the sheet's aspect, because a
+   * page made from a picture is the picture's shape, not the chain's
+   * print format — see `slotCells`.
+   */
+  const slotRenderer = (aspect: number) => {
+    const cells = slotCells(template, aspect);
+    return (placement: CatalogPage['placements'][number]) => {
+          const slot = slots.get(placement.slotId);
+          const offer = offers.get(placement.offerId);
+          // A placement naming a slot this template does not have is a
+          // stale edit, not a crash: skip it and let the page render.
+          if (!slot) return null;
+
+          return (
+            <div
+              className={`slot slot--${slot.role}${slot.bleed > 1 ? ' slot--bleed' : ''}`}
+              style={{
+                /*
+                 * A cell measured off a published page sits in its own
+                 * box, not in the grid's — see `TemplateSlot.rect`. No
+                 * grid-area then: an absolute child of a grid with an
+                 * area is positioned against that AREA, not the page.
+                 */
+                ...(slot.rect ? {} : { gridArea: slot.id }),
+                ...(slot.rect ? {
+                  position: 'absolute',
+                  left: `${slot.rect.x * 100}%`,
+                  top: `${slot.rect.y * 100}%`,
+                  width: `${slot.rect.w * 100}%`,
+                  height: `${slot.rect.h * 100}%`,
+                } : {}),
+                /*
+                 * Only read when the slot is allowed to overrun; see
+                 * `TemplateSlot.bleed`. Stated as the SHARE it overruns
+                 * by rather than as the factor the template declares —
+                 * a slot at 1.15 grows by 0.15 — so it is the same kind
+                 * of number as `--fill` and the stylesheet can simply
+                 * take whichever is larger. The artwork grows, the
+                 * words do not.
+                 */
+                ...(slot.bleed > 1 ? { '--bleed': String(slot.bleed - 1) } : {}),
+                /*
+                 * Which way the artwork grows. Every slot needs it, not
+                 * just a bleeding one: the standing `--fill` means all
+                 * artwork overruns, so a cell against the sheet's edge
+                 * would push its product off the paper.
+                 */
+                '--art-l': String(artworkGrowth(cells.get(slot.id)).left),
+                '--art-r': String(artworkGrowth(cells.get(slot.id)).right),
+                /*
+                 * How wide this cell is, as a share of the sheet.
+                 *
+                 * The stylesheet measures everything against the PAGE
+                 * — that is what makes a thumbnail and A4 one design —
+                 * and the price mark is the one element that also has
+                 * to answer to the cell it stands in: set by height
+                 * alone it is the same number in a half-page hero and
+                 * in a column a sixth of the page wide, where it
+                 * leaves the product name two characters to a line.
+                 * See `--price-size` and `SlotCell.width`.
+                 */
+                '--cell-w': String(cells.get(slot.id)?.width ?? 1),
+              } as CSSProperties}
+              key={slot.id}
+              data-slot-id={slot.id}
+              data-offer-id={placement.offerId}
+              data-shape={slotShape(cells.get(slot.id))}
+              /* Whether the price mark stands beside the words or above
+                 them — see `slotRoom` and `.tile__info`. */
+              data-room={slotRoom(cells.get(slot.id))}
+            >
+              {offer ? (
+                <OfferTile
+                  offer={offer}
+                  role={slot.role}
+                  {...(slot.frame ? { frame: slot.frame } : {})}
+                  {...(slot.rect ? { cellWidth: slot.rect.w, cellHeight: slot.rect.h / aspect } : {})}
+                  // The lead of a page may be marked differently from
+                  // the rest — SuperBrugsen gives it the red disc and
+                  // leaves every other price as a plain numeral.
+                  priceShape={
+                    (slot.role === 'hero' || slot.role === 'feature')
+                      ? brand.leadPriceShape ?? brand.priceShape
+                      : brand.priceShape
+                  }
+                  overrides={placement.overrides}
+                  selected={selectedOfferId === offer.id}
+                  selectedPart={selectedOfferId === offer.id ? selectedPart : null}
+                  selectedPack={selectedOfferId === offer.id ? selectedPack ?? null : null}
+                  reference={ghosts?.find((ghost) => ghost.offerId === offer.id) ?? null}
+                  {...(onSelectOffer ? { onSelect: onSelectOffer } : {})}
+                />
+              ) : (
+                <div className="slot__empty">Tom plads</div>
+              )}
+              {slotDecorator?.(slot.id)}
+            </div>
+          );
+    };
+  };
+  const renderSlot = slotRenderer(brand.pageAspect);
+
+  // Printed as published — the publication's own tree, not the chain's tiles.
+  if (printsExactly(page)) {
+    /*
+     * A page made from a picture prints the picture, and the chain's own
+     * tile in every cell somebody has put a new product in — the same
+     * tile, with the same tools, as on any page of the chain's. See
+     * `boundIncito`.
+     */
+    const sheet = pagedSheet(page.incito);
+    const states = sheet ? cellStates(page, template, offers) : null;
+    const tiles = states ? page.placements.filter((placement) => states.get(placement.slotId) === 'new') : [];
+    const aspect = page.incito.width / page.incito.height;
+    const packs = sheet ? [] : incitoPacks(page, offers, template);
+    return (
+      <IncitoPage
+        page={page}
+        template={template}
+        offers={offers}
+        selectedBlock={selectedIncitoBlock ?? null}
+        {...(onSelectIncitoBlock ? { onSelectBlock: onSelectIncitoBlock } : {})}
+        {...(onMoveIncitoBlock ? { onMoveBlock: onMoveIncitoBlock } : {})}
+        {...(onScaleIncitoBlock ? { onScaleBlock: onScaleIncitoBlock } : {})}
+        {...(onIncitoMoveEnd ? { onMoveEnd: onIncitoMoveEnd } : {})}
+        {...(onDropOnIncitoOffer ? { onDropOnOffer: onDropOnIncitoOffer, dropType: incitoDropType } : {})}
+      >
+        {sheet && (
+          <div
+            className={`page page--overlay brand--${brand.id} page--ground-${brand.groundPattern}`}
+            style={brandCssVars(brand, pageIndex) as CSSProperties}
+          >
+            <div className="page__grid page__grid--measured">
+              {tiles.map(slotRenderer(aspect))}
+            </div>
+          </div>
+        )}
+        {/* A cluster in one of the publication's cells: its products,
+            drawn by the chain's tile in the printed packshot's box. */}
+        {packs.length > 0 && (
+          <div
+            className={`page page--overlay brand--${brand.id} page--ground-${brand.groundPattern}`}
+            style={brandCssVars(brand, pageIndex) as CSSProperties}
+          >
+            <div className="page__grid page__grid--measured">
+              {packs.map((pack) => {
+                const offer = offers.get(pack.offerId)!;
+                const placement = page.placements.find((entry) => entry.slotId === pack.slotId)!;
+                const role = slots.get(pack.slotId)?.role ?? 'standard';
+                return (
+                  <div
+                    key={pack.slotId}
+                    className={`slot slot--${role} slot--pack`}
+                    style={{
+                      position: 'absolute',
+                      left: `${pack.rect.x * 100}%`,
+                      top: `${pack.rect.y * 100}%`,
+                      width: `${pack.rect.w * 100}%`,
+                      height: `${pack.rect.h * 100}%`,
+                    }}
+                    data-slot-id={pack.slotId}
+                    data-offer-id={pack.offerId}
+                  >
+                    <OfferTile
+                      offer={offer}
+                      role={role}
+                      frame={PACK_FRAME}
+                      artworkOnly
+                      priceShape={brand.priceShape}
+                      overrides={placement.overrides}
+                      selected={selectedOfferId === offer.id}
+                      selectedPart={selectedOfferId === offer.id ? selectedPart : null}
+                      selectedPack={selectedOfferId === offer.id ? selectedPack ?? null : null}
+                      reference={ghosts?.find((ghost) => ghost.offerId === offer.id) ?? null}
+                      {...(onSelectOffer ? { onSelect: onSelectOffer } : {})}
+                    />
+                    {slotDecorator?.(pack.slotId)}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </IncitoPage>
+    );
+  }
+
   const style: CSSProperties = {
     ...brandCssVars(brand, pageIndex),
     /*
@@ -176,7 +386,6 @@ export function PageView({
     gridTemplateRows: `repeat(${template.areas.length}, 1fr)`,
   };
 
-  const slots = new Map(template.slots.map((s) => [s.id, s]));
   /*
    * How wide each cell is against its own height, read off the grid —
    * see `slotCells` for why this is not a container query.
@@ -186,7 +395,6 @@ export function PageView({
    * editorial band and a column running the height of the page a
    * "feature", and the stylesheet has to draw them differently.
    */
-  const cells = slotCells(template, brand.pageAspect);
 
   /*
    * The heading is one line in two faces — see `splitHeading`. The two
@@ -456,99 +664,7 @@ export function PageView({
         className={`page__grid${template.slots.some((slot) => slot.rect) ? ' page__grid--measured' : ''}`}
         style={gridStyle}
       >
-        {page.placements.map((placement) => {
-          const slot = slots.get(placement.slotId);
-          const offer = offers.get(placement.offerId);
-          // A placement naming a slot this template does not have is a
-          // stale edit, not a crash: skip it and let the page render.
-          if (!slot) return null;
-
-          return (
-            <div
-              className={`slot slot--${slot.role}${slot.bleed > 1 ? ' slot--bleed' : ''}`}
-              style={{
-                /*
-                 * A cell measured off a published page sits in its own
-                 * box, not in the grid's — see `TemplateSlot.rect`. No
-                 * grid-area then: an absolute child of a grid with an
-                 * area is positioned against that AREA, not the page.
-                 */
-                ...(slot.rect ? {} : { gridArea: slot.id }),
-                ...(slot.rect ? {
-                  position: 'absolute',
-                  left: `${slot.rect.x * 100}%`,
-                  top: `${slot.rect.y * 100}%`,
-                  width: `${slot.rect.w * 100}%`,
-                  height: `${slot.rect.h * 100}%`,
-                } : {}),
-                /*
-                 * Only read when the slot is allowed to overrun; see
-                 * `TemplateSlot.bleed`. Stated as the SHARE it overruns
-                 * by rather than as the factor the template declares —
-                 * a slot at 1.15 grows by 0.15 — so it is the same kind
-                 * of number as `--fill` and the stylesheet can simply
-                 * take whichever is larger. The artwork grows, the
-                 * words do not.
-                 */
-                ...(slot.bleed > 1 ? { '--bleed': String(slot.bleed - 1) } : {}),
-                /*
-                 * Which way the artwork grows. Every slot needs it, not
-                 * just a bleeding one: the standing `--fill` means all
-                 * artwork overruns, so a cell against the sheet's edge
-                 * would push its product off the paper.
-                 */
-                '--art-l': String(artworkGrowth(cells.get(slot.id)).left),
-                '--art-r': String(artworkGrowth(cells.get(slot.id)).right),
-                /*
-                 * How wide this cell is, as a share of the sheet.
-                 *
-                 * The stylesheet measures everything against the PAGE
-                 * — that is what makes a thumbnail and A4 one design —
-                 * and the price mark is the one element that also has
-                 * to answer to the cell it stands in: set by height
-                 * alone it is the same number in a half-page hero and
-                 * in a column a sixth of the page wide, where it
-                 * leaves the product name two characters to a line.
-                 * See `--price-size` and `SlotCell.width`.
-                 */
-                '--cell-w': String(cells.get(slot.id)?.width ?? 1),
-              } as CSSProperties}
-              key={slot.id}
-              data-slot-id={slot.id}
-              data-offer-id={placement.offerId}
-              data-shape={slotShape(cells.get(slot.id))}
-              /* Whether the price mark stands beside the words or above
-                 them — see `slotRoom` and `.tile__info`. */
-              data-room={slotRoom(cells.get(slot.id))}
-            >
-              {offer ? (
-                <OfferTile
-                  offer={offer}
-                  role={slot.role}
-                  {...(slot.frame ? { frame: slot.frame } : {})}
-                  {...(slot.rect ? { cellWidth: slot.rect.w } : {})}
-                  // The lead of a page may be marked differently from
-                  // the rest — SuperBrugsen gives it the red disc and
-                  // leaves every other price as a plain numeral.
-                  priceShape={
-                    (slot.role === 'hero' || slot.role === 'feature')
-                      ? brand.leadPriceShape ?? brand.priceShape
-                      : brand.priceShape
-                  }
-                  overrides={placement.overrides}
-                  selected={selectedOfferId === offer.id}
-                  selectedPart={selectedOfferId === offer.id ? selectedPart : null}
-                  selectedPack={selectedOfferId === offer.id ? selectedPack ?? null : null}
-                  reference={ghosts?.find((ghost) => ghost.offerId === offer.id) ?? null}
-                  {...(onSelectOffer ? { onSelect: onSelectOffer } : {})}
-                />
-              ) : (
-                <div className="slot__empty">Tom plads</div>
-              )}
-              {slotDecorator?.(slot.id)}
-            </div>
-          );
-        })}
+        {page.placements.map(renderSlot)}
       </div>
 
       {/*

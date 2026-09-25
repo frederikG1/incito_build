@@ -1,4 +1,4 @@
-import { Brand, CatalogDocument, CatalogWeek, Offer } from '@incitio/schema';
+import { Brand, CatalogDocument, CatalogPage, CatalogWeek, Offer, PageTemplate } from '@incitio/schema';
 
 const BASE = '/api';
 
@@ -322,8 +322,9 @@ export async function fetchCatalogue(
  * reject it — the same isolation that protects the data also means every
  * request has to be made by code that knows who it is.
  */
-export async function fetchCataloguePdf(brandId: string, id: string): Promise<Blob> {
-  const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}/pdf`, {
+export async function fetchCataloguePdf(brandId: string, id: string, forPrint = false): Promise<Blob> {
+  const query = forPrint ? '?tryk=1' : '';
+  const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}/pdf${query}`, {
     headers: headers(brandId),
   });
   if (!response.ok) await fail(response);
@@ -534,7 +535,7 @@ export interface PageReading {
 export interface PublicationReply {
   document: CatalogDocument;
   readings: PageReading[];
-  publication: { id: string; pages: number };
+  publication: { id: string; pages: number; paged?: boolean; title?: string | null; known?: number };
 }
 
 /**
@@ -847,4 +848,43 @@ export async function readClusterLayout(
   });
   if (!response.ok) await fail(response);
   return (await response.json()) as LayoutReading;
+}
+
+/**
+ * One of the chain's saved page designs — see `Section` in the server.
+ * The page as it printed, the grid when the document owned it, and the
+ * products it printed with, for the gallery's picture of it.
+ */
+export interface Section {
+  id: string;
+  name: string;
+  tags: string[];
+  page: CatalogPage;
+  template: PageTemplate | null;
+  preview: Offer[];
+  createdAt: string;
+}
+
+export async function fetchSections(brandId: string): Promise<Section[]> {
+  const response = await fetch(`${BASE}/brand/sections`, { headers: headers(brandId) });
+  if (!response.ok) await fail(response);
+  return ((await response.json()) as { sections: Section[] }).sections;
+}
+
+export async function saveSection(brandId: string, section: Section): Promise<Section> {
+  const response = await fetch(`${BASE}/brand/sections`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(section),
+  });
+  if (!response.ok) await fail(response);
+  return ((await response.json()) as { section: Section }).section;
+}
+
+export async function removeSection(brandId: string, id: string): Promise<void> {
+  const response = await fetch(`${BASE}/brand/sections/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: headers(brandId),
+  });
+  if (!response.ok) await fail(response);
 }
