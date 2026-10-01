@@ -1,7 +1,11 @@
 import { z } from 'zod';
+import { AppliedTheme } from './theme.js';
 import { ImageRef, Offer, splitLabelPrice } from './offer.js';
 import { MeasuredRect, PageTemplate } from './template.js';
+import { PageDesign } from './designs.js';
 import { CatalogWeek } from './week.js';
+import { TILE_ARRANGEMENTS, TILE_PARTS, type TilePart } from './tile.js';
+import { EditOp } from './edit-ops.js';
 
 /** Where on the page a decoration is pinned. */
 export const DECOR_ANCHORS = [
@@ -256,11 +260,8 @@ export function pageTextLimits(): {
  * The order is the order they are drawn in, which is also the order the
  * inspector lists them.
  */
-export const TILE_PARTS = [
-  'media', 'price', 'marks', 'brand', 'name',
-  'quantity', 'description', 'meta', 'tags',
-] as const;
-export type TilePart = (typeof TILE_PARTS)[number];
+// Defined in ./tile.js, which the edit ops share without importing this file.
+export { TILE_PARTS, type TilePart } from './tile.js';
 
 /** What each box is called to the person moving it. */
 export const TILE_PART_NAMES: Record<TilePart, string> = {
@@ -333,8 +334,7 @@ export const PART_DEFAULTS: PartOverride = Object.freeze(PartOverride.parse({}))
  * decision somebody — or something — makes about a particular tile.
  * See `PlacementOverrides.arrangement`.
  */
-export const TILE_ARRANGEMENTS = ['row', 'stagger', 'grid', 'fan'] as const;
-export type TileArrangement = (typeof TILE_ARRANGEMENTS)[number];
+export { TILE_ARRANGEMENTS, type TileArrangement } from './tile.js';
 
 /**
  * One product inside a cluster, moved by hand.
@@ -808,6 +808,20 @@ export type IncitoEdit = z.infer<typeof IncitoEdit>;
 /** An edit as written — every field may be left out. */
 export type IncitoEditInput = z.input<typeof IncitoEdit>;
 
+/**
+ * A page as it stood in one layout, kept so choosing that layout again
+ * brings it back exactly — see `CatalogPage.layouts`.
+ */
+export const PageLayoutMemory = z.object({
+  /** How it was carried — a page remembered by an older, lossier carry is worked out afresh. */
+  v: z.number().int().optional(),
+  template: PageTemplate,
+  placements: z.array(Placement),
+  notes: z.array(PageNote).max(24).default([]),
+  decorations: z.array(PageDecoration).max(12).default([]),
+});
+export type PageLayoutMemory = z.infer<typeof PageLayoutMemory>;
+
 export const CatalogPage = z.object({
   id: z.string().min(1),
   /**
@@ -900,6 +914,32 @@ export const CatalogPage = z.object({
    * somebody rewords is replaced here, by position within its element.
    */
   incitoEdits: z.record(z.string(), IncitoEdit).optional(),
+  /**
+   * The layout the gallery last put the page in: the option chosen, and
+   * the template that produced. Stale — and ignored — once anything else
+   * has put the page on another template.
+   */
+  layout: z.object({ option: z.string(), templateId: z.string() }).nullable().optional(),
+  /**
+   * The page in every layout it has been in, keyed by the gallery's
+   * option. Switching layout is a trial: going back to one must give
+   * back that page, not a copy of the current one stretched to fit.
+   */
+  layouts: z.record(z.string(), PageLayoutMemory).optional(),
+  /**
+   * The page's design: its design group and who stands in each zone.
+   * Absent, the page looks as it always has — see `PageDesign`.
+   */
+  design: PageDesign.nullable().optional(),
+  /**
+   * The section design this page was made from, and which version of it.
+   *
+   * A reference, so the design stays shared: when the chain saves a new
+   * version of "Frost med balloner", every page that came from it can
+   * see that it is behind, and take the new design with its own
+   * products kept — see `applySection` in @incitio/edit.
+   */
+  section: z.object({ id: z.string().min(1), version: z.number().int().min(1) }).nullable().optional(),
 });
 export type CatalogPage = z.infer<typeof CatalogPage>;
 
@@ -951,6 +991,49 @@ export function pageTextsFreed(page: CatalogPage): boolean {
  * that embedded its own theme could drift from the chain's identity, and
  * could be re-pointed at another chain's look by editing one field.
  */
+/**
+ * One local edition of a publication — a store, a region, a price zone.
+ *
+ * Not a copy. Biltema's "Alt til en god september" is nineteen
+ * publications in Tjek's CMS, one per store, kept in step by buttons that
+ * copy designs and config from one to the others; the only difference
+ * between Næstved and Holbæk is one extra offer in one section. Here the
+ * nineteen are one document and nineteen short lists of edits.
+ *
+ * A variant is the base plus `ops`, applied in order — the same `EditOp`s
+ * the studio, the API and the AI speak — plus the offers only this
+ * edition sells. It is worked out from the CURRENT base every time it is
+ * shown, so an edit to the base reaches every store at once; an op that
+ * no longer applies (its offer left the base) is reported, not silently
+ * dropped. See `resolveVariant` in @incitio/edit.
+ */
+export const PublicationVariant = z.object({
+  id: z.string().min(1).max(60),
+  /** What staff call it: "Holbæk", "Jylland", "Priszone 2". */
+  name: z.string().min(1).max(80),
+  /** The stores or target groups it is published to, in the platform's ids. */
+  stores: z.array(z.string()).default([]),
+  /** Offers only this edition carries — its local products. */
+  offers: z.array(Offer).default([]),
+  ops: z.array(EditOp).max(500).default([]),
+  /**
+   * This edition's own copy of the week's file, when the chain sends one.
+   *
+   * Kept whole, not only as the difference it made, because it is also
+   * what the edition is checked against: an offer on the pages that the
+   * store's file no longer has, a price the file says is different.
+   * Several of these are merged into the one feed the platform reads —
+   * see `mergeEditionFeeds`.
+   */
+  feed: z.object({
+    /** The file it came from, as uploaded. */
+    name: z.string().max(200),
+    readAt: z.string(),
+    offers: z.array(Offer),
+  }).optional(),
+});
+export type PublicationVariant = z.infer<typeof PublicationVariant>;
+
 export const CatalogDocument = z.object({
   id: z.string().min(1),
   schemaVersion: z.literal(2),
@@ -994,6 +1077,25 @@ export const CatalogDocument = z.object({
    * request that built the page, never out of another tenant's brand.
    */
   templates: z.array(PageTemplate).default([]),
+  /**
+   * Where the avis is in its week: being made, ready for a second pair of
+   * eyes, sent out — or put away, which takes it off the front page
+   * without deleting anything. Absent is a draft.
+   */
+  status: z.enum(['kladde', 'klar', 'udgivet', 'skjult']).optional(),
+  /**
+   * The products the chain says this avis must carry — "skal med".
+   *
+   * The check a store manager actually makes before an avis goes out:
+   * are the week's lead offers, the campaign, the ones the supplier paid
+   * for, all in it. Offer ids; one missing from every page is a stop in
+   * the checks before print. See `Varer` in the studio.
+   */
+  mustInclude: z.array(z.string()).optional(),
+  /** The theme the avis wears — birthday, Halloween — see `withTheme`. */
+  theme: AppliedTheme.optional(),
+  /** Local editions of this publication — see `PublicationVariant`. */
+  variants: z.array(PublicationVariant).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

@@ -47,6 +47,17 @@ function listed(parts: Part[]): string {
   return `${sorted.slice(0, -1).join(', ')} and ${sorted.at(-1)}`;
 }
 
+/**
+ * The colour a motif is painted on, and then cut away from.
+ *
+ * Not the page's own colour: a pale page blue is also the colour of the
+ * "surface" the model likes to paint under food, and those patches could
+ * not be told from the ground, so they stayed behind every motif. No
+ * food is magenta, so everything magenta goes, and only the objects are
+ * left to lay on the real page — see `keyOutMotifs`.
+ */
+export const KEY_COLOUR = '#ff00ff';
+
 export const DEFAULT_BACKDROP_STYLE = 'Bright, appetising photography for a Danish supermarket leaflet: soft daylight from the top left, clean and modern, sparse, generous empty space, nothing cluttered.';
 
 export interface BackdropBrief {
@@ -81,9 +92,42 @@ export function backdropPrompt(brief: BackdropBrief): string {
     ? `in the region ${regions[0]}: leave that region empty`
     : `in these regions — ${regions.join('; ')}: leave those regions empty`;
   return [
-    `Paint the background picture for one page of a Danish supermarket leaflet, ${brief.aspect}, filling the whole page. The background is one flat colour, exactly ${brief.colour}, identical everywhere: no gradient, no vignette, no surface texture, no lighter or darker regions, no panels, no bands. The objects lie directly on that colour.`,
-    `Photographed products will be laid on top of your picture ${where}. The offers' names and prices will be printed ${listed(brief.text)}: leave those parts empty too. Place the motif where it fits best in the remaining space, coming in from the edges and corners the way a leaflet does it; you decide which side. At least half of the picture stays the plain colour.`,
-    `The motif fits the page "${brief.offer}"${products.length > 0 ? ` (${products.join(', ')}${more})` : ''}: photographed, not illustrated, with only a soft shadow directly under each object. Use very few elements: two or three objects at most, one kind of ingredient or one dish, in one place on the page. Less is more. Show ingredients, the finished dish or the raw material, never the packaged products themselves. Do not draw any boxes, frames, labels or placeholders.`,
+    `Photograph a few food objects for one page of a Danish supermarket leaflet, ${brief.aspect}, as a cut-out: the objects alone on a pure, flat chroma-key magenta, exactly ${KEY_COLOUR}, identical in every pixel that is not an object. The magenta is not a surface and not a table — nothing is behind or under the objects: no plate unless it is part of the dish, no board, no cloth, no paper, no crumbs, no smudges, no gradient, no vignette, no lighter or darker patches, no panels, no bands, no lines. No shadows at all — not under the objects, not beside them — and no magenta reflected on them. Every object has a crisp, clean edge against the magenta.`,
+    `The objects will be cut out and laid on the real page, where photographed products stand ${where}. The offers' names and prices will be printed ${listed(brief.text)}: leave those parts plain magenta too. Place the objects where they fit best in the remaining space, coming in from the edges and corners the way a leaflet does it; you decide which side. At least half of the picture stays plain magenta.`,
+    `The objects fit the page "${brief.offer}"${products.length > 0 ? ` (${products.join(', ')}${more})` : ''}: photographed, not illustrated. Use very few elements: two or three objects at most, one kind of ingredient or one dish, in one place on the page. Less is more. Show ingredients, the finished dish or the raw material, never the packaged products themselves. Do not draw any boxes, frames, labels or placeholders.`,
     `No text, no letters, no numbers, no logos, no people, no packaging. Style: ${style}`,
   ].join('\n\n');
 }
+
+/** What an isolated motif needs: its frame's shape and what the page is about. */
+export interface MotifBrief {
+  aspect: Aspect;
+  offer: string;
+  products: string[];
+  style?: string;
+}
+
+/**
+ * One motif, drawn on its own — for the place the studio chose.
+ *
+ * The page brief above asked the model to lay a whole page out around
+ * the products, and image models do not keep to coordinates: the motif
+ * landed under the products and was thrown away, or there was "no room".
+ * So the studio picks the place on the page itself (see `motifTarget` in
+ * the studio), and the model is only asked for what it is good at — a
+ * few objects, photographed, alone on the key colour, filling a frame of
+ * exactly that place's shape. Nothing about the page reaches the model.
+ */
+export function motifPrompt(brief: MotifBrief): string {
+  const products = brief.products.slice(0, 8);
+  const more = brief.products.length > 8 ? ', …' : '';
+  const style = brief.style?.trim() || DEFAULT_BACKDROP_STYLE;
+  return [
+    `A product photograph for a Danish supermarket leaflet, ${brief.aspect}: a cut-out of one small group of food objects, alone on a pure, flat chroma-key magenta, exactly ${KEY_COLOUR}, identical in every pixel that is not an object.`,
+    `The group fills most of the frame — about four fifths of its width or height, centred, with a little plain magenta all round; nothing touches or crosses the edge of the picture.`,
+    `What it shows fits the page "${brief.offer}"${products.length > 0 ? ` (${products.join(', ')}${more})` : ''}: the ingredients, the raw material or the finished dish — never the packaged products themselves. Two or three objects at most, one kind of ingredient or one dish, touching or overlapping so they read as one group. Photographed, not illustrated.`,
+    `Nothing is behind or under the objects: the magenta is not a surface or a table — no board, no cloth, no paper, no plate unless it is part of the dish, no crumbs, no smudges, no gradient, no vignette, no patches, no lines. No shadows at all, and no magenta reflected on the objects. Every object has a crisp, clean edge against the magenta.`,
+    `No text, no letters, no numbers, no logos, no people, no packaging. Style: ${style}`,
+  ].join('\n\n');
+}
+

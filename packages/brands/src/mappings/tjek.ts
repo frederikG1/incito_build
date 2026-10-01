@@ -244,6 +244,17 @@ export function tjekOffers(retailerId: string, sourceName: string): FieldMapping
     retailerId,
     sourceName,
     currency: 'DKK',
+    unread: {
+      ern: 'the id again, as a URN',
+      catalog_view_id: 'viewer id', catalog_page: 'page in the source catalogue', links: 'webshop link',
+      display_run_till: 'viewer visibility', publish: 'viewer publishing time',
+      dealer_url: 'dealer', dealer_id: 'dealer', dealer: 'dealer; the server checks it against the brand',
+      catalog_url: 'source catalogue', catalog_id: 'source catalogue', branding: 'dealer colours and logo',
+      store_url: 'store', store_id: 'store',
+    },
+    sparse: {
+      description: 'what is left of the fine print once the chips, pack and unit price are taken out',
+    },
     fields: {
       id: 'id',
       name: 'heading',
@@ -299,6 +310,54 @@ const TRANSFORMED_UNITS: Record<string, string> = {
   liter: 'l', piece: 'pcs', meter: 'm',
 };
 
+/**
+ * The chain's own tags on the offer — `custom_label_1..3`, and a
+ * "3 for 2" in `comment_label_2`. Bilka's designs read exactly these:
+ * `offerCustomLabel2 == "Nedsat pris"` puts up the lowered-price
+ * sticker, `offerCustomLabel1 contains "Nyhed"` the new one. Kept as
+ * labels in the chain's words, typed where the type is plain, so the
+ * rules can recognise them and a "label contains" rule reads the rest.
+ *
+ * A tag is short. Biltema fills `custom_label_3` with the product's
+ * whole web text ("Skånsom og effektiv fælgrens. En syrefri…") and its
+ * designs print it as a description, so a field longer than a tag is
+ * not read as one — split on its commas it made a dozen "labels".
+ */
+const TAG_MAX = 40;
+
+export function customLabels(row: Record<string, unknown>, already: OfferLabelInput[] = []): OfferLabelInput[] {
+  const found: OfferLabelInput[] = [];
+  const add = (label: OfferLabelInput) => {
+    if ([...already, ...found].some((other) => other.text.toLowerCase() === label.text.toLowerCase())) return;
+    found.push(label);
+  };
+  const field = (key: string) => String(row[key] ?? '').replace(/\s+/g, ' ').trim();
+  for (const key of ['custom_label_1', 'custom_label_2', 'custom_label_3']) {
+    const value = field(key);
+    if (!value || value.length > TAG_MAX) continue;
+    for (const part of value.split(/[,;¤]/)) {
+      const text = part.trim();
+      if (!text || /^bjælke:/i.test(text)) continue;
+      const kind: OfferLabelInput['kind'] = /\bnyhed\b|^ny$/i.test(text) ? 'new'
+        : /\bnedsat\b|^spar\b|\bsparer\b/i.test(text) ? 'saving'
+          : /^medlem/i.test(text) ? 'member'
+            : /\d+\s*for\s*\d+/i.test(text) ? 'multibuy'
+              : 'custom';
+      add({ kind, text });
+    }
+  }
+  // Biltema: "3 for 89,90" in comment 2, "Du sparer 29,80" in comment 3.
+  for (const key of ['comment_label_2', 'comment_label_3']) {
+    const comment = field(key);
+    if (!comment || comment.length > TAG_MAX * 2) continue;
+    const multibuy = /\b\d+\s*(stk\.?\s*)?for\s*\d+[\d,.-]*/i.exec(comment);
+    if (multibuy) add({ kind: 'multibuy', text: multibuy[0].trim() });
+    const saves = /\b(du sparer|spar)\s*[\d,.-]+\s*(kr\.?|%)?/i.exec(comment);
+    if (saves) add({ kind: 'saving', text: saves[0].trim() });
+  }
+  return found;
+}
+
 /** A pack mark in `comment_label_1`, or nothing when it holds a price word. */
 function transformedPack(row: Record<string, unknown>): string {
   const label = String(row['comment_label_1'] ?? '').trim();
@@ -351,6 +410,7 @@ export function tjekTransformed(retailerId: string, sourceName: string): FieldMa
       price: 'price',
       prePrice: 'preprice',
       savings: (row) => (row['savings'] ?? row['membership_savings'] ?? null) as number | null,
+      memberPrice: (row) => (Number(row['membership_price']) > 0 ? Number(row['membership_price']) : null),
       quantityValue: (row) => tjekQuantity({
         unit: { symbol: TRANSFORMED_UNITS[String(row['unit_symbol'] ?? '')] },
         size: { from: row['unit_size_from'] as number | null, to: row['unit_size_to'] as number | null },
@@ -387,6 +447,7 @@ export function tjekTransformed(retailerId: string, sourceName: string): FieldMa
         // "Bjælke: Under halv pris" — the banner the chain asks for.
         const banner = /Bjælke:\s*([^\n¤]+)/.exec(String(row['comment_label_2'] ?? ''));
         if (banner) labels.push({ kind: 'custom', text: banner[1]!.trim() });
+        labels.push(...customLabels(row, labels));
         return labels;
       },
     },

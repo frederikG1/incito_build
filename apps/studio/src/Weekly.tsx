@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { resolveTemplate } from '@incitio/brands';
 import { DEPARTMENTS, DEPARTMENT_NAMES, DIFF_FIELD_NAMES, type Department } from '@incitio/compose';
 import { ImagePage, PageView } from '@incitio/renderer';
@@ -166,6 +166,15 @@ export function CarryReport() {
           <b>{report.reserve}</b>
           <span>i reserven</span>
         </div>
+        {(report.kept > 0 || report.pinnedGone.length > 0) && (
+          <div
+            className={`stat${report.pinnedGone.length ? ' stat--todo' : ''}`}
+            title={report.pinnedGone.map((gone) => `${gone.name} (side ${numberOf.get(gone.pageId)}) er ikke i ugens feed`).join('\n')}
+          >
+            <b>{report.kept}<i>/{report.kept + report.pinnedGone.length}</i></b>
+            <span>låste varer stod fast</span>
+          </div>
+        )}
         {report.datedNotes.length > 0 && (
           <div className="stat stat--todo">
             <b>{report.datedNotes.length}</b>
@@ -262,7 +271,14 @@ export function FeedChanges() {
 
 /* --------------------------------------------------- the section library */
 
-function SectionCard({ section }: { section: api.Section }) {
+function SectionCard({ section, picked, picking, onPick }: {
+  section: api.Section;
+  /** Its place in the selection, 1-based, or 0 when not chosen. */
+  picked: number;
+  /** Something is chosen, so a click chooses rather than inserts. */
+  picking: boolean;
+  onPick: () => void;
+}) {
   const brand = useStudio((s) => s.brand);
   const document = useStudio((s) => s.document);
   const insert = useStudio((s) => s.insertSection);
@@ -282,11 +298,25 @@ function SectionCard({ section }: { section: api.Section }) {
       : null;
 
   return (
-    <div className="sec">
-      <button className="sec__card" onClick={() => insert(section.id, at)} title={`Indsæt som side ${at + 1}`}>
+    <div className={`sec${picked ? ' sec--picked' : ''}`}>
+      <button
+        className="sec__card"
+        onClick={(event) => {
+          // Once one is chosen, or with ⇧/⌘, a click chooses; otherwise it inserts straight away.
+          if (picking || event.shiftKey || event.metaKey || event.ctrlKey) onPick();
+          else insert(section.id, at);
+        }}
+        title={picking ? (picked ? 'Fravælg' : 'Vælg også denne') : `Indsæt som side ${at + 1} — ⇧-klik for at vælge flere`}
+      >
         <div className="card__live" aria-hidden="true">{live}</div>
-        <span className="sec__use">+ Indsæt</span>
+        <span className="sec__use">{picking ? (picked ? 'Valgt' : '+ Vælg') : '+ Indsæt'}</span>
       </button>
+      <button
+        className="sec__pick"
+        onClick={onPick}
+        aria-pressed={picked > 0}
+        title={picked ? 'Fravælg' : 'Vælg flere sektioner'}
+      >{picked || ''}</button>
       <div className="sec__name">{section.name}</div>
       <div className="sec__tags">
         {section.tags.map((tag) => (
@@ -310,7 +340,12 @@ export function SectionGallery() {
   const pages = document?.pages ?? [];
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState<string | null>(null);
+  // In the order they were chosen: that is the order the pages go in.
+  const [chosen, setChosen] = useState<string[]>([]);
+  const insertMany = useStudio((s) => s.insertSections);
+  useEffect(() => { if (!open) setChosen([]); }, [open]);
   if (!open) return null;
+  const pick = (id: string) => setChosen((was) => (was.includes(id) ? was.filter((one) => one !== id) : [...was, id]));
 
   const tags = [...new Set(sections.flatMap((section) => section.tags))]
     .sort((a, b) => (DEPARTMENTS as readonly string[]).indexOf(a) - (DEPARTMENTS as readonly string[]).indexOf(b));
@@ -380,8 +415,30 @@ export function SectionGallery() {
           </div>
         ) : (
           <div className="secgal__grid">
-            {shown.map((section) => <SectionCard key={section.id} section={section} />)}
+            {shown.map((section) => (
+              <SectionCard
+                key={section.id}
+                section={section}
+                picked={chosen.indexOf(section.id) + 1}
+                picking={chosen.length > 0}
+                onPick={() => pick(section.id)}
+              />
+            ))}
           </div>
+        )}
+
+        {chosen.length > 0 && (
+          <footer className="secgal__chosen">
+            <b>{chosen.length} valgt</b>
+            <span className="weekly__muted">
+              {chosen.map((id) => sections.find((section) => section.id === id)?.name ?? id).join(' · ')}
+            </span>
+            <div className="weekly__gap" />
+            <button className="thin" onClick={() => setChosen([])}>Ryd</button>
+            <button className="go" onClick={() => insertMany(chosen, at)}>
+              Indsæt {chosen.length === 1 ? `som side ${at + 1}` : `som side ${at + 1}–${at + chosen.length}`}
+            </button>
+          </footer>
         )}
       </div>
     </div>
@@ -392,7 +449,11 @@ export function SectionGallery() {
 export function SaveSection({ pageId, onDone }: { pageId: string; onDone: () => void }) {
   const document = useStudio((s) => s.document);
   const save = useStudio((s) => s.saveSection);
+  const update = useStudio((s) => s.updateSectionFromPage);
+  const sections = useStudio((s) => s.sections);
   const index = document?.pages.findIndex((page) => page.id === pageId) ?? -1;
+  const link = document?.pages[index]?.section;
+  const source = link ? sections.find((section) => section.id === link.id) : undefined;
   const [name, setName] = useState(() => {
     const page = document?.pages[index];
     return page?.title || '';
@@ -410,9 +471,18 @@ export function SaveSection({ pageId, onDone }: { pageId: string; onDone: () => 
         onDone();
       }}
     >
+      {source && (
+        <div className="savesec__update">
+          <button type="button" className="go" onClick={() => { void update(pageId); onDone(); }}>
+            Opdatér «{source.name}» for alle
+          </button>
+          <span>Siden blev lavet af sektionen. Dens design bliver det nye — sider i andre aviser kan hente det.</span>
+          <span className="savesec__or">— eller gem som en ny sektion:</span>
+        </div>
+      )}
       <label>
         <span>Navn</span>
-        <input value={name} placeholder={`fx Frost med balloner`} onChange={(event) => setName(event.target.value)} autoFocus />
+        <input value={name} placeholder={`fx Frost med balloner`} onChange={(event) => setName(event.target.value)} autoFocus={!source} />
       </label>
       <label>
         <span>Tags <i>— afdeling styrer hvilke varer der fyldes i</i></span>

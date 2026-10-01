@@ -93,6 +93,29 @@ export const TileFrame = z.object({
   /** Small drawn marks placed in the tile — "Dansk & lokalt". */
   art: z.array(z.object({ rect: MeasuredRect, image: z.string() })).max(6).optional(),
   /**
+   * The picture fills the whole cell, cropped to it, rather than
+   * standing in `media` — a photograph of the product in use. With
+   * `scrim`, a darkening under the words so they read on it; with
+   * `light`, the words and the price are set in white.
+   */
+  cover: z.boolean().optional(),
+  scrim: z.boolean().optional(),
+  light: z.boolean().optional(),
+  /** Stickers over the tile, already worded — "Før 29,-", "Spar 20 %". In shares of the cell. */
+  stickers: z.array(z.object({
+    rect: MeasuredRect, text: z.string(), fill: z.string(), ink: z.string(),
+    /** What it says — "before", "reduced"… — so the tile can drop one its price mark already says. */
+    kind: z.string().optional(),
+  })).max(4).optional(),
+  /** The price disc's colour, when a design sets its own. */
+  priceFill: z.string().optional(),
+  /** Parts a design does not say — "brand", "description", "meta". */
+  hide: z.array(z.string()).optional(),
+  /** Drawn from a design variant, not measured off a page — see `variantFrame`. */
+  laid: z.boolean().optional(),
+  /** The price mark's size against the role's, when the layout sets it larger. */
+  priceScale: z.number().min(0.5).max(2).optional(),
+  /**
    * Type sizes as the page set them, in shares of the PAGE's width —
    * so they print the same from thumbnail to A4. Absent: our own scale.
    */

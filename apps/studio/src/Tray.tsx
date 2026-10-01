@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Offer } from '@incitio/schema';
-import { formatPrice, incitoSlotOf, pageBlocks } from '@incitio/renderer';
-import { count, isVariantPiece, useStudio } from './state.js';
+import { DEPARTMENTS, DEPARTMENT_NAMES, byImportance, departmentOf, type Department } from '@incitio/compose';
+import { formatPrice, incitoSlotOf, pageBlocks, sizedImage } from '@incitio/renderer';
+import { THUMB_PX, count, isVariantPiece, useStudio } from './state.js';
 
 /**
  * What has not been placed, on a shelf beside the page.
@@ -29,23 +30,33 @@ export function droppedOffers(dragged: string, picked: string[]): string[] {
   return picked.includes(dragged) && picked.length > 1 ? picked : [dragged];
 }
 
-/**
- * A card-sized copy of a product photograph, where the image service can
- * make one. The feed links 800-pixel PNGs; a shelf of 150 of them loaded
- * as a column of empty boxes for the first seconds of every session.
+type ShelfOrder = 'afdeling' | 'staerkest' | 'pris';
+
+/*
+ * The shelf's width, the reader's own: dragged at its edge, kept in this
+ * browser. Columns follow the width — two at the narrowest, as many as
+ * fit when it is pulled wide to see the whole week at once.
  */
-function thumbnail(url: string): string {
-  return /imageservice\d*\.republica\.dk/.test(url) ? url.replace(/([?&])size=\d+/, '$1size=240') : url;
+const WIDTH_KEY = 'incitio.shelfWidth';
+const NARROW = 272;
+const WIDE = 600;
+function rememberedWidth(): number {
+  try {
+    const value = Number(window.localStorage.getItem(WIDTH_KEY));
+    return value >= 240 && value <= 900 ? value : NARROW;
+  } catch {
+    return NARROW;
+  }
 }
 
 /** A product as a card on the shelf. */
-function Good({ offer }: { offer: Offer }) {
+function Good({ offer, where, must }: { offer: Offer; where?: string; must?: boolean }) {
   const picked = useStudio((s) => s.librarySelection.includes(offer.id));
   const toggle = useStudio((s) => s.toggleLibraryPick);
 
   return (
     <button
-      className={`good${picked ? ' good--picked' : ''}`}
+      className={`good${picked ? ' good--picked' : ''}${where ? ' good--placed' : ''}`}
       draggable
       aria-pressed={picked}
       title={`${offer.name}\n${offer.description}`}
@@ -59,9 +70,11 @@ function Good({ offer }: { offer: Offer }) {
       }}
       onClick={() => toggle(offer.id)}
     >
+      {where && <span className="good__where">{where}</span>}
+      {must && <span className="good__must" title="Skal med i avisen">★</span>}
       <span className="good__shot">
         {offer.imageUrl
-          ? <img src={thumbnail(offer.imageUrl)} alt="" loading="lazy" decoding="async" draggable={false} />
+          ? <img src={sizedImage(offer.imageUrl, THUMB_PX)} alt="" loading="lazy" decoding="async" draggable={false} />
           : <span>uden billede</span>}
       </span>
       <span className="good__name">{offer.name}</span>
@@ -76,6 +89,13 @@ export function Tray() {
   const document = useStudio((state) => state.document);
   const placedAt = useStudio((state) => state.placedAt);
   const [chosenSlot, setChosenSlot] = useState<string | null>(null);
+  const [order, setOrder] = useState<ShelfOrder>('afdeling');
+  const [showPlaced, setShowPlaced] = useState(false);
+  const [width, setWidth] = useState(rememberedWidth);
+  const dragging = useRef<{ x: number; width: number } | null>(null);
+  useEffect(() => {
+    try { window.localStorage.setItem(WIDTH_KEY, String(width)); } catch { /* private window */ }
+  }, [width]);
 
   /*
    * The feed's products, then any the document has that the feed does
@@ -89,23 +109,47 @@ export function Tray() {
   }, [feedOffers, document]);
 
   const placed = useMemo(() => placedAt(), [document, placedAt]);
+  const must = useMemo(() => new Set(document?.mustInclude ?? []), [document]);
 
-  /* Only what is NOT on a page — that is what the shelf is for. */
+  /* What is NOT on a page is what the shelf is for; the rest on request, marked with its page. */
   const unplaced = useMemo(() => all.filter((offer) => !placed.has(offer.id)), [all, placed]);
+  const departmentFor = useMemo(() => new Map(all.map((offer) => [offer.id, departmentOf(offer)])), [all]);
+  const rules = s.brand?.offerRules;
   const waiting = useMemo(() => {
     const needle = s.librarySearch.trim().toLowerCase();
-    return unplaced
-      .filter((offer) => (s.trayFilter ? offer.category === s.trayFilter : true))
+    const list = (showPlaced ? all : unplaced)
+      .filter((offer) => (s.trayFilter ? departmentFor.get(offer.id) === s.trayFilter : true))
       .filter((offer) => (needle
         ? `${offer.brand} ${offer.name} ${offer.description}`.toLowerCase().includes(needle)
         : true));
-  }, [unplaced, s.librarySearch, s.trayFilter]);
+    const strongest = byImportance(rules);
+    if (order === 'pris') return [...list].sort((a, b) => a.price - b.price);
+    if (order === 'staerkest') return [...list].sort(strongest);
+    return [...list].sort((a, b) => DEPARTMENTS.indexOf(departmentFor.get(a.id)!) - DEPARTMENTS.indexOf(departmentFor.get(b.id)!)
+      || strongest(a, b));
+  }, [all, unplaced, showPlaced, s.librarySearch, s.trayFilter, departmentFor, order, rules]);
 
-  const categories = useMemo(
-    () => [...new Set(unplaced.map((o) => o.category))]
-      .filter(Boolean).sort((a, b) => a.localeCompare(b, 'da')),
-    [unplaced],
-  );
+  /* The departments with something waiting, and how much. */
+  const departments = useMemo(() => {
+    const counts = new Map<Department, number>();
+    for (const offer of unplaced) {
+      const department = departmentFor.get(offer.id)!;
+      counts.set(department, (counts.get(department) ?? 0) + 1);
+    }
+    return DEPARTMENTS.filter((department) => counts.has(department)).map((department) => ({ department, count: counts.get(department)! }));
+  }, [unplaced, departmentFor]);
+
+  /* Under a heading per department when sorted that way, one run otherwise. */
+  const groups = useMemo(() => {
+    if (order !== 'afdeling') return [{ department: null as Department | null, offers: waiting }];
+    const out: { department: Department | null; offers: Offer[] }[] = [];
+    for (const offer of waiting) {
+      const department = departmentFor.get(offer.id)!;
+      if (out.at(-1)?.department !== department) out.push({ department, offers: [] });
+      out.at(-1)!.offers.push(offer);
+    }
+    return out;
+  }, [waiting, order, departmentFor]);
 
   const picked = s.librarySelection;
   const pageId = s.openPageId;
@@ -131,10 +175,32 @@ export function Tray() {
   const busy = Boolean(s.busy);
 
   return (
-    <aside className="shelf">
+    <aside className="shelf" style={{ flexBasis: width }}>
+      <div
+        className="shelf__resize"
+        role="separator"
+        aria-orientation="vertical"
+        title="Træk for at gøre listen bredere — dobbeltklik skifter mellem smal og bred"
+        onPointerDown={(event) => {
+          dragging.current = { x: event.clientX, width };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (!dragging.current) return;
+          setWidth(Math.max(240, Math.min(900, dragging.current.width + event.clientX - dragging.current.x)));
+        }}
+        onPointerUp={() => { dragging.current = null; }}
+        onDoubleClick={() => setWidth(width > (NARROW + WIDE) / 2 ? NARROW : WIDE)}
+      />
       <div className="shelf__head">
         <b>Ugens varer</b>
-        <span className="shelf__count">{waiting.length === unplaced.length ? `${unplaced.length} ikke placeret` : `${waiting.length} af ${unplaced.length}`}</span>
+        <span className="shelf__count">{waiting.length === unplaced.length ? `${unplaced.length} ikke placeret` : `${waiting.length} vist · ${unplaced.length} ikke placeret`}</span>
+        <div className="shelf__gap" />
+        <button
+          className="shelf__widen"
+          onClick={() => setWidth(width > (NARROW + WIDE) / 2 ? NARROW : WIDE)}
+          title={width > (NARROW + WIDE) / 2 ? 'Smal liste' : 'Bred liste — flere varer på én gang'}
+        >{width > (NARROW + WIDE) / 2 ? '‹ Smal' : 'Bred ›'}</button>
       </div>
       <div className="shelf__tools">
         <input
@@ -143,25 +209,42 @@ export function Tray() {
           placeholder="Søg efter en vare"
           onChange={(event) => s.setLibrarySearch(event.target.value)}
         />
-        <select
-          className="shelf__filter"
-          value={s.trayFilter ?? ''}
-          onChange={(event) => s.setTrayFilter(event.target.value || null)}
-        >
-          <option value="">Alle afdelinger</option>
-          {categories.map((category) => (
-            <option key={category} value={category}>{category}</option>
-          ))}
-        </select>
+        <div className="shelf__row">
+          <select
+            className="shelf__filter"
+            value={s.trayFilter ?? ''}
+            onChange={(event) => s.setTrayFilter(event.target.value || null)}
+          >
+            <option value="">Alle afdelinger · {unplaced.length}</option>
+            {departments.map(({ department, count: n }) => (
+              <option key={department} value={department}>{DEPARTMENT_NAMES[department]} · {n}</option>
+            ))}
+          </select>
+          <select className="shelf__filter" value={order} onChange={(event) => setOrder(event.target.value as ShelfOrder)} title="Rækkefølge">
+            <option value="afdeling">Efter afdeling</option>
+            <option value="staerkest">Stærkeste først</option>
+            <option value="pris">Laveste pris først</option>
+          </select>
+        </div>
+        <label className="shelf__check">
+          <input type="checkbox" checked={showPlaced} onChange={(event) => setShowPlaced(event.target.checked)} />
+          Vis også varer der er på en side
+        </label>
       </div>
       <p className="shelf__hint"><b>Træk</b> en vare over på en vare på siden for at bytte — eller <b>klik</b> på flere for at samle dem i én plads.</p>
 
-      {/* Two to a row: twice the products per screen, so finding one is
-          half the scrolling. */}
+      {/* As many to a row as the width holds — two at the narrowest. */}
       <div className="shelf__grid">
         {waiting.length === 0
-          ? <p className="shelf__empty">{unplaced.length === 0 ? 'Alle varer har en plads.' : 'Ingen varer passer til søgningen.'}</p>
-          : waiting.map((offer) => <Good key={offer.id} offer={offer} />)}
+          ? <p className="shelf__empty">{unplaced.length === 0 && !showPlaced ? 'Alle varer har en plads.' : 'Ingen varer passer til søgningen.'}</p>
+          : groups.map((group) => (
+            <div className="shelf__group" key={group.department ?? 'alle'}>
+              {group.department && (
+                <h4 className="shelf__dept">{DEPARTMENT_NAMES[group.department]} <span>{group.offers.length}</span></h4>
+              )}
+              {group.offers.map((offer) => <Good key={offer.id} offer={offer} where={placed.get(offer.id)} must={must.has(offer.id)} />)}
+            </div>
+          ))}
       </div>
 
       {/*

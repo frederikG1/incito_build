@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ingestJson } from '@incitio/ingest';
 import {
   tjekCategory, tjekFinePrint, tjekLabels, tjekOffers, tjekPack, tjekQuantity,
-} from '../tjek.js';
+} from '../mappings/tjek.js';
 
 describe('tjekQuantity', () => {
   /*

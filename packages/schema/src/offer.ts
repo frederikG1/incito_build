@@ -106,6 +106,28 @@ export const Offer = z.object({
   savings: z.number().nonnegative().nullable().default(null),
   /** The high end, when the saving is a range. Null when it is one figure. */
   savingsMax: z.number().nonnegative().nullable().default(null),
+  /**
+   * The price a member pays, when the feed states one.
+   *
+   * A number and not only the "Medlemspris 12,95" label it used to live
+   * in, because a rule has to be able to ask "does it have a member
+   * price?" without reading a sentence — see `offerFacts`.
+   */
+  memberPrice: z.number().nonnegative().nullable().default(null),
+  /**
+   * The saving as a percentage, when the feed states it rather than a
+   * previous price — SuperBrugsen's `SavePercentage`.
+   */
+  savingsPercent: z.number().min(0).max(100).nullable().default(null),
+  /**
+   * What kind of picture `imageUrl` is: a packshot on white, or a
+   * photograph of the product in use ("Miljø"). A packshot stands in a
+   * cell; a photograph fills it — which is the first thing an offer's
+   * layout is chosen by. Null when the feed does not say.
+   */
+  imageKind: z.enum(['pack', 'lifestyle']).nullable().default(null),
+  /** The campaign the chain runs the offer under — "Månedens køb". Empty when none. */
+  campaign: z.string().default(''),
   currency: z.string().length(3).default('DKK'),
   comparison: ComparisonPrice.nullable().default(null),
 
@@ -172,6 +194,30 @@ export const Offer = z.object({
    * parses.
    */
   members: z.array(z.string()).max(8).default([]),
+
+  /**
+   * The editions this row is sold in, in a feed merged from several.
+   *
+   * Absent on every row a single feed produced, and on a merged row
+   * every edition shares — which is most of them. Present when a store
+   * or region has its own price or its own product: the ids are
+   * `OfferFeed.editions` ids. See `mergeEditionFeeds`.
+   */
+  editions: z.array(z.string()).optional(),
+
+  /**
+   * What the feed said before somebody corrected the price by hand.
+   *
+   * The last-minute fix — the price is 45, not 49 — is the most common
+   * edit of the week and the easiest to forget: next week's file brings
+   * 49 back. Kept so the page can say "rettet i hånden, feedet siger
+   * 49,-", the checks can list it before print, and one click can undo
+   * it. Absent on every offer nobody corrected.
+   */
+  corrected: z.object({
+    price: z.number().nonnegative(),
+    prePrice: z.number().nonnegative().nullable(),
+  }).optional(),
 });
 export type Offer = z.infer<typeof Offer>;
 
@@ -265,6 +311,15 @@ export function groupOffers(members: Offer[], id: string): Offer {
     prePrice: null,
     savings: null,
     savingsMax: null,
+    // A member price only when every product in the group has one: the
+    // mark says it about all of them.
+    memberPrice: members.every((offer) => offer.memberPrice !== null)
+      ? Math.min(...members.map((offer) => offer.memberPrice!))
+      : null,
+    savingsPercent: null,
+    // One photograph over several products is not what a group tile shows.
+    imageKind: 'pack',
+    campaign: agreed(members.map((offer) => offer.campaign), (a, b) => a === b) ?? '',
     currency: first.currency,
     comparison: unit
       ? { value: Math.max(...members.map((offer) => offer.comparison!.value)), unit }
@@ -287,10 +342,24 @@ export function groupOffers(members: Offer[], id: string): Offer {
   };
 }
 
+/** One edition a merged feed speaks for — what `Offer.editions` names. */
+export const FeedEdition = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  /** The stores it is published to, in the platform's ids. */
+  stores: z.array(z.string()).default([]),
+});
+export type FeedEdition = z.infer<typeof FeedEdition>;
+
 export const OfferFeed = z.object({
   retailerId: z.string().min(1),
   sourceName: z.string().default(''),
   offers: z.array(Offer),
+  /**
+   * The editions its rows are scoped to, when it was merged from one
+   * feed per store or region. Absent on a single chain-wide feed.
+   */
+  editions: z.array(FeedEdition).optional(),
 });
 export type OfferFeed = z.infer<typeof OfferFeed>;
 

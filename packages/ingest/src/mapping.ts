@@ -23,6 +23,21 @@ export interface FieldMapping {
    * is itself editorial information worth carrying forward.
    */
   extractRows?: (payload: unknown) => Record<string, unknown>[];
+  /**
+   * Columns this mapping leaves alone on purpose, each with the reason.
+   *
+   * `npm run map -- <file> --check` warns about any well-filled column
+   * the mapping never reads — that is where a missed field hides. A
+   * column named here is a decision rather than an oversight, and the
+   * reason is printed next to it.
+   */
+  unread?: Record<string, string>;
+  /**
+   * Offer fields that are thin in this format by design, with the reason
+   * — "the fine print is left after the chips are taken out". Silences
+   * the check's "filled on only N offers" for that field.
+   */
+  sparse?: Partial<Record<string, string>>;
   fields: {
     id: FieldSource<string>;
     name: FieldSource<string>;
@@ -36,6 +51,14 @@ export interface FieldMapping {
     savings?: FieldSource<number>;
     /** The high end when the saving is a range. See `Offer.savingsMax`. */
     savingsMax?: FieldSource<number>;
+    /** The price a member pays. See `Offer.memberPrice`. */
+    memberPrice?: FieldSource<number>;
+    /** The saving in percent. See `Offer.savingsPercent`. */
+    savingsPercent?: FieldSource<number>;
+    /** Packshot or photograph. See `Offer.imageKind`. */
+    imageKind?: (row: Record<string, unknown>) => 'pack' | 'lifestyle' | null;
+    /** "Månedens køb". See `Offer.campaign`. */
+    campaign?: FieldSource<string>;
     /** What one unit IS — "1 pose". See `Offer.pack`. */
     pack?: FieldSource<string>;
     quantity?: FieldSource<string>;
@@ -190,6 +213,10 @@ export function normalizeRows(
         : [],
       priceFrom: pick(row, f.priceFrom) === true,
       savingsMax: parsePrice(pick(row, f.savingsMax)),
+      memberPrice: parsePrice(pick(row, f.memberPrice)),
+      savingsPercent: parsePrice(pick(row, f.savingsPercent)),
+      imageKind: f.imageKind?.(row) ?? null,
+      campaign: asString(pick(row, f.campaign)) ?? '',
       pack: asString(pick(row, f.pack)) ?? '',
       labels: f.labels ? f.labels(row, labelDictionary) : [],
       priority: parsePrice(pick(row, f.priority)),

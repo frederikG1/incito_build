@@ -15,6 +15,8 @@ export type PageMeasure = Omit<BackdropBrief, 'offer' | 'products' | 'style'> & 
   ratio: number;
   /** The products' own boxes, apart from the pictures in `regions`. */
   productBoxes: { x0: number; x1: number; y0: number; y1: number }[];
+  /** Every piece of type on the page, as boxes — what a motif may never cover. */
+  wordBoxes: { x0: number; x1: number; y0: number; y1: number }[];
 };
 
 type Box = { x0: number; x1: number; y0: number; y1: number };
@@ -123,9 +125,51 @@ function drawnBox(img: HTMLImageElement): { left: number; right: number; top: nu
   return { left, top, right: left + w, bottom: top + h, width: w, height: h };
 }
 
+/** Pixel sizes of the pictures an imported page draws as backgrounds — see `loadPagePictures`. */
+const natural = new Map<string, { w: number; h: number }>();
+
+/**
+ * Learn the real size of every picture a page draws as a background.
+ *
+ * A published page sets its packshots as the background of a box, and
+ * the box is usually much larger than the product in it. Measured by
+ * the box, a page of six products was all product and no paper, and a
+ * motif had nowhere to go. With the picture's own size the drawn product
+ * is found inside its box, as `drawnBox` does for a tile's photograph.
+ */
+export async function loadPagePictures(pageId: string): Promise<void> {
+  const stack = document.querySelector(`[data-page-id="${CSS.escape(pageId)}"]`);
+  const urls = new Set<string>();
+  for (const node of stack?.querySelectorAll<HTMLElement>('[data-incito-block], [data-incito-block] *') ?? []) {
+    const found = /url\("?([^")]+)"?\)/.exec(node.style.backgroundImage);
+    if (found?.[1] && !natural.has(found[1])) urls.add(found[1]);
+  }
+  await Promise.all([...urls].map((url) => new Promise<void>((resolve) => {
+    const image = new Image();
+    image.onload = () => { natural.set(url, { w: image.naturalWidth, h: image.naturalHeight }); resolve(); };
+    image.onerror = () => resolve();
+    image.src = url;
+    setTimeout(resolve, 4000);
+  })));
+}
+
+/** Where a background picture's pixels are inside its box, when its size is known. */
+function drawnBackground(node: HTMLElement): DOMRect {
+  const box = node.getBoundingClientRect();
+  const holder = [node, ...node.querySelectorAll<HTMLElement>('*')].find((el) => el.style.backgroundImage);
+  const url = holder ? /url\("?([^")]+)"?\)/.exec(holder.style.backgroundImage)?.[1] : undefined;
+  const size = url ? natural.get(url) : undefined;
+  if (!holder || !size || !/contain/.test(getComputedStyle(holder).backgroundSize)) return box;
+  const at = holder.getBoundingClientRect();
+  const scale = Math.min(at.width / size.w, at.height / size.h);
+  const w = size.w * scale; const h = size.h * scale;
+  return new DOMRect(at.left + (at.width - w) / 2, at.top + (at.height - h) / 2, w, h);
+}
+
 export function measurePage(pageId: string, ground: string | null): PageMeasure | null {
   const stack = document.querySelector(`[data-page-id="${CSS.escape(pageId)}"]`);
-  const page = stack?.querySelector<HTMLElement>('.page');
+  // The sheet itself when it carries the id (as a thumbnail does), else the sheet inside it.
+  const page = stack?.matches('.page:not(.page--overlay)') ? stack as HTMLElement : stack?.querySelector<HTMLElement>('.page');
   if (!page) return null;
   const P = page.getBoundingClientRect();
   if (P.width <= 0 || P.height <= 0) return null;
@@ -148,6 +192,20 @@ export function measurePage(pageId: string, ground: string | null): PageMeasure 
     };
   }).filter((box): box is NonNullable<typeof box> => Boolean(box));
 
+  /*
+   * A page printed from its publication has no tiles to measure — its
+   * products, prices, heading and art are elements of its own tree. Each
+   * is kept clear exactly like a tile; the sheet-sized ones are its paper.
+   */
+  const published = [...page.querySelectorAll<HTMLElement>('[data-incito-block]')]
+    .map((node) => ({ node, box: node.querySelector('p') ? node.getBoundingClientRect() : drawnBackground(node) }))
+    .filter(({ box }) => box.width > 0 && box.height > 0 && box.width * box.height < P.width * P.height * 0.6);
+  const asShare = (box: DOMRect) => ({
+    x0: pct(box.left, P.left, P.width), x1: pct(box.right, P.left, P.width),
+    y0: pct(box.top, P.top, P.height), y1: pct(box.bottom, P.top, P.height),
+  });
+  regions.push(...published.filter(({ node }) => !node.querySelector('p')).map(({ box }) => asShare(box)));
+
   const text: Part[] = [...page.querySelectorAll<HTMLElement>(TYPE)]
     .filter((node) => !node.hidden && node.getBoundingClientRect().width > 0 && !node.classList.contains('page__note--behind'))
     .map((node) => {
@@ -156,7 +214,19 @@ export function measurePage(pageId: string, ground: string | null): PageMeasure 
         (box.left + box.width / 2 - P.left) / P.width,
         (box.top + box.height / 2 - P.top) / P.height,
       );
-    });
+    })
+    .concat(published.filter(({ node }) => node.querySelector('p')).map(({ box }) => partOf(
+      (box.left + box.width / 2 - P.left) / P.width,
+      (box.top + box.height / 2 - P.top) / P.height,
+    )));
+
+  const wordBoxes: Box[] = [...page.querySelectorAll<HTMLElement>(TYPE)]
+    .filter((node) => !node.hidden && !node.classList.contains('page__note--behind'))
+    .map((node) => node.getBoundingClientRect())
+    // The lines themselves: an element's box can hold a product as well as its words.
+    .concat(published.flatMap(({ node }) => [...node.querySelectorAll('p')].map((line) => line.getBoundingClientRect())))
+    .filter((box) => box.width > 0 && box.height > 0)
+    .map(asShare);
 
   const colour = (ground && /^#[0-9a-f]{6}$/i.test(ground) ? ground : null)
     ?? hexOf(getComputedStyle(page).backgroundColor)
@@ -180,7 +250,8 @@ export function measurePage(pageId: string, ground: string | null): PageMeasure 
     .map((box) => ({
       x0: pct(box.left, P.left, P.width), x1: pct(box.right, P.left, P.width),
       y0: pct(box.top, P.top, P.height), y1: pct(box.bottom, P.top, P.height),
-    })));
+    })))
+    .concat(published.map(({ box }) => asShare(box)));
   const ratio = P.width / P.height;
   /*
    * The page's own pictures are kept clear too — its heading artwork,
@@ -201,6 +272,7 @@ export function measurePage(pageId: string, ground: string | null): PageMeasure 
 
   return {
     productBoxes: regions,
+    wordBoxes,
     aspect: nearestAspect(P.width, P.height), colour,
     regions: [...regions, ...pictures].slice(0, 20), text: [...new Set(text)],
     ratio, spots: freeSpots(taken, ratio),
@@ -250,3 +322,91 @@ export function motifDecoration(
     offsetX: clamp(offsetX), offsetY: clamp(offsetY),
   };
 }
+
+/**
+ * Where on the page a motif goes — chosen here, never left to the model.
+ *
+ * There is always an answer. First the page's largest free place, if it
+ * is big enough to be worth a picture; the one at the sheet's edge and
+ * near the page's biggest product wins, so the motif reads as belonging
+ * to it. A page with no such place gets a corner instead: the motif
+ * comes in from off the sheet, over whatever paper is there, placed
+ * where it covers the least product and no words. Kept to a shape a
+ * group of objects can fill — never a sliver.
+ */
+export function motifTarget(measure: PageMeasure): Box {
+  const ratio = measure.ratio;
+  const area = (b: Box) => Math.max(0, b.x1 - b.x0) * Math.max(0, b.y1 - b.y0) / 10000;
+  const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0))
+    * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)) / 10000;
+  const lead = [...measure.productBoxes].sort((a, b) => area(b) - area(a))[0];
+  const near = (b: Box) => {
+    if (!lead) return 1;
+    const dx = ((b.x0 + b.x1) - (lead.x0 + lead.x1)) / 200;
+    const dy = ((b.y0 + b.y1) - (lead.y0 + lead.y1)) / 200;
+    return 1 / (1 + 2 * Math.hypot(dx, dy / ratio));
+  };
+  /** The box cut to a shape a group can fill: at most twice as long as it is wide, on the page. */
+  const shaped = (b: Box): Box => {
+    const w = (b.x1 - b.x0) * ratio; const h = b.y1 - b.y0;
+    if (w > 2 * h) {
+      const keep = (2 * h) / ratio;
+      return b.x0 <= 2 ? { ...b, x1: b.x0 + keep } : b.x1 >= 98 ? { ...b, x0: b.x1 - keep } : { ...b, x0: (b.x0 + b.x1 - keep) / 2, x1: (b.x0 + b.x1 + keep) / 2 };
+    }
+    if (h > 2 * w) {
+      const keep = 2 * w;
+      return b.y0 <= 2 ? { ...b, y1: b.y0 + keep } : b.y1 >= 98 ? { ...b, y0: b.y1 - keep } : { ...b, y0: (b.y0 + b.y1 - keep) / 2, y1: (b.y0 + b.y1 + keep) / 2 };
+    }
+    return b;
+  };
+  /*
+   * A free strip along the sheet's edge is made a place by letting the
+   * motif come in from off the page: widened outward until it is a shape
+   * a group of objects can fill. What shows is what counts.
+   */
+  const bled = (b: Box): Box => {
+    const w = (b.x1 - b.x0) * ratio; const h = b.y1 - b.y0;
+    if (w < 0.7 * h && (b.x0 <= 1 || b.x1 >= 99)) {
+      const grow = (0.7 * h) / ratio - (b.x1 - b.x0);
+      return b.x0 <= 1 ? { ...b, x0: b.x0 - grow } : { ...b, x1: b.x1 + grow };
+    }
+    if (h < 0.7 * w && (b.y0 <= 1 || b.y1 >= 99)) {
+      const grow = 0.7 * w - h;
+      return b.y0 <= 1 ? { ...b, y0: b.y0 - grow } : { ...b, y1: b.y1 + grow };
+    }
+    return b;
+  };
+  const shows = (b: Box) => area({ x0: Math.max(0, b.x0), x1: Math.min(100, b.x1), y0: Math.max(0, b.y0), y1: Math.min(100, b.y1) });
+  const free = (measure.spots ?? []).map((b) => shaped(bled(b))).filter((b) => shows(b) >= 0.04);
+  if (free.length > 0) {
+    const edge = (b: Box) => (b.x0 <= 2 || b.x1 >= 98 || b.y0 <= 2 || b.y1 >= 98 ? 1.3 : 1);
+    return free.sort((a, b) => shows(b) * edge(b) * near(b) - shows(a) * edge(a) * near(a))[0]!;
+  }
+  /*
+   * A corner or an edge, coming in from off the sheet: the largest size
+   * that covers no words and at most a little of a product, and of the
+   * places that allows, the one that covers the least product. A page
+   * where every place touches words takes the one touching fewest.
+   */
+  const candidates: { box: Box; words: number; goods: number; size: number }[] = [];
+  for (const size of [0.36, 0.3, 0.25, 0.2]) {
+    const w = size * 100; const h = size * 100 * ratio;
+    for (const x0 of [-w * 0.3, 100 - w * 0.7]) {
+      for (const y0 of [-h * 0.15, 50 - h / 2, 100 - h * 0.85]) {
+        const box = { x0, x1: x0 + w, y0, y1: y0 + h };
+        const shown = area({ x0: Math.max(0, box.x0), x1: Math.min(100, box.x1), y0: Math.max(0, box.y0), y1: Math.min(100, box.y1) });
+        candidates.push({
+          box, size,
+          words: measure.wordBoxes.reduce((sum, b) => sum + overlap(box, b), 0) / shown,
+          goods: measure.productBoxes.reduce((sum, b) => sum + overlap(box, b), 0) / shown,
+        });
+      }
+    }
+  }
+  const fits = candidates.filter((c) => c.words === 0 && c.goods <= 0.3);
+  const pick = fits.length > 0
+    ? fits.sort((a, b) => b.size - a.size || a.goods - b.goods || near(b.box) - near(a.box))[0]!
+    : candidates.sort((a, b) => a.words - b.words || a.goods - b.goods || b.size - a.size)[0]!;
+  return pick.box;
+}
+

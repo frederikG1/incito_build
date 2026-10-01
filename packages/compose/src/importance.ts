@@ -1,4 +1,4 @@
-import type { Offer } from '@incitio/schema';
+import { ruleEmphasis, type Offer, type OfferRule } from '@incitio/schema';
 
 /**
  * How much editorial weight an offer deserves, 0..1.
@@ -7,8 +7,18 @@ import type { Offer } from '@incitio/schema';
  * offers are its drivers. Otherwise it is derived from discount depth,
  * because in leaflet practice the deepest cut is the page's draw.
  */
-export function offerImportance(offer: Offer): number {
-  if (offer.priority !== null) return offer.priority;
+export function offerImportance(offer: Offer, rules?: readonly OfferRule[]): number {
+  /*
+   * The chain's own rules come on top of either — "a member price pulls
+   * towards the big cells" is the chain saying which offers are its
+   * drivers, just as a feed priority is. See `OfferRule`.
+   */
+  const lift = ruleEmphasis(offer, rules);
+  if (offer.priority !== null) return Math.max(0, Math.min(1, offer.priority + lift));
+  return Math.max(0, Math.min(1, derived(offer) + lift));
+}
+
+function derived(offer: Offer): number {
 
   let score = 0.3;
   if (offer.prePrice !== null && offer.prePrice > offer.price) {
@@ -19,7 +29,7 @@ export function offerImportance(offer: Offer): number {
     if (denominator > 0) score += Math.min((offer.savings / denominator) * 1.4, 0.5);
   }
   // Multibuy and member deals are the mechanics chains push hardest.
-  if (offer.labels.some((l) => l.kind === 'multibuy' || l.kind === 'member')) score += 0.12;
+  if (offer.memberPrice !== null || offer.labels.some((l) => l.kind === 'multibuy' || l.kind === 'member')) score += 0.12;
 
   return Math.max(0, Math.min(1, score));
 }
@@ -33,9 +43,16 @@ export function offerImportance(offer: Offer): number {
  * appear in the feed, which makes regeneration shuffle pages at random.
  */
 export function compareByImportance(a: Offer, b: Offer): number {
-  const diff = offerImportance(b) - offerImportance(a);
-  if (Math.abs(diff) > 1e-9) return diff;
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  return byImportance()(a, b);
+}
+
+/** `compareByImportance`, with the chain's rules weighed in. */
+export function byImportance(rules?: readonly OfferRule[]): (a: Offer, b: Offer) => number {
+  return (a, b) => {
+    const diff = offerImportance(b, rules) - offerImportance(a, rules);
+    if (Math.abs(diff) > 1e-9) return diff;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  };
 }
 
 /**
@@ -57,7 +74,7 @@ export function compareByImportance(a: Offer, b: Offer): number {
 export function leadContrast(offers: Offer[]): number {
   if (offers.length === 0) return 0;
   if (offers.length === 1) return 1;
-  const scores = offers.map(offerImportance).sort((a, b) => b - a);
+  const scores = offers.map((offer) => offerImportance(offer)).sort((a, b) => b - a);
   const rest = scores.slice(1);
   const median = rest[Math.floor(rest.length / 2)]!;
   return Math.max(0, Math.min(1, scores[0]! - median));

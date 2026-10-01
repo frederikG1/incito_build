@@ -1,4 +1,5 @@
 import type { Brand, Offer, PageTemplate } from '@incitio/schema';
+import { OFFER_GRID_PREFIX } from '@incitio/schema';
 import { brandCapacities, templatesForCount } from '@incitio/brands';
 import { compareByImportance, leadContrast, LEAD_CONTRAST_THRESHOLD } from './importance.js';
 
@@ -145,11 +146,17 @@ export function chooseTemplate(
    */
   contrast?: number,
 ): string {
-  const exact = templatesForCount(brand, count);
-  const roomy = brand.templates
+  /*
+   * A chain drawn in offer designs gets offer-grid cells — the shape the
+   * designs are drawn for — rather than its hand-drawn layouts.
+   */
+  const gridded = brand.offerDesigns.length > 0 && brand.templates.some((t) => t.id.startsWith(OFFER_GRID_PREFIX));
+  const own = gridded ? { ...brand, templates: brand.templates.filter((t) => t.id.startsWith(OFFER_GRID_PREFIX)) } : brand;
+  const exact = templatesForCount(own, count);
+  const roomy = own.templates
     .filter((t) => t.slots.length >= count)
     .sort((a, b) => a.slots.length - b.slots.length);
-  const pool = exact.length > 0 ? exact : roomy.length > 0 ? roomy : brand.templates;
+  const pool = exact.length > 0 ? exact : roomy.length > 0 ? roomy : own.templates;
 
   /*
    * Shape follows the offers.

@@ -42,7 +42,7 @@ import {
   findSource, getBrand, resolveSource,
   type BrandDefinition, type FeedSource,
 } from '@incitio/brands';
-import { ingestCsv, ingestJson, type LabelDictionary } from '@incitio/ingest';
+import { ingestFeed, type LabelDictionary } from '@incitio/ingest';
 import { matchSystemPrompt, MATCH_SCHEMA, type MatchPlan } from './prompt.js';
 import { pageImage, sampleGround, type ImageMediaType } from './page-image.js';
 import { describeGrid, measureGrid, type MeasuredGrid } from './measured-grid.js';
@@ -205,9 +205,7 @@ export async function matchPage(
       reason = match.reason;
     }
 
-    const { feed } = source.format === 'csv'
-      ? ingestCsv(options.feedText, source.mapping, options.labels)
-      : ingestJson(options.feedText, source.mapping, options.labels);
+    const { feed } = ingestFeed(options.feedText, source.mapping, options.labels);
 
     // Only offers with artwork can stand in for a product on a printed page.
     const spent = new Set(options.exclude ?? []);

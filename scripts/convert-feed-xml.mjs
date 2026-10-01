@@ -4,8 +4,11 @@
  * Deliberately faithful rather than clever: every element becomes a
  * string field with its original name, and nothing is renamed, coerced or
  * dropped. Semantic mapping is the FieldMapping layer's job
- * (packages/pipeline/src/retailers.ts) — keeping the two apart is what
- * lets a feed's quirks change without touching the catalog engine.
+ * (packages/brands/src/mappings/) — keeping the two apart is what lets a
+ * feed's quirks change without touching the catalog engine.
+ *
+ * Only needed to keep a JSON copy in the repo: `@incitio/ingest` reads
+ * flat XML itself, so `npm run map -- feed.xml` takes the file as it is.
  *
  * Usage: node scripts/convert-feed-xml.mjs <url-or-path> <out.json> [itemTag]
  */

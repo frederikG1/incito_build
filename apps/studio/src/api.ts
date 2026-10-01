@@ -1,4 +1,6 @@
-import { Brand, CatalogDocument, CatalogPage, CatalogWeek, Offer, PageTemplate } from '@incitio/schema';
+import { Brand, CatalogDocument, CatalogPage, CatalogWeek, Offer, OfferRules, PageTemplate, Themes, type Theme } from '@incitio/schema';
+import type { EditOp } from '@incitio/edit/core';
+import type { OfferDesign } from '@incitio/schema';
 
 const BASE = '/api';
 
@@ -260,12 +262,33 @@ export async function buildCatalogue(brandId: string, request: BuildRequest): Pr
   return { ...body, document: CatalogDocument.parse(body.document) };
 }
 
+export type CatalogStatus = 'kladde' | 'klar' | 'udgivet' | 'skjult';
+
 export interface CatalogSummary {
   id: string;
   brandId: string;
   name: string;
   createdAt: string;
   updatedAt: string;
+  week: CatalogWeek | null;
+  pages: number;
+  offers: number;
+  status: CatalogStatus;
+}
+
+/** Rename an avis, or change where it is in its week, without opening it. */
+export async function patchCatalogue(
+  brandId: string,
+  id: string,
+  patch: { name?: string; status?: CatalogStatus },
+): Promise<{ updatedAt: string }> {
+  const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) await fail(response);
+  return { updatedAt: ((await response.json()) as { document: { updatedAt: string } }).document.updatedAt };
 }
 
 /**
@@ -282,21 +305,60 @@ export async function fetchCatalogues(brandId: string): Promise<CatalogSummary[]
   return ((await response.json()) as { catalogs: CatalogSummary[] }).catalogs;
 }
 
+/** The catalogue was saved by somebody else after this studio last read or saved it. */
+export class SaveConflict extends Error {
+  constructor(readonly updatedAt: string) {
+    super('Avisen er gemt af en anden imens');
+  }
+}
+
+/**
+ * Save, and say what the server now holds: its `updatedAt` is what the
+ * next save sends as `expected`, so a save that would overwrite a
+ * colleague's is refused with `SaveConflict` instead of winning quietly.
+ */
 export async function saveCatalogue(
   brandId: string,
   document: CatalogDocument,
   label = '',
-): Promise<void> {
-  const query = label ? `?label=${encodeURIComponent(label)}` : '';
+  expected?: string,
+): Promise<{ updatedAt: string }> {
+  const query = new URLSearchParams({
+    ...(label ? { label } : {}),
+    ...(expected ? { expected } : {}),
+  }).toString();
   const response = await fetch(
-    `${BASE}/brand/catalogs/${encodeURIComponent(document.id)}${query}`,
+    `${BASE}/brand/catalogs/${encodeURIComponent(document.id)}${query ? `?${query}` : ''}`,
     {
       method: 'PUT',
       headers: headers(brandId, { 'content-type': 'application/json' }),
       body: JSON.stringify(document),
     },
   );
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => ({}))) as { updatedAt?: string };
+    throw new SaveConflict(body.updatedAt ?? '');
+  }
   if (!response.ok) await fail(response);
+  const body = (await response.json()) as { document: { updatedAt: string } };
+  return { updatedAt: body.document.updatedAt };
+}
+
+export interface CatalogueVersion { version: number; label: string; createdAt: string }
+
+export async function fetchVersions(brandId: string, id: string): Promise<CatalogueVersion[]> {
+  const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}/versions`, { headers: headers(brandId) });
+  if (!response.ok) await fail(response);
+  return ((await response.json()) as { versions: CatalogueVersion[] }).versions;
+}
+
+export async function fetchVersion(brandId: string, id: string, version: number): Promise<CatalogDocument> {
+  const response = await fetch(
+    `${BASE}/brand/catalogs/${encodeURIComponent(id)}/versions/${version}`,
+    { headers: headers(brandId) },
+  );
+  if (!response.ok) await fail(response);
+  return CatalogDocument.parse(((await response.json()) as { document: unknown }).document);
 }
 
 export async function fetchCatalogue(
@@ -322,8 +384,11 @@ export async function fetchCatalogue(
  * reject it — the same isolation that protects the data also means every
  * request has to be made by code that knows who it is.
  */
-export async function fetchCataloguePdf(brandId: string, id: string, forPrint = false): Promise<Blob> {
-  const query = forPrint ? '?tryk=1' : '';
+export async function fetchCataloguePdf(brandId: string, id: string, forPrint = false, variantId: string | null = null): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (forPrint) params.set('tryk', '1');
+  if (variantId) params.set('variant', variantId);
+  const query = params.size > 0 ? `?${params}` : '';
   const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}/pdf${query}`, {
     headers: headers(brandId),
   });
@@ -569,6 +634,8 @@ export async function drawBackdrop(
     text: string[]; offer: string; products: string[]; style?: string;
     ratio?: number;
     spots?: { x0: number; x1: number; y0: number; y1: number }[];
+    /** One motif alone, for a place the studio chose. */
+    isolated?: boolean;
   },
 ): Promise<{ motifs: DrawnMotif[]; prompt: string }> {
   const response = await fetch(`${BASE}/brand/backdrop`, {
@@ -693,6 +760,33 @@ export async function arrangeGroup(
   });
   if (!response.ok) await fail(response);
   return (await response.json()) as ArrangeReply;
+}
+
+/* ------------------------------------------------ sig det med ord */
+
+export interface InstructReply {
+  ops: EditOp[];
+  explanation: string;
+  unclear: string | null;
+  rejected: { op: unknown; reason: string }[];
+  /** What the ops do, line by line — tried on the server before it answered. */
+  applied: string[];
+  /** Set when the proposal does not apply to this document. */
+  error: string | null;
+}
+
+/** A sentence to edit ops, for the document on screen. Proposes; applies nothing. */
+export async function instructEdit(
+  brandId: string,
+  request: { document: CatalogDocument; instruction: string; selection?: { offerId?: string | null; pageId?: string | null } },
+): Promise<InstructReply> {
+  const response = await fetch(`${BASE}/brand/instruct`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as InstructReply;
 }
 
 /* ------------------------------------- varerne som ét fotografi */
@@ -863,12 +957,51 @@ export interface Section {
   template: PageTemplate | null;
   preview: Offer[];
   createdAt: string;
+  version?: number;
+  updatedAt?: string;
+}
+
+export async function fetchThemes(brandId: string): Promise<Theme[]> {
+  const response = await fetch(`${BASE}/brand/themes`, { headers: headers(brandId) });
+  if (!response.ok) await fail(response);
+  return Themes.parse(((await response.json()) as { themes: unknown }).themes);
+}
+
+/** The chain's themes, saved whole. */
+export async function saveThemes(brandId: string, themes: Theme[]): Promise<Theme[]> {
+  const response = await fetch(`${BASE}/brand/themes`, {
+    method: 'PUT',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify({ themes }),
+  });
+  if (!response.ok) await fail(response);
+  return Themes.parse(((await response.json()) as { themes: unknown }).themes);
 }
 
 export async function fetchSections(brandId: string): Promise<Section[]> {
   const response = await fetch(`${BASE}/brand/sections`, { headers: headers(brandId) });
   if (!response.ok) await fail(response);
   return ((await response.json()) as { sections: Section[] }).sections;
+}
+
+/** Save the chain's offer rules, whole — their order is their precedence. */
+export async function saveOfferRules(brandId: string, rules: OfferRules): Promise<OfferRules> {
+  const response = await fetch(`${BASE}/brand/offer-rules`, {
+    method: 'PUT',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify({ rules }),
+  });
+  if (!response.ok) await fail(response);
+  return OfferRules.parse(((await response.json()) as { rules: unknown }).rules);
+}
+
+export async function saveOfferDesigns(brandId: string, designs: OfferDesign[], tag: string | null): Promise<void> {
+  const response = await fetch(`${BASE}/brand/offer-designs`, {
+    method: 'PUT',
+    headers: headers(brandId, { 'content-type': 'application/json' }),
+    body: JSON.stringify({ designs, tag }),
+  });
+  if (!response.ok) await fail(response);
 }
 
 export async function saveSection(brandId: string, section: Section): Promise<Section> {

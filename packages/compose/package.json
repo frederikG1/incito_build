@@ -7,6 +7,7 @@
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
     "@incitio/schema": "0.1.0",
-    "@incitio/brands": "0.1.0"
+    "@incitio/brands": "0.1.0",
+    "@incitio/edit": "0.1.0"
   }
 }

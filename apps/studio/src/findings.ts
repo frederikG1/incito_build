@@ -25,6 +25,15 @@ function membersOf(offer: Offer, document: CatalogDocument): Offer[] {
     .filter((entry): entry is Offer => Boolean(entry));
 }
 
+/**
+ * Whether a tile holds more products than its cell has room for — the
+ * one rule the tile's dot (`Crowded`) and the checks before print share.
+ * `area` is the cell's share of the page as drawn.
+ */
+export function isCrowded(products: number, area: number): boolean {
+  return (products >= 3 && area < 0.13) || (products === 2 && area < 0.07);
+}
+
 export interface Finding {
   /** Stable across re-reads, so the list does not reshuffle under the pointer. */
   id: string;
@@ -48,7 +57,7 @@ export interface Finding {
 }
 
 export const FINDING_KINDS = [
-  'billede', 'plads', 'tekst', 'pris', 'klynge', 'ark', 'uge', 'skabelon', 'regler',
+  'billede', 'plads', 'tekst', 'pris', 'klynge', 'ark', 'uge', 'skabelon', 'regler', 'skalmed',
 ] as const;
 export type FindingKind = (typeof FINDING_KINDS)[number];
 
@@ -79,6 +88,8 @@ function tileSaid(offer: Offer | undefined, document: CatalogDocument): string {
  * came out — a price sitting on a name, a line clipped in half — and
  * that is `measureFindings` below, which reads the real rendered page.
  */
+const kroner = (value: number) => (Number.isInteger(value) ? `${value},-` : value.toFixed(2).replace('.', ','));
+
 export function readFindings(
   document: CatalogDocument | null,
   brand: Brand | null,
@@ -256,6 +267,18 @@ export function readFindings(
         }
       }
 
+      // A price corrected by hand: right now, and gone again next week unless the feed agrees.
+      if (offer.corrected) {
+        found.push({
+          id: `${page.id}:${offer.id}:rettet-pris`,
+          kind: 'pris',
+          said: `Side ${number}: prisen på ${offer.name} er rettet i hånden — feedet siger ${kroner(offer.corrected.price)}`,
+          ...at,
+          offerId: offer.id,
+          weight: 'se',
+        });
+      }
+
       // A price of nothing is a feed that did not parse, not a giveaway.
       if (offer.price <= 0) {
         found.push({
@@ -341,6 +364,37 @@ function ownerOf(node: Element): { offerId: string | null; name: string } {
 const WORDS = '.tile__name, .tile__description, .tile__quantity, .tile__meta, .tile__brand';
 
 /**
+ * The products standing under a text on the page.
+ *
+ * A section read off a printed page keeps the page's own words — the
+ * long Änglamark paragraph, a campaign line — and the cells beside and
+ * under them. Dealt into, those cells put a product behind a paragraph.
+ * A quarter of the cell covered is enough: that is a price or a picture
+ * under type. Measured, because a text box's height is only known once
+ * it is set.
+ */
+export function coveredByText(pageEl: Element): { offerId: string; text: string }[] {
+  const notes = [...pageEl.querySelectorAll('.page__note')]
+    .map((note) => ({ box: note.getBoundingClientRect(), text: (note.textContent ?? '').trim() }))
+    .filter((note) => note.box.width > 0 && note.box.height > 0 && note.text.length > 0);
+  const out: { offerId: string; text: string }[] = [];
+  for (const slot of pageEl.querySelectorAll<HTMLElement>('.slot[data-offer-id]')) {
+    const cell = slot.getBoundingClientRect();
+    const area = cell.width * cell.height;
+    if (area <= 0) continue;
+    for (const note of notes) {
+      const w = Math.min(cell.right, note.box.right) - Math.max(cell.left, note.box.left);
+      const h = Math.min(cell.bottom, note.box.bottom) - Math.max(cell.top, note.box.top);
+      if (w > 0 && h > 0 && (w * h) / area >= 0.25) {
+        out.push({ offerId: slot.dataset['offerId']!, text: note.text });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * What the rendered pages are doing wrong, measured.
  *
  * The same rules `npm run check` runs in Chromium, run against the
@@ -361,6 +415,12 @@ export function measureFindings(
    * DID place is theirs and gets left alone.
    */
   untouched: Set<string> = new Set(),
+  /*
+   * How many products each placed tile shows, for the ones nobody has
+   * said "behold som den er" to — see `Crowded`. The cell's share of
+   * the page is only known once it is drawn, so this check lives here.
+   */
+  crowding: Map<string, { products: number; name: string }> = new Map(),
 ): Finding[] {
   const found: Finding[] = [];
   const sheets = [...root.querySelectorAll('.page')];
@@ -373,6 +433,36 @@ export function measureFindings(
     };
     const bounds = el.getBoundingClientRect();
     if (bounds.width < 2 || bounds.height < 2) return;
+
+    // A product under one of the page's own texts.
+    for (const { offerId, text } of coveredByText(el)) {
+      found.push({
+        id: `${at.pageId}:${offerId}:under-tekst`,
+        kind: 'tekst',
+        said: `Side ${number}: teksten «${text.slice(0, 32)}${text.length > 32 ? '…' : ''}» ligger hen over ${crowding.get(offerId)?.name ?? 'en vare'}`,
+        ...at,
+        offerId,
+        weight: 'stop',
+      });
+    }
+
+    // Several products in a cell too small to show them.
+    for (const node of el.querySelectorAll<HTMLElement>('.slot[data-offer-id]')) {
+      const offerId = node.dataset['offerId']!;
+      const tile = crowding.get(offerId);
+      if (!tile || tile.products < 2) continue;
+      const cell = node.getBoundingClientRect();
+      const area = (cell.width * cell.height) / (bounds.width * bounds.height);
+      if (!isCrowded(tile.products, area)) continue;
+      found.push({
+        id: `${at.pageId}:${offerId}:lidt-plads`,
+        kind: 'plads',
+        said: `Side ${number}: ${tile.products} varer på lidt plads i ${tile.name}`,
+        ...at,
+        offerId,
+        weight: 'se',
+      });
+    }
 
     /*
      * Artwork past the paper's edge.

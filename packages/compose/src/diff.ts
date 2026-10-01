@@ -118,6 +118,8 @@ export function applyFeedDiff(document: CatalogDocument, diff: FeedDiff): Catalo
     if (!change) return offer;
     const next = { ...offer };
     for (const { field, after } of change.fields) (next as Record<string, unknown>)[field] = after;
+    // The feed has spoken on the price again: a hand correction of the old one no longer stands.
+    if (change.fields.some(({ field }) => field === 'price' || field === 'prePrice')) delete next.corrected;
     return next;
   });
   return { ...document, offers: [...offers, ...diff.added] };

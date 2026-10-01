@@ -2,8 +2,8 @@ import { freeSlots } from './grid.js';
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { isImagePage, type CatalogPage, type PageTemplate } from '@incitio/schema';
 import { resolveTemplate } from '@incitio/brands';
-import { ImagePage, PageView } from '@incitio/renderer';
-import { departmentOfPage, useStudio } from './state.js';
+import { ImagePage, ImageSize, PageView } from '@incitio/renderer';
+import { THUMB_PX, departmentOfPage, useStudio } from './state.js';
 import type { Finding } from './findings.js';
 import { OFFER_MIME, droppedOffers } from './Tray.js';
 import { DEPARTMENT_NAMES } from '@incitio/compose';
@@ -116,7 +116,8 @@ function Card({ page, index }: { page: CatalogPage; index: number }) {
         ? 'Billedside'
         : `Side ${index + 1}${empty ? ` · ${empty} ${empty === 1 ? 'tomt felt' : 'tomme felter'}` : ''}`}
     >
-      <div className="card__live" aria-hidden="true">{live}</div>
+      {/* A thumbnail's photographs are thumbnails too — see `ImageSize`. */}
+      <div className="card__live" aria-hidden="true"><ImageSize.Provider value={THUMB_PX}>{live}</ImageSize.Provider></div>
       <button
         className="card__drop"
         title={`Slet side ${index + 1} (⌘Z fortryder)`}
@@ -297,6 +298,17 @@ function AddPages() {
  * costs, and the feed that is already loaded named so it is clear the
  * products are there waiting.
  */
+/** Which theme the avis wears, and the way to change it. */
+function ThemeButton() {
+  const theme = useStudio((s) => (s.variantBase ?? s.document)?.theme);
+  const open = useStudio((s) => s.setThemesOpen);
+  return (
+    <button className={`thin${theme ? ' book__theme' : ''}`} onClick={() => open(true)} title="Pynt hele avisen til en anledning — fødselsdag, Halloween, Black Friday">
+      {theme ? `Tema · ${theme.name}` : 'Tema'}
+    </button>
+  );
+}
+
 function EmptyBook() {
   const s = useStudio();
   const sections = useStudio((state) => state.sections.length);
@@ -357,7 +369,7 @@ export function Book() {
     pages.forEach((page, at) => groups.push({ at, pages: [page] }));
   } else {
     pages.forEach((page, at) => {
-      if (at === 0 || at % 2 === 0) groups.push({ at, pages: [page] });
+      if (at === 0 || at % 2 === 1) groups.push({ at, pages: [page] });
       else groups[groups.length - 1]!.pages.push(page);
     });
   }
@@ -368,6 +380,7 @@ export function Book() {
         <h2>Avisen</h2>
         <span className="book__said">som den bliver trykt · træk en side for at flytte den</span>
         <div className="book__gap" />
+        <ThemeButton />
         <button className="thin" onClick={() => setSectionsOpen(true)} title="Kædens gemte sidedesigns">
           Sektioner{sectionCount ? ` · ${sectionCount}` : ''}
         </button>

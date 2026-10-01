@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { defaultSource, findSource, getBrand, listBrands } from '@incitio/brands';
-import { Brand, PageTemplate } from '@incitio/schema';
+import { Brand, PageTemplate, readDesignExport } from '@incitio/schema';
 import { parseLabelDictionary, EMPTY_LABEL_DICTIONARY } from '@incitio/ingest';
 import { buildCatalogue } from '@incitio/pipeline';
 import { renderCataloguePdf, renderCataloguePngs, renderCatalogueHtml } from '@incitio/pdf';
@@ -134,7 +134,18 @@ const feedText = feedArg
   : read(`data${(namedSource ?? defaultSource(definition)).path}`);
 
 const started = Date.now();
+// The chain's offer designs, when it ships them — pages are then laid out in offer-grid cells.
+const designs = (() => {
+  try {
+    const shipped = readDesignExport(read(`data/designs/${brandId}-cms.json`));
+    return { designs: shipped.designs, tag: shipped.tag };
+  } catch {
+    return null;
+  }
+})();
+
 const result = await buildCatalogue(brandId, feedText, {
+  ...(designs ? { designs } : {}),
   catalogId: `${brand.id}-${skipCuration ? 'baseline' : 'ai'}`,
   maxPages: pages,
   skipCuration,

@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { CatalogDocument, CatalogPage, Offer, PageTemplate } from '@incitio/schema';
+import { CatalogDocument, CatalogPage, Offer, OfferRules, PageTemplate, OfferDesigns, Themes, type OfferDesign } from '@incitio/schema';
 import { z } from 'zod';
 
 /**
@@ -73,6 +73,31 @@ CREATE TABLE IF NOT EXISTS sections (
   created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sections_brand ON sections (brand_id);
+
+/*
+ * How the chain wants its offers to look — its own rules, written in the
+ * studio. One row per chain: the list IS the setting, and its order is
+ * its precedence, so it is stored whole.
+ */
+CREATE TABLE IF NOT EXISTS offer_designs (
+  brand_id    TEXT PRIMARY KEY,
+  designs     TEXT NOT NULL,
+  design_tag  TEXT,
+  updated_at  TEXT NOT NULL
+);
+
+-- The chain's themes — birthday, Halloween — stored whole, like its rules.
+CREATE TABLE IF NOT EXISTS themes (
+  brand_id    TEXT PRIMARY KEY,
+  themes      TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS offer_rules (
+  brand_id    TEXT PRIMARY KEY,
+  rules       TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
 `;
 
 /**
@@ -93,6 +118,9 @@ export const Section = z.object({
   template: PageTemplate.nullable().default(null),
   preview: z.array(Offer).max(40).default([]),
   createdAt: z.string().default(''),
+  /** Counts up on every save under the same id, so pages made from it can tell they are behind. */
+  version: z.number().int().min(1).default(1),
+  updatedAt: z.string().default(''),
 });
 export type Section = z.infer<typeof Section>;
 
@@ -102,6 +130,11 @@ export interface CatalogSummary {
   name: string;
   createdAt: string;
   updatedAt: string;
+  /** What the front page sorts and says by — read off the stored document. */
+  week: { year: number; week: number } | null;
+  pages: number;
+  offers: number;
+  status: 'kladde' | 'klar' | 'udgivet' | 'skjult';
 }
 
 /** One picture in a chain's own library. */
@@ -109,6 +142,17 @@ export interface UploadSummary {
   ref: string;
   name: string;
   createdAt: string;
+}
+
+/** The label an automatic save carries — see `Store.save`. */
+export const AUTO_LABEL = 'auto';
+const AUTO_FOLD_MS = 10 * 60 * 1000;
+
+/** Somebody saved the catalogue after the saver last read it. */
+export class SaveConflict extends Error {
+  constructor(readonly updatedAt: string) {
+    super('the catalogue was saved by someone else in the meantime');
+  }
 }
 
 export class Store {
@@ -176,17 +220,74 @@ export class Store {
 
   /** Save a section, refusing to overwrite another chain's id. */
   saveSection(brandId: string, section: Section): Section {
-    const existing = this.db.prepare('SELECT brand_id FROM sections WHERE id = ?')
-      .get(section.id) as { brand_id: string } | undefined;
+    const existing = this.db.prepare('SELECT brand_id, section FROM sections WHERE id = ?')
+      .get(section.id) as { brand_id: string; section: string } | undefined;
     if (existing && existing.brand_id !== brandId) {
       throw new Error(`section ${section.id} belongs to another chain`);
     }
-    const next = { ...section, createdAt: section.createdAt || new Date().toISOString() };
+    const before = existing ? Section.safeParse(JSON.parse(existing.section)) : null;
+    const now = new Date().toISOString();
+    const next = {
+      ...section,
+      createdAt: before?.success ? before.data.createdAt : section.createdAt || now,
+      // The store counts, not the caller: two editors saving the same design both move it on.
+      version: before?.success ? before.data.version + 1 : 1,
+      updatedAt: now,
+    };
     this.db.prepare(
       `INSERT INTO sections (id, brand_id, name, section, created_at) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET name = excluded.name, section = excluded.section`,
     ).run(next.id, brandId, next.name, JSON.stringify(next), next.createdAt);
     return next;
+  }
+
+  /** The chain's offer rules, or null when it has never saved any. */
+  offerRules(brandId: string): OfferRules | null {
+    const row = this.db.prepare('SELECT rules FROM offer_rules WHERE brand_id = ?').get(brandId) as
+      { rules: string } | undefined;
+    if (!row) return null;
+    const parsed = OfferRules.safeParse(JSON.parse(row.rules));
+    return parsed.success ? parsed.data : null;
+  }
+
+  /** The chain's offer designs and its default tag, or null when it has never saved any. */
+  offerDesigns(brandId: string): { designs: OfferDesign[]; tag: string | null } | null {
+    const row = this.db.prepare('SELECT designs, design_tag FROM offer_designs WHERE brand_id = ?').get(brandId) as
+      { designs: string; design_tag: string | null } | undefined;
+    if (!row) return null;
+    const parsed = OfferDesigns.safeParse(JSON.parse(row.designs));
+    return parsed.success ? { designs: parsed.data, tag: row.design_tag } : null;
+  }
+
+  saveOfferDesigns(brandId: string, designs: OfferDesign[], tag: string | null): { designs: OfferDesign[]; tag: string | null } {
+    this.db.prepare(
+      `INSERT INTO offer_designs (brand_id, designs, design_tag, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (brand_id) DO UPDATE SET designs = excluded.designs, design_tag = excluded.design_tag, updated_at = excluded.updated_at`,
+    ).run(brandId, JSON.stringify(designs), tag, new Date().toISOString());
+    return { designs, tag };
+  }
+
+  saveOfferRules(brandId: string, rules: OfferRules): OfferRules {
+    this.db.prepare(
+      `INSERT INTO offer_rules (brand_id, rules, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT (brand_id) DO UPDATE SET rules = excluded.rules, updated_at = excluded.updated_at`,
+    ).run(brandId, JSON.stringify(rules), new Date().toISOString());
+    return rules;
+  }
+
+  themes(brandId: string): Themes {
+    const row = this.db.prepare('SELECT themes FROM themes WHERE brand_id = ?').get(brandId) as { themes: string } | undefined;
+    if (!row) return [];
+    const parsed = Themes.safeParse(JSON.parse(row.themes));
+    return parsed.success ? parsed.data : [];
+  }
+
+  saveThemes(brandId: string, themes: Themes): Themes {
+    this.db.prepare(
+      `INSERT INTO themes (brand_id, themes, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT (brand_id) DO UPDATE SET themes = excluded.themes, updated_at = excluded.updated_at`,
+    ).run(brandId, JSON.stringify(themes), new Date().toISOString());
+    return themes;
   }
 
   removeSection(brandId: string, id: string): boolean {
@@ -197,18 +298,26 @@ export class Store {
   list(brandId: string): CatalogSummary[] {
     const rows = this.db
       .prepare(
-        `SELECT id, brand_id, name, created_at, updated_at
+        `SELECT id, brand_id, name, created_at, updated_at, document
          FROM catalogs WHERE brand_id = ? ORDER BY updated_at DESC`,
       )
       .all(brandId) as Record<string, string>[];
 
-    return rows.map((row) => ({
-      id: row['id'] as string,
-      brandId: row['brand_id'] as string,
-      name: row['name'] as string,
-      createdAt: row['created_at'] as string,
-      updatedAt: row['updated_at'] as string,
-    }));
+    return rows.map((row) => {
+      let read: { week?: { year: number; week: number }; pages?: unknown[]; offers?: unknown[]; status?: CatalogSummary['status'] } = {};
+      try { read = JSON.parse(row['document'] as string); } catch { /* listed by name alone */ }
+      return {
+        id: row['id'] as string,
+        brandId: row['brand_id'] as string,
+        name: row['name'] as string,
+        createdAt: row['created_at'] as string,
+        updatedAt: row['updated_at'] as string,
+        week: read.week ?? null,
+        pages: read.pages?.length ?? 0,
+        offers: read.offers?.length ?? 0,
+        status: read.status ?? 'kladde',
+      };
+    });
   }
 
   /**
@@ -237,16 +346,29 @@ export class Store {
    * refuses a document whose own `brandId` disagrees with the scope it
    * arrived under.
    */
-  save(brandId: string, document: CatalogDocument, label = ''): CatalogDocument {
+  save(
+    brandId: string,
+    document: CatalogDocument,
+    label = '',
+    /*
+     * `expected`: the `updatedAt` the saver last saw. When the stored
+     * one differs, somebody else saved in between, and writing now would
+     * quietly throw their work away — refused with `SaveConflict`.
+     */
+    options: { expected?: string } = {},
+  ): CatalogDocument {
     if (document.brandId !== brandId) {
       throw new Error(`document belongs to ${document.brandId}, not ${brandId}`);
     }
 
     const existing = this.db
-      .prepare('SELECT brand_id FROM catalogs WHERE id = ?')
-      .get(document.id) as { brand_id: string } | undefined;
+      .prepare('SELECT brand_id, updated_at FROM catalogs WHERE id = ?')
+      .get(document.id) as { brand_id: string; updated_at: string } | undefined;
     if (existing && existing.brand_id !== brandId) {
       throw new Error(`catalogue ${document.id} belongs to another chain`);
+    }
+    if (existing && options.expected && existing.updated_at !== options.expected) {
+      throw new SaveConflict(existing.updated_at);
     }
 
     const now = new Date().toISOString();
@@ -266,16 +388,34 @@ export class Store {
         )
         .run(next.id, brandId, next.name, json, next.createdAt, now);
 
-      const row = this.db
-        .prepare('SELECT COALESCE(MAX(version), 0) AS v FROM catalog_versions WHERE catalog_id = ?')
-        .get(next.id) as { v: number };
-
-      this.db
+      const last = this.db
         .prepare(
-          `INSERT INTO catalog_versions (catalog_id, version, document, label, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
+          `SELECT version, label, created_at FROM catalog_versions
+           WHERE catalog_id = ? ORDER BY version DESC LIMIT 1`,
         )
-        .run(next.id, Number(row.v) + 1, json, label, now);
+        .get(next.id) as { version: number; label: string; created_at: string } | undefined;
+
+      /*
+       * Saving as you work writes every few seconds; a version each time
+       * would bury the history in near-identical rows. An automatic save
+       * within ten minutes of the last automatic one replaces it, so the
+       * history keeps one point per stretch of work — and every named
+       * save ("Gemt", "til tryk") stays a point of its own.
+       */
+      const folds = label === AUTO_LABEL && last?.label === AUTO_LABEL
+        && Date.parse(now) - Date.parse(last.created_at) < AUTO_FOLD_MS;
+      if (folds) {
+        this.db
+          .prepare('UPDATE catalog_versions SET document = ?, created_at = ? WHERE catalog_id = ? AND version = ?')
+          .run(json, now, next.id, last!.version);
+      } else {
+        this.db
+          .prepare(
+            `INSERT INTO catalog_versions (catalog_id, version, document, label, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+          )
+          .run(next.id, Number(last?.version ?? 0) + 1, json, label, now);
+      }
 
       this.db.exec('COMMIT');
     } catch (error) {
@@ -313,6 +453,18 @@ export class Store {
       label: String(row['label']),
       createdAt: String(row['created_at']),
     }));
+  }
+
+  /** One version's document, scoped to the chain as `versions` is. */
+  version(brandId: string, id: string, version: number): CatalogDocument | null {
+    const row = this.db
+      .prepare(
+        `SELECT v.document FROM catalog_versions v
+         JOIN catalogs c ON c.id = v.catalog_id
+         WHERE v.catalog_id = ? AND v.version = ? AND c.brand_id = ?`,
+      )
+      .get(id, version, brandId) as { document: string } | undefined;
+    return row ? CatalogDocument.parse(JSON.parse(row.document)) : null;
   }
 
   close(): void {

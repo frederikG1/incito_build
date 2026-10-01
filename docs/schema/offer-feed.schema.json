@@ -1,0 +1,430 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OfferFeed",
+  "type": "object",
+  "properties": {
+    "retailerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceName": {
+      "type": "string",
+      "default": ""
+    },
+    "offers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Offer"
+      }
+    },
+    "editions": {
+      "description": "The editions its rows are scoped to, when it was merged from one\nfeed per store or region. Absent on a single chain-wide feed.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FeedEdition"
+      }
+    }
+  },
+  "required": [
+    "retailerId",
+    "sourceName",
+    "offers"
+  ],
+  "$defs": {
+    "Offer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
+        "brand": {
+          "type": "string",
+          "default": ""
+        },
+        "category": {
+          "type": "string",
+          "default": "uncategorised"
+        },
+        "price": {
+          "type": "number",
+          "minimum": 0
+        },
+        "priceFrom": {
+          "description": "Whether this price is the LOWEST of several, not the only one.\n\nA \"frit valg\" offer is normally one price covering every product in\nit, and that is the only reason a leaflet may print one number over\na row of six bottles. Where a feed says the products differ, the\nnumber has to be printed as \"fra 49,-\" — a single figure over goods\nthat are not all that price is the kind of thing a shopper discovers\nat the till, and it is the chain's name on the page.\n\nDefaults to false and stays false unless a feed states otherwise.\nNeither shipped feed does today: both give one `price` per offer and\nexpress variation in the SAVING instead — see `savingsMax`.",
+          "type": "boolean",
+          "default": false
+        },
+        "prePrice": {
+          "description": "Price before the discount, when the feed supplies one.",
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "savings": {
+          "description": "What is saved, and the LOW end of it when the products differ.\n\nPaired with `savingsMax`. The chain's own export carries \"Spar\n29,95 - 49,95\" on an offer of two wines that had different normal\nprices, and printing only the first number tells a shopper holding\nthe other bottle something untrue about their own purchase. Both\nends or neither.",
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "savingsMax": {
+          "description": "The high end, when the saving is a range. Null when it is one figure.",
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "memberPrice": {
+          "description": "The price a member pays, when the feed states one.\n\nA number and not only the \"Medlemspris 12,95\" label it used to live\nin, because a rule has to be able to ask \"does it have a member\nprice?\" without reading a sentence — see `offerFacts`.",
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "savingsPercent": {
+          "description": "The saving as a percentage, when the feed states it rather than a\nprevious price — SuperBrugsen's `SavePercentage`.",
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "imageKind": {
+          "description": "What kind of picture `imageUrl` is: a packshot on white, or a\nphotograph of the product in use (\"Miljø\"). A packshot stands in a\ncell; a photograph fills it — which is the first thing an offer's\nlayout is chosen by. Null when the feed does not say.",
+          "anyOf": [
+            {
+              "enum": [
+                "pack",
+                "lifestyle"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "campaign": {
+          "description": "The campaign the chain runs the offer under — \"Månedens køb\". Empty when none.",
+          "type": "string",
+          "default": ""
+        },
+        "currency": {
+          "type": "string",
+          "default": "DKK"
+        },
+        "comparison": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ComparisonPrice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "quantity": {
+          "$ref": "#/$defs/Quantity"
+        },
+        "pack": {
+          "description": "What one unit of this offer IS, in the chain's own words.\n\n\"1 pose\", \"1 bakke\", \"1 bundt\", \"1 flaske/dåse\". Not the weight —\nthat is `quantity` and it belongs in the fine print. This is the\nline a printed leaflet sets immediately above the price, because it\nis what the number applies to, and a price with no unit over a\nphotograph of six bottles is ambiguous in the one direction that\nmatters.\n\nEmpty when the feed does not say. Never derived from the weight: the\nword is editorial and only the chain knows whether its carrots come\nin a pose or a net.",
+          "type": "string",
+          "default": ""
+        },
+        "validFrom": {
+          "type": "string"
+        },
+        "validTo": {
+          "type": "string"
+        },
+        "imageUrl": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "imagePack": {
+          "description": "Every variant of this one offer, for a tile that shows them together.\n\n\"Frit valg\" and \"Flere varianter\" offers are one price covering\nseveral products, and published leaflets print them as a cluster in a\nsingle tile rather than picking one at random: 85% of the mined\ngrocery tiles carry two or more images, and 72% of SuperBrugsen's\noffers supply two or more motives. Ordered as the feed gave them, the\nfirst being the one `imageUrl` also points at.\n\nEmpty or single-entry means an ordinary one-product tile — the\nrenderer falls back to `imageUrl`, so a feed without variants needs\nno special handling.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ImageRef"
+          },
+          "maxItems": 8,
+          "default": []
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OfferLabel"
+          },
+          "default": []
+        },
+        "priority": {
+          "description": "Editorial weight from the feed, 0..1, when the retailer already knows\nwhich offers are the drivers. The planner may override it; absent a\nvalue the layout engine derives one from discount depth.",
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "members": {
+          "description": "The offers this one was assembled from, when somebody assembled it.\n\nA printed leaflet does not give every product a cell. It groups: one\nprice, one headline, six cheeses photographed together, \"frit valg\"\nin the fine print. That is an editorial act — the editor picked\nthose six — and it is the only way to put new products on a page\nwhose layout is already decided, because the alternative is to\nchange the layout.\n\nEmpty on everything that came out of a feed, which is the point: a\ngrouped offer is not a feed record and must not be mistaken for\none. What is in here is exactly what a reader is being told the\nprice covers, so it is also what an editor gets to see and undo.\n\nDefaulted, so every catalogue saved before grouping existed still\nparses.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "default": []
+        },
+        "editions": {
+          "description": "The editions this row is sold in, in a feed merged from several.\n\nAbsent on every row a single feed produced, and on a merged row\nevery edition shares — which is most of them. Present when a store\nor region has its own price or its own product: the ids are\n`OfferFeed.editions` ids. See `mergeEditionFeeds`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "corrected": {
+          "description": "What the feed said before somebody corrected the price by hand.\n\nThe last-minute fix — the price is 45, not 49 — is the most common\nedit of the week and the easiest to forget: next week's file brings\n49 back. Kept so the page can say \"rettet i hånden, feedet siger\n49,-\", the checks can list it before print, and one click can undo\nit. Absent on every offer nobody corrected.",
+          "type": "object",
+          "properties": {
+            "price": {
+              "type": "number",
+              "minimum": 0
+            },
+            "prePrice": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "price",
+            "prePrice"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "brand",
+        "category",
+        "price",
+        "priceFrom",
+        "prePrice",
+        "savings",
+        "savingsMax",
+        "memberPrice",
+        "savingsPercent",
+        "imageKind",
+        "campaign",
+        "currency",
+        "comparison",
+        "quantity",
+        "pack",
+        "validFrom",
+        "validTo",
+        "imageUrl",
+        "imagePack",
+        "labels",
+        "priority",
+        "members"
+      ]
+    },
+    "ComparisonPrice": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "kg",
+            "l",
+            "pcs",
+            "m"
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ]
+    },
+    "Quantity": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "description": "Numeric size, e.g. 0.5 for \"0,5 l\". Null when the offer is per-piece.",
+          "anyOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit": {
+          "enum": [
+            "kg",
+            "g",
+            "l",
+            "ml",
+            "pcs",
+            "m",
+            "pack"
+          ]
+        },
+        "pieceCount": {
+          "description": "How many physical items the offer covers (\"2 stk.\").",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 1
+        }
+      },
+      "required": [
+        "size",
+        "unit",
+        "pieceCount"
+      ]
+    },
+    "ImageRef": {
+      "type": "string"
+    },
+    "OfferLabel": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "member",
+            "multibuy",
+            "saving",
+            "new",
+            "organic",
+            "custom"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "image": {
+          "description": "Artwork for marks that retailers require to appear as the mark itself\n— Økologi, Fairtrade, Nøglehul. Null means render `text` as a tag,\nwhich stays the behaviour for every label that has no registered logo.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "imageOnDark": {
+          "description": "Light-background variant, when the dictionary registers one.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "image",
+        "imageOnDark"
+      ]
+    },
+    "FeedEdition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "stores": {
+          "description": "The stores it is published to, in the platform's ids.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "stores"
+      ]
+    }
+  }
+}

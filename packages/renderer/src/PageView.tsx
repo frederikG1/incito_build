@@ -1,16 +1,25 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { IncitoPage, printsExactly } from './IncitoPage.js';
 import { cellStates, pagedSheet } from './paged.js';
-import { incitoPacks } from './incito.js';
+import { incitoPacks, offerViewIds } from './incito.js';
 import type {
   Brand, CatalogPage, Offer, PageNote, PagePart, PageTemplate, PageTextOverride, TileFrame, TilePart,
 } from '@incitio/schema';
 import {
-  artworkGrowth, brandCssVars, pageTextOverride, pageTextsFreed,
-  slotCells, slotRoom, slotShape,
+  STARTER_RULES, type Variant, artworkGrowth, brandCssVars, designGroup, onPaper, pageTextOverride, pageTextsFreed, resolveLook, variantFrame,
+  slotCells, slotRoom, slotShape, chooseDesign, designCells, designTags, slotAssignmentOrder,
+  type CellRect, type DesignChoice,
 } from '@incitio/schema';
 import { OfferTile } from './OfferTile.js';
+import { DesignTile } from './DesignTile.js';
 import { cssUrl, splitHeading } from './format.js';
+
+/**
+ * Pictures and words an import read off the publication carry this id —
+ * its mastheads and drawn art. A page printed from its own tree draws
+ * those already; only what was added in the studio goes on top.
+ */
+const PUBLISHED = 'pub-';
 
 /** A cluster's products fill the packshot's box — see `incitoPacks`. */
 const PACK_FRAME: TileFrame = { media: { x: 0, y: 0, w: 1, h: 1 }, wordsAlign: 'start' };
@@ -150,6 +159,34 @@ export interface PageViewProps {
  * stylesheet can be written in `cqw`/`cqh` and the whole page scales as
  * one unit from a thumbnail to A4 at 300dpi.
  */
+/**
+ * A text's size, made to fit the box it was measured in.
+ *
+ * A text read off a printed page carries its box and one size — the
+ * size of its first line, which is often a headline over a paragraph.
+ * Set whole at that size, the Änglamark paragraph ran a page-third past
+ * its panel and over the products beside it. So a text with a box is
+ * set no larger than fits the box: lines estimated from its length at
+ * an average glyph width, shrunk until they stand in the box's height.
+ * An estimate rather than a measurement, so the page prints the same
+ * in the studio and in the PDF, where nothing is measured.
+ */
+export function fittedNoteSize(note: Pick<PageNote, 'text' | 'size' | 'w' | 'h' | 'bold'>, pageAspect: number): number {
+  if (note.h === null || !note.text.trim()) return note.size;
+  // The box's height in page WIDTHS, the unit sizes are in.
+  const height = note.h / pageAspect;
+  const glyph = note.bold ? 0.6 : 0.55;
+  const fits = (size: number) => {
+    const perLine = Math.max(1, Math.floor(note.w / (glyph * size)));
+    const lines = note.text.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.trim().length / perLine)), 0);
+    return lines * 1.15 * size <= height;
+  };
+  let size = note.size;
+  // Never below a third of what was measured: past that the box, not the type, is wrong.
+  while (!fits(size) && size > note.size / 3) size *= 0.94;
+  return size;
+}
+
 export function PageView({
   page,
   template,
@@ -184,14 +221,106 @@ export function PageView({
    * page made from a picture is the picture's shape, not the chain's
    * print format — see `slotCells`.
    */
+  /*
+   * The page's design, and the rules it is drawn by — the chain's own,
+   * else incito's logic stated. Every page has one: a page without a
+   * group of its own is drawn in the chain's colours, so what an offer
+   * IS (lowered, a member price, new) always shows in how it looks.
+   */
+  const group = designGroup(page.design?.group ?? 'standard');
+  const rules = brand.offerRules.length > 0 ? brand.offerRules : STARTER_RULES;
+  /*
+   * The rotation: offers drawn in the same variant take turns, in the
+   * page's reading order, so two ordinary offers side by side are each
+   * other's mirror — incito's "same tag, used evenly".
+   */
+  const turns = new Map<string, { variant: Variant | null; turn: number }>();
+  if (group) {
+    const seen = new Map<string, number>();
+    for (const placement of page.placements) {
+      const slot = slots.get(placement.slotId);
+      const offer = offers.get(placement.offerId);
+      if (!slot || !offer) continue;
+      const look = resolveLook(offer, rules, { hero: slot.role === 'hero' || slot.role === 'feature' });
+      const key = look.variant ?? 'normal';
+      const turn = seen.get(key) ?? 0;
+      seen.set(key, turn + 1);
+      turns.set(placement.slotId, { variant: look.variant, turn });
+    }
+  }
+  /*
+   * The chain's own offer designs, when it has them: the design decides
+   * where the picture, the words and the price stand, the rules and the
+   * page decide which design. Designs with the same tag take turns in
+   * the page's reading order — incito's "used evenly".
+   */
+  const designed = new Map<string, DesignChoice>();
+  if (brand.offerDesigns.length > 0) {
+    const pageTag = page.design?.tag ?? brand.designTag ?? designTags(brand.offerDesigns)[0]!;
+    const turnsByTag = new Map<string, number>();
+    const order = new Map(slotAssignmentOrder(template).map((slot, index) => [slot.id, index]));
+    const reading = [...page.placements].sort((a, b) => (order.get(a.slotId) ?? 0) - (order.get(b.slotId) ?? 0));
+    for (const placement of reading) {
+      const slot = slots.get(placement.slotId);
+      const offer = offers.get(placement.offerId);
+      if (!slot || !offer) continue;
+      const a = slot.role === 'hero' || slot.role === 'feature';
+      const look = resolveLook(offer, rules, { hero: a });
+      const tag = look.design ?? pageTag;
+      const turn = turnsByTag.get(tag) ?? 0;
+      turnsByTag.set(tag, turn + 1);
+      const choice = chooseDesign(brand.offerDesigns, tag, offer, { a, turn })
+        ?? chooseDesign(brand.offerDesigns, pageTag, offer, { a, turn });
+      if (choice) {
+        designed.set(placement.slotId, look.because.design
+          ? { ...choice, because: `regel «${look.because.design}» · ${choice.because}` }
+          : choice);
+      }
+    }
+  }
   const slotRenderer = (aspect: number) => {
     const cells = slotCells(template, aspect);
+    /*
+     * Boxes measured off a printed page overlap and run off the paper; an
+     * offer design fills its cell to the edge, so its cells are tidied
+     * first — on the paper, clear of the page's artwork, a gutter apart.
+     * See `designCells`.
+     */
+    const measured: Record<string, CellRect> = {};
+    for (const placement of page.placements) {
+      const slot = slots.get(placement.slotId);
+      if (slot?.rect && designed.has(slot.id)) measured[slot.id] = slot.rect;
+    }
+    const tidy = Object.keys(measured).length > 0
+      ? designCells(
+        measured,
+        page.decorations.filter((d) => d.rect && !d.offerId).map((d) => d.rect!),
+        aspect,
+      )
+      : {};
     return (placement: CatalogPage['placements'][number]) => {
-          const slot = slots.get(placement.slotId);
+          const found = slots.get(placement.slotId);
+          const slot = found && tidy[found.id] ? { ...found, rect: tidy[found.id]! } : found;
           const offer = offers.get(placement.offerId);
           // A placement naming a slot this template does not have is a
           // stale edit, not a crash: skip it and let the page render.
           if (!slot) return null;
+          /*
+           * A page with a design: the offer is drawn in the variant the
+           * chain's rules choose — Hovedvare in the lead zone, Medlemspris
+           * for a member price… — in the page's design group, in the
+           * arrangement for this cell's shape. See `PageDesign`.
+           */
+          const drawn = group && offer ? (() => {
+            const look = resolveLook(offer, rules, { hero: slot.role === 'hero' || slot.role === 'feature' });
+            const shape = slot.rect ? (slot.rect.w / slot.rect.h) * aspect : cells.get(slot.id)?.aspect ?? 1;
+            const result = variantFrame(
+              look.variant ?? 'normal', group, offer, shape, { member: look.memberBadgeText }, turns.get(slot.id)?.turn ?? 0,
+            );
+            return { ...result, frame: slot.rect ? onPaper(result.frame, slot.rect) : result.frame };
+          })() : null;
+          const frame = drawn?.frame ?? slot.frame;
+          const tileOffer = drawn?.offer ?? offer;
 
           return (
             <div
@@ -251,17 +380,31 @@ export function PageView({
                  them — see `slotRoom` and `.tile__info`. */
               data-room={slotRoom(cells.get(slot.id))}
             >
-              {offer ? (
-                <OfferTile
+              {offer && designed.has(slot.id) ? (
+                <DesignTile
+                  design={designed.get(slot.id)!.design}
+                  because={designed.get(slot.id)!.because}
                   offer={offer}
+                  aspect={slot.rect ? (slot.rect.w / slot.rect.h) * aspect : cells.get(slot.id)?.aspect ?? 1}
+                  overrides={placement.overrides}
+                  {...(slot.rect ? { cell: { w: slot.rect.w, h: slot.rect.h } } : {})}
+                  selected={selectedOfferId === offer.id}
+                  {...(onSelectOffer ? { onSelect: (id: string) => onSelectOffer(id) } : {})}
+                />
+              ) : offer && tileOffer ? (
+                <OfferTile
+                  offer={tileOffer}
                   role={slot.role}
-                  {...(slot.frame ? { frame: slot.frame } : {})}
-                  {...(slot.rect ? { cellWidth: slot.rect.w, cellHeight: slot.rect.h / aspect } : {})}
+                  {...(frame ? { frame } : {})}
+                  {...(slot.rect ? { cellWidth: slot.rect.w, cellHeight: slot.rect.h / aspect }
+                    // A layout sizes its words and price to its own boxes, so it has to know the cell.
+                    : drawn && cells.get(slot.id) ? { cellWidth: cells.get(slot.id)!.width, cellHeight: cells.get(slot.id)!.width / cells.get(slot.id)!.aspect }
+                      : {})}
                   // The lead of a page may be marked differently from
                   // the rest — SuperBrugsen gives it the red disc and
                   // leaves every other price as a plain numeral.
-                  priceShape={
-                    (slot.role === 'hero' || slot.role === 'feature')
+                  priceShape={drawn ? drawn.priceShape
+                    : (slot.role === 'hero' || slot.role === 'feature')
                       ? brand.leadPriceShape ?? brand.priceShape
                       : brand.priceShape
                   }
@@ -282,90 +425,6 @@ export function PageView({
   };
   const renderSlot = slotRenderer(brand.pageAspect);
 
-  // Printed as published — the publication's own tree, not the chain's tiles.
-  if (printsExactly(page)) {
-    /*
-     * A page made from a picture prints the picture, and the chain's own
-     * tile in every cell somebody has put a new product in — the same
-     * tile, with the same tools, as on any page of the chain's. See
-     * `boundIncito`.
-     */
-    const sheet = pagedSheet(page.incito);
-    const states = sheet ? cellStates(page, template, offers) : null;
-    const tiles = states ? page.placements.filter((placement) => states.get(placement.slotId) === 'new') : [];
-    const aspect = page.incito.width / page.incito.height;
-    const packs = sheet ? [] : incitoPacks(page, offers, template);
-    return (
-      <IncitoPage
-        page={page}
-        template={template}
-        offers={offers}
-        selectedBlock={selectedIncitoBlock ?? null}
-        {...(onSelectIncitoBlock ? { onSelectBlock: onSelectIncitoBlock } : {})}
-        {...(onMoveIncitoBlock ? { onMoveBlock: onMoveIncitoBlock } : {})}
-        {...(onScaleIncitoBlock ? { onScaleBlock: onScaleIncitoBlock } : {})}
-        {...(onIncitoMoveEnd ? { onMoveEnd: onIncitoMoveEnd } : {})}
-        {...(onDropOnIncitoOffer ? { onDropOnOffer: onDropOnIncitoOffer, dropType: incitoDropType } : {})}
-      >
-        {sheet && (
-          <div
-            className={`page page--overlay brand--${brand.id} page--ground-${brand.groundPattern}`}
-            style={brandCssVars(brand, pageIndex) as CSSProperties}
-          >
-            <div className="page__grid page__grid--measured">
-              {tiles.map(slotRenderer(aspect))}
-            </div>
-          </div>
-        )}
-        {/* A cluster in one of the publication's cells: its products,
-            drawn by the chain's tile in the printed packshot's box. */}
-        {packs.length > 0 && (
-          <div
-            className={`page page--overlay brand--${brand.id} page--ground-${brand.groundPattern}`}
-            style={brandCssVars(brand, pageIndex) as CSSProperties}
-          >
-            <div className="page__grid page__grid--measured">
-              {packs.map((pack) => {
-                const offer = offers.get(pack.offerId)!;
-                const placement = page.placements.find((entry) => entry.slotId === pack.slotId)!;
-                const role = slots.get(pack.slotId)?.role ?? 'standard';
-                return (
-                  <div
-                    key={pack.slotId}
-                    className={`slot slot--${role} slot--pack`}
-                    style={{
-                      position: 'absolute',
-                      left: `${pack.rect.x * 100}%`,
-                      top: `${pack.rect.y * 100}%`,
-                      width: `${pack.rect.w * 100}%`,
-                      height: `${pack.rect.h * 100}%`,
-                    }}
-                    data-slot-id={pack.slotId}
-                    data-offer-id={pack.offerId}
-                  >
-                    <OfferTile
-                      offer={offer}
-                      role={role}
-                      frame={PACK_FRAME}
-                      artworkOnly
-                      priceShape={brand.priceShape}
-                      overrides={placement.overrides}
-                      selected={selectedOfferId === offer.id}
-                      selectedPart={selectedOfferId === offer.id ? selectedPart : null}
-                      selectedPack={selectedOfferId === offer.id ? selectedPack ?? null : null}
-                      reference={ghosts?.find((ghost) => ghost.offerId === offer.id) ?? null}
-                      {...(onSelectOffer ? { onSelect: onSelectOffer } : {})}
-                    />
-                    {slotDecorator?.(pack.slotId)}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </IncitoPage>
-    );
-  }
 
   const style: CSSProperties = {
     ...brandCssVars(brand, pageIndex),
@@ -427,6 +486,7 @@ export function PageView({
   const subtitle = pageTextOverride(page, 'subtitle');
 
   const renderNote = (note: PageNote) => {
+        const size = fittedNoteSize(note, brand.pageAspect);
         const held = selectedNoteId === note.id;
         const boxed = note.h !== null && (note.background !== null || note.image !== null);
         return (
@@ -439,7 +499,7 @@ export function PageView({
               top: `${note.y * 100}%`,
               width: `${note.w * 100}%`,
               ...(boxed ? { height: `${note.h! * 100}%` } : {}),
-              fontSize: `calc(${note.size} * 100cqw)`,
+              fontSize: `calc(${size} * 100cqw)`,
               color: note.color,
               fontWeight: note.bold ? 700 : 400,
               textAlign: note.align,
@@ -485,6 +545,200 @@ export function PageView({
         );
   };
 
+  /** A picture laid on the page — the chain's own or a drawn motif. */
+  const renderDecor = (decor: CatalogPage['decorations'][number]) => (
+    <img
+      key={decor.id}
+      className={`page__decor page__decor--${decor.anchor}${
+        decor.front ? ' page__decor--front' : ''}${
+        onMoveDecor && selectedDecorId === decor.id ? ' page__decor--active' : ''}`}
+      src={decor.imageUrl}
+      alt=""
+      aria-hidden="true"
+      data-decor-subject={decor.subject}
+      draggable={false}
+      {...(onMoveDecor && selectedDecorId === decor.id ? {
+        onPointerDown: (event: ReactPointerEvent<HTMLImageElement>) => {
+          /*
+           * Dragged in PAGE percent, measured off the page itself.
+           *
+           * One percent of the page is one `cqw`, so the number
+           * stored and the number the pointer covered are the same
+           * thing — and a canvas zoomed out to a thumbnail still
+           * moves the picture by what the hand did, not by what the
+           * numbers would be at A4.
+           */
+          const element = event.currentTarget;
+          const page = element.closest('.page')?.getBoundingClientRect();
+          if (!page || page.width === 0 || page.height === 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+
+          const perX = 100 / page.width;
+          const perY = 100 / page.height;
+          const from = { x: event.clientX, y: event.clientY };
+          const start = { x: decor.offsetX, y: decor.offsetY };
+          // Kept in step with `PageDecoration.offsetX`, which rejects
+          // anything wider on save — a drag the schema will not
+          // accept is a drag that vanishes at the next reload.
+          const clamp = (v: number) => Math.min(75, Math.max(-75, v));
+          const gesture = `decor:${decor.id}`;
+
+          try { element.setPointerCapture(event.pointerId); } catch { /* uncapturable */ }
+
+          const onMove = (move: PointerEvent) => {
+            onMoveDecor(decor.id, {
+              x: clamp(start.x + (move.clientX - from.x) * perX),
+              y: clamp(start.y + (move.clientY - from.y) * perY),
+            }, gesture);
+          };
+          const onUp = () => {
+            try { element.releasePointerCapture(event.pointerId); } catch { /* never held */ }
+            element.removeEventListener('pointermove', onMove);
+            element.removeEventListener('pointerup', onUp);
+            element.removeEventListener('pointercancel', onUp);
+            onDecorMoveEnd?.();
+          };
+          element.addEventListener('pointermove', onMove);
+          element.addEventListener('pointerup', onUp);
+          element.addEventListener('pointercancel', onUp);
+        },
+      } : {})}
+      style={{
+        '--decor-scale': String(decor.scale),
+        '--decor-rotate': `${decor.rotate}deg`,
+        '--decor-opacity': String(decor.opacity),
+        '--decor-flip': decor.flip ? '-1' : '1',
+        '--decor-x': `${decor.offsetX}cqw`,
+        '--decor-y': `${decor.offsetY}cqh`,
+        /*
+         * A measured piece states its own box and ignores the
+         * anchor entirely — see `PageDecoration.rect`. `inset` and
+         * a stated size beat the corner rules in the stylesheet,
+         * and the offsets stay in the transform, so dragging one
+         * works exactly as it does for a pinned picture.
+         */
+        ...(decor.rect ? {
+          left: `${decor.rect.x * 100}%`,
+          top: `${decor.rect.y * 100}%`,
+          right: 'auto',
+          bottom: 'auto',
+          width: `${decor.rect.w * 100}%`,
+          height: `${decor.rect.h * 100}%`,
+          maxWidth: 'none',
+          objectFit: 'contain' as const,
+        } : {}),
+      } as CSSProperties}
+    />
+  );
+
+  // Printed as published — the publication's own tree, not the chain's tiles.
+  if (printsExactly(page)) {
+    /*
+     * A page made from a picture prints the picture, and the chain's own
+     * tile in every cell somebody has put a new product in — the same
+     * tile, with the same tools, as on any page of the chain's. See
+     * `boundIncito`.
+     */
+    const sheet = pagedSheet(page.incito);
+    const states = sheet ? cellStates(page, template, offers) : null;
+    const tiles = states ? page.placements.filter((placement) => states.get(placement.slotId) === 'new') : [];
+    const aspect = page.incito.width / page.incito.height;
+    /*
+     * A cell whose product the chain's rules give a layout is drawn with
+     * the chain's tile, in that layout, where the cell stands — the rest
+     * of the sheet stays exactly as published. See `OfferRule`.
+     */
+    const views = offerViewIds(page.incito.view as Parameters<typeof offerViewIds>[0]);
+    const viewOf = (placement: CatalogPage['placements'][number]) =>
+      page.incito!.slots?.[placement.slotId] ?? (views.has(placement.offerId) ? placement.offerId : undefined);
+    /*
+     * A page given a design draws every product in it that way, over the
+     * published sheet — given one by hand: the chain's standard is not
+     * enough, an imported page prints exactly as published until asked.
+     */
+    const ruled = sheet || !page.design?.group ? [] : page.placements.filter((placement) =>
+      Boolean(offers.get(placement.offerId) && slots.get(placement.slotId)?.rect && viewOf(placement)));
+    const drawnElsewhere = new Set(ruled.map(viewOf).filter((id): id is string => Boolean(id)));
+    const packs = (sheet ? [] : incitoPacks(page, offers, template))
+      .filter((pack) => !ruled.some((placement) => placement.slotId === pack.slotId));
+    return (
+      <IncitoPage
+        page={page}
+        template={template}
+        offers={offers}
+        drawnElsewhere={drawnElsewhere}
+        selectedBlock={selectedIncitoBlock ?? null}
+        {...(onSelectIncitoBlock ? { onSelectBlock: onSelectIncitoBlock } : {})}
+        {...(onMoveIncitoBlock ? { onMoveBlock: onMoveIncitoBlock } : {})}
+        {...(onScaleIncitoBlock ? { onScaleBlock: onScaleIncitoBlock } : {})}
+        {...(onIncitoMoveEnd ? { onMoveEnd: onIncitoMoveEnd } : {})}
+        {...(onDropOnIncitoOffer ? { onDropOnOffer: onDropOnIncitoOffer, dropType: incitoDropType } : {})}
+      >
+        {/* The page's own pictures and texts, over the published sheet —
+            a drawn motif, a picture of your own, a line added with "+ Tekst". */}
+        {page.decorations.filter((decor) => !decor.id.startsWith(PUBLISHED)).map(renderDecor)}
+        {(page.notes ?? []).filter((note) => !note.id.startsWith(PUBLISHED)).map(renderNote)}
+        {(sheet || ruled.length > 0) && (
+          <div
+            className={`page page--overlay brand--${brand.id} page--ground-${brand.groundPattern}`}
+            style={brandCssVars(brand, pageIndex) as CSSProperties}
+          >
+            <div className="page__grid page__grid--measured">
+              {[...tiles, ...ruled].map(slotRenderer(aspect))}
+            </div>
+          </div>
+        )}
+        {/* A cluster in one of the publication's cells: its products,
+            drawn by the chain's tile in the printed packshot's box. */}
+        {packs.length > 0 && (
+          <div
+            className={`page page--overlay brand--${brand.id} page--ground-${brand.groundPattern}`}
+            style={brandCssVars(brand, pageIndex) as CSSProperties}
+          >
+            <div className="page__grid page__grid--measured">
+              {packs.map((pack) => {
+                const offer = offers.get(pack.offerId)!;
+                const placement = page.placements.find((entry) => entry.slotId === pack.slotId)!;
+                const role = slots.get(pack.slotId)?.role ?? 'standard';
+                return (
+                  <div
+                    key={pack.slotId}
+                    className={`slot slot--${role} slot--pack`}
+                    style={{
+                      position: 'absolute',
+                      left: `${pack.rect.x * 100}%`,
+                      top: `${pack.rect.y * 100}%`,
+                      width: `${pack.rect.w * 100}%`,
+                      height: `${pack.rect.h * 100}%`,
+                    }}
+                    data-slot-id={pack.slotId}
+                    data-offer-id={pack.offerId}
+                  >
+                    <OfferTile
+                      offer={offer}
+                      role={role}
+                      frame={PACK_FRAME}
+                      artworkOnly
+                      priceShape={brand.priceShape}
+                      overrides={placement.overrides}
+                      selected={selectedOfferId === offer.id}
+                      selectedPart={selectedOfferId === offer.id ? selectedPart : null}
+                      selectedPack={selectedOfferId === offer.id ? selectedPack ?? null : null}
+                      reference={ghosts?.find((ghost) => ghost.offerId === offer.id) ?? null}
+                      {...(onSelectOffer ? { onSelect: onSelectOffer } : {})}
+                    />
+                    {slotDecorator?.(pack.slotId)}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </IncitoPage>
+    );
+  }
+
   return (
     <section
       className={`page brand--${brand.id} page--ground-${brand.groundPattern}`}
@@ -527,91 +781,7 @@ export function PageView({
         * stylesheet, so it can never take a click or push a layout: the
         * grid is the page, and this is paint on the wall behind it.
         */}
-      {page.decorations.map((decor) => (
-        <img
-          key={decor.id}
-          className={`page__decor page__decor--${decor.anchor}${
-            decor.front ? ' page__decor--front' : ''}${
-            onMoveDecor && selectedDecorId === decor.id ? ' page__decor--active' : ''}`}
-          src={decor.imageUrl}
-          alt=""
-          aria-hidden="true"
-          data-decor-subject={decor.subject}
-          draggable={false}
-          {...(onMoveDecor && selectedDecorId === decor.id ? {
-            onPointerDown: (event: ReactPointerEvent<HTMLImageElement>) => {
-              /*
-               * Dragged in PAGE percent, measured off the page itself.
-               *
-               * One percent of the page is one `cqw`, so the number
-               * stored and the number the pointer covered are the same
-               * thing — and a canvas zoomed out to a thumbnail still
-               * moves the picture by what the hand did, not by what the
-               * numbers would be at A4.
-               */
-              const element = event.currentTarget;
-              const page = element.closest('.page')?.getBoundingClientRect();
-              if (!page || page.width === 0 || page.height === 0) return;
-              event.preventDefault();
-              event.stopPropagation();
-
-              const perX = 100 / page.width;
-              const perY = 100 / page.height;
-              const from = { x: event.clientX, y: event.clientY };
-              const start = { x: decor.offsetX, y: decor.offsetY };
-              // Kept in step with `PageDecoration.offsetX`, which rejects
-              // anything wider on save — a drag the schema will not
-              // accept is a drag that vanishes at the next reload.
-              const clamp = (v: number) => Math.min(75, Math.max(-75, v));
-              const gesture = `decor:${decor.id}`;
-
-              try { element.setPointerCapture(event.pointerId); } catch { /* uncapturable */ }
-
-              const onMove = (move: PointerEvent) => {
-                onMoveDecor(decor.id, {
-                  x: clamp(start.x + (move.clientX - from.x) * perX),
-                  y: clamp(start.y + (move.clientY - from.y) * perY),
-                }, gesture);
-              };
-              const onUp = () => {
-                try { element.releasePointerCapture(event.pointerId); } catch { /* never held */ }
-                element.removeEventListener('pointermove', onMove);
-                element.removeEventListener('pointerup', onUp);
-                element.removeEventListener('pointercancel', onUp);
-                onDecorMoveEnd?.();
-              };
-              element.addEventListener('pointermove', onMove);
-              element.addEventListener('pointerup', onUp);
-              element.addEventListener('pointercancel', onUp);
-            },
-          } : {})}
-          style={{
-            '--decor-scale': String(decor.scale),
-            '--decor-rotate': `${decor.rotate}deg`,
-            '--decor-opacity': String(decor.opacity),
-            '--decor-flip': decor.flip ? '-1' : '1',
-            '--decor-x': `${decor.offsetX}cqw`,
-            '--decor-y': `${decor.offsetY}cqh`,
-            /*
-             * A measured piece states its own box and ignores the
-             * anchor entirely — see `PageDecoration.rect`. `inset` and
-             * a stated size beat the corner rules in the stylesheet,
-             * and the offsets stay in the transform, so dragging one
-             * works exactly as it does for a pinned picture.
-             */
-            ...(decor.rect ? {
-              left: `${decor.rect.x * 100}%`,
-              top: `${decor.rect.y * 100}%`,
-              right: 'auto',
-              bottom: 'auto',
-              width: `${decor.rect.w * 100}%`,
-              height: `${decor.rect.h * 100}%`,
-              maxWidth: 'none',
-              objectFit: 'contain' as const,
-            } : {}),
-          } as CSSProperties}
-        />
-      ))}
+      {page.decorations.map(renderDecor)}
 
       {(page.title || brand.logoUrl) && (
         /*

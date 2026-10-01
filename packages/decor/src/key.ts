@@ -67,6 +67,19 @@ export async function keyOutMotifs(
       };
       // Ground outright. Tight: a pale object must never read as ground.
       const NEAR = 22;
+      /*
+       * The key colour in any of its shades. The model's magenta is not
+       * one colour: it paints duller, darker patches into it — a
+       * (224, 80, 140) beside a (255, 0, 255) — and by distance alone
+       * those stayed behind as a pink blotch. Magenta is red and blue with
+       * little green, and bright; lemon, crust, herbs and ham are not.
+       * Only when the ground itself is such a colour.
+       */
+      const keyed = g[0]! > 160 && g[2]! > 160 && g[1]! < 90;
+      const keyish = (i: number) => keyed
+        && Math.min(d[i]!, d[i + 2]!) - d[i + 1]! >= 50
+        && Math.abs(d[i]! - d[i + 2]!) <= 110
+        && Math.max(d[i]!, d[i + 2]!) >= 170;
 
       /*
        * The background: flooded from the border through ground and
@@ -80,7 +93,7 @@ export async function keyOutMotifs(
       const push = (p: number) => {
         if (back[p]) return;
         const i = p * 4;
-        if (dist(i) > NEAR && shade(i) === null) return;
+        if (dist(i) > NEAR && shade(i) === null && !keyish(i)) return;
         back[p] = 1;
         stack.push(p);
       };
@@ -94,15 +107,19 @@ export async function keyOutMotifs(
         if (y > 0) push(p - W);
         if (y < H - 1) push(p + W);
       }
+      // Key colour enclosed between the objects is ground too, not only what the border reaches.
+      if (keyed) for (let p = 0; p < W * H; p += 1) if (!back[p] && keyish(p * 4)) back[p] = 1;
 
       for (let p = 0; p < W * H; p += 1) {
         const i = p * 4;
         if (back[p]) {
-          const k = shade(i);
-          if (dist(i) <= NEAR || k === null) { d[i + 3] = 0; continue; }
-          // A shadow: black, as strong as it darkens — right on any page.
-          d[i] = 0; d[i + 1] = 0; d[i + 2] = 0;
-          d[i + 3] = Math.round(Math.min(1, (1 - k) * 1.1) * 255);
+          /*
+           * Ground, and any shadow the model painted on it anyway, go.
+           * Kept as see-through black they turned into grey smudges —
+           * often the shadow of a piece dropped below — and the page
+           * lays its own soft shadow under every motif.
+           */
+          d[i + 3] = 0;
           continue;
         }
         /*
@@ -120,6 +137,129 @@ export async function keyOutMotifs(
         }
         d[i + 3] = Math.round(a * 255);
       }
+      /*
+       * The key colour's spill, taken back out of the outline.
+       *
+       * The two or three pixels of an object nearest the ground carry a
+       * cast of it — on magenta, a pink rim round every motif. Within
+       * that band the channels the ground is strong in are pulled down
+       * to the one it is weak in, only as far as they exceed it, so a
+       * red pepper's red stays red and the rim loses its tint.
+       */
+      const near2 = (p: number) => {
+        const x = p % W; const y = (p - x) / W;
+        for (let dy = -3; dy <= 3; dy += 1) {
+          for (let dx = -3; dx <= 3; dx += 1) {
+            const nx = x + dx; const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            if (back[ny * W + nx]) return true;
+          }
+        }
+        return false;
+      };
+      const strong = [0, 1, 2].filter((c) => g[c]! > 160);
+      const weak = [0, 1, 2].filter((c) => g[c]! < 90);
+      const keySpill = strong.length && weak.length
+        ? Math.min(...strong.map((c) => g[c]!)) - Math.max(...weak.map((c) => g[c]!))
+        : 0;
+      if (keySpill > 60) {
+        // The outline band, and the object's own colour just inside it.
+        const band = new Uint8Array(W * H);
+        for (let p = 0; p < W * H; p += 1) if (!back[p] && d[p * 4 + 3]! > 0 && near2(p)) band[p] = 1;
+        const fixed = new Uint8ClampedArray(d);
+        for (let p = 0; p < W * H; p += 1) {
+          if (!band[p]) continue;
+          const i = p * 4;
+          const x = p % W; const y = (p - x) / W;
+          /*
+           * The object's colour here: the pixels a few steps inside the
+           * outline, which carry none of the key. Each outline pixel is
+           * then read as a mix of that colour and the ground, and the
+           * ground's share becomes transparency — exact, rather than a
+           * guess that left a pink or olive rim round every motif.
+           */
+          let n = 0; const o: [number, number, number] = [0, 0, 0];
+          for (let dy = -6; dy <= 6; dy += 1) {
+            for (let dx = -6; dx <= 6; dx += 1) {
+              const nx = x + dx; const ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+              const q = ny * W + nx;
+              if (back[q] || band[q]) continue;
+              const j = q * 4;
+              o[0] += d[j]!; o[1] += d[j + 1]!; o[2] += d[j + 2]!; n += 1;
+            }
+          }
+          let a: number;
+          if (n > 0) {
+            o[0] /= n; o[1] /= n; o[2] /= n;
+            const og = [o[0]! - g[0]!, o[1]! - g[1]!, o[2]! - g[2]!];
+            const pg = [d[i]! - g[0]!, d[i + 1]! - g[1]!, d[i + 2]! - g[2]!];
+            const len = og[0]! * og[0]! + og[1]! * og[1]! + og[2]! * og[2]!;
+            a = len > 0 ? (pg[0]! * og[0]! + pg[1]! * og[1]! + pg[2]! * og[2]!) / len : 1;
+          } else {
+            const spill = Math.min(...strong.map((c) => d[i + c]!)) - Math.max(...weak.map((c) => d[i + c]!));
+            a = 1 - Math.max(0, Math.min(1, spill / keySpill));
+          }
+          a = Math.max(0, Math.min(1, a));
+          if (a < 0.12) { fixed[i + 3] = 0; continue; }
+          if (a > 0.97) continue;
+          for (let c = 0; c < 3; c += 1) {
+            fixed[i + c] = (d[i + c]! - (1 - a) * g[c]!) / a;
+          }
+          fixed[i + 3] = Math.round(Math.min(d[i + 3]! / 255, a) * 255);
+        }
+        d.set(fixed);
+      }
+
+      /*
+       * The motif's own pieces, pixel by pixel.
+       *
+       * A crop around one group is a rectangle, and whatever else the
+       * model painted inside it came along: a thin pale streak across the
+       * top of a page, a crumb of the neighbouring group. Every piece of
+       * motif gets a label; a thin streak or a speck is dropped outright,
+       * and each cut-out below keeps only its own pieces.
+       */
+      const label = new Int32Array(W * H).fill(-1);
+      const pieces: { area: number; x0: number; y0: number; x1: number; y1: number }[] = [];
+      const walk = new Int32Array(W * H);
+      for (let start = 0; start < W * H; start += 1) {
+        if (back[start] || label[start] !== -1 || d[start * 4 + 3] === 0) continue;
+        const id = pieces.length;
+        const piece = { area: 0, x0: W, y0: H, x1: 0, y1: 0 };
+        let top = 0;
+        walk[top++] = start;
+        label[start] = id;
+        while (top > 0) {
+          const q = walk[--top]!;
+          const x = q % W; const y = (q - x) / W;
+          piece.area += 1;
+          if (x < piece.x0) piece.x0 = x;
+          if (x > piece.x1) piece.x1 = x;
+          if (y < piece.y0) piece.y0 = y;
+          if (y > piece.y1) piece.y1 = y;
+          const near = [x > 0 ? q - 1 : -1, x < W - 1 ? q + 1 : -1, y > 0 ? q - W : -1, y < H - 1 ? q + W : -1];
+          for (const n of near) {
+            if (n < 0 || back[n] || label[n] !== -1 || d[n * 4 + 3] === 0) continue;
+            label[n] = id;
+            walk[top++] = n;
+          }
+        }
+        pieces.push(piece);
+      }
+      const speck = W * H * 0.0004;
+      const dropped = pieces.map((piece) => {
+        const w = piece.x1 - piece.x0 + 1;
+        const h = piece.y1 - piece.y0 + 1;
+        const thin = Math.min(w, h) <= Math.max(6, Math.round(Math.min(W, H) * 0.008))
+          && Math.max(w, h) >= 5 * Math.min(w, h);
+        return piece.area < speck || thin;
+      });
+      for (let q = 0; q < W * H; q += 1) {
+        const id = label[q]!;
+        if (id >= 0 && dropped[id]) { d[q * 4 + 3] = 0; label[q] = -1; }
+      }
+
       ctx.putImageData(data, 0, 0);
 
       // Groups: islands of solid pixels on a coarse grid.
@@ -135,7 +275,7 @@ export async function keyOutMotifs(
         }
       }
       const seen = new Uint8Array(G * gh);
-      const boxes: { x0: number; y0: number; x1: number; y1: number; n: number }[] = [];
+      const boxes: { x0: number; y0: number; x1: number; y1: number; n: number; own: Set<number> }[] = [];
       for (let start = 0; start < G * gh; start += 1) {
         if (!solid[start] || seen[start]) continue;
         const box = { x0: G, y0: gh, x1: 0, y1: 0, n: 0 };
@@ -157,7 +297,16 @@ export async function keyOutMotifs(
             }
           }
         }
-        boxes.push(box);
+        // Which pieces of motif this group is made of: those whose middle lies inside it.
+        const own = new Set<number>();
+        const bx0 = (box.x0 - 1) * cell; const bx1 = (box.x1 + 2) * cell;
+        const by0 = (box.y0 - 1) * (H / gh); const by1 = (box.y1 + 2) * (H / gh);
+        pieces.forEach((piece, id) => {
+          if (dropped[id]) return;
+          const mx = (piece.x0 + piece.x1) / 2; const my = (piece.y0 + piece.y1) / 2;
+          if (mx >= bx0 && mx <= bx1 && my >= by0 && my <= by1) own.add(id);
+        });
+        boxes.push({ ...box, own });
       }
       const total = G * gh;
       const kept = boxes
@@ -184,6 +333,9 @@ export async function keyOutMotifs(
         const px = octx.getImageData(0, 0, out.width, out.height);
         for (let y = 0; y < out.height; y += 1) {
           for (let x = 0; x < out.width; x += 1) {
+            // Another group's piece inside this crop is not part of this picture.
+            const id = label[(y0 + y) * W + (x0 + x)]!;
+            if (id >= 0 && !box.own.has(id)) { px.data[(y * out.width + x) * 4 + 3] = 0; continue; }
             const edge = Math.min(x, y, out.width - 1 - x, out.height - 1 - y);
             if (edge >= feather) continue;
             const i = (y * out.width + x) * 4 + 3;

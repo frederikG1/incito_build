@@ -169,7 +169,7 @@
 }
 
 .page {
-  container-type: size;
+  container-type: inline-size;
   position: relative;
   width: 100%;
   max-width: 820px;
@@ -604,7 +604,7 @@
    * stated once and every role inherits it.
    */
   --name-size: 1.8cqh;
-  --price-size: 5.4cqh;
+  --price-size: calc(5.4cqh * var(--price-scale, 1));
   /* How many times the headline a bare price is set at. See `.price--plain`. */
   --price-ratio: 3.4;
 
@@ -1232,7 +1232,7 @@
 /* A hero carries more words — brand, a longer name, a description — so
    it gets a larger share of the tile for them, not just bigger type. */
 .tile--hero { grid-template-rows: minmax(0, 2fr) minmax(0, auto) auto; }
-.tile--hero { --name-size: 3cqh; --price-size: 8.4cqh; }
+.tile--hero { --name-size: 3cqh; --price-size: calc(8.4cqh * var(--price-scale, 1)); }
 .tile--hero .tile__brand,
 .tile--hero .tile__quantity,
 .tile--hero .tile__meta { font-size: 1.9cqh; }
@@ -1245,7 +1245,7 @@
  */
 .tile--hero .tile__description { font-size: 1.55cqh; }
 
-.tile--compact { --name-size: 1.7cqh; --price-size: 3.8cqh; }
+.tile--compact { --name-size: 1.7cqh; --price-size: calc(3.8cqh * var(--price-scale, 1)); }
 .tile--compact .tile__name { -webkit-line-clamp: 2; }
 .tile--compact .tile__quantity,
 .tile--compact .tile__meta { font-size: 1.25cqh; }
@@ -1279,7 +1279,7 @@
 .tile--feature .tile__media { grid-area: 1 / 1 / 3 / 2; }
 .tile--feature .tile__info  { grid-area: 1 / 2 / 2 / 3; align-self: center; }
 .tile--feature .tile__tags  { grid-area: 2 / 2 / 3 / 3; }
-.tile--feature { --name-size: 2.8cqh; --price-size: 6.6cqh; }
+.tile--feature { --name-size: 2.8cqh; --price-size: calc(6.6cqh * var(--price-scale, 1)); }
 
 /*
  * An upright feature stands back up: artwork over words, like every
@@ -1695,7 +1695,7 @@
    * have outranked anything here now set `--price-size` on the tile
    * instead, which is what makes one line enough.
    */
-  font-size: calc(var(--name-size) * var(--price-ratio));
+  font-size: calc(var(--name-size) * var(--price-ratio) * var(--price-scale, 1));
   color: var(--price-ink);
   text-shadow:
     0 0 0.14em var(--ground), 0 0 0.14em var(--ground),
@@ -2006,7 +2006,7 @@
 /* The page's own type sizes, when the frame carries them. */
 .tile--framed[style*="--f-name"] .tile__name { font-size: calc(var(--f-name) * 100cqw); line-height: 1.08; }
 .tile--framed[style*="--f-body"] .tile__description { font-size: calc(var(--f-body) * 100cqw); line-height: 1.2; }
-.tile--framed[style*="--f-figure"] .price .price__figure { font-size: calc(var(--f-figure) * 100cqw); }
+.tile--framed[style*="--f-figure"] .price .price__figure { font-size: calc(var(--f-figure) * 100cqw * var(--price-scale, 1)); }
 .tile--framed[style*="--f-pack"] .price .price__pack { font-size: calc(var(--f-pack) * 100cqw); }
 .tile--framed .tile__description { -webkit-line-clamp: unset; display: block; overflow: visible; }
 
@@ -2135,3 +2135,75 @@
 .tile--framed .price .price__minor { font-size: 0.6em; vertical-align: 0.5em; position: relative; line-height: 0; }
 /* Words in a roundel break the way the page breaks them. */
 .frameline { overflow-wrap: break-word; word-break: break-word; }
+
+/*
+ * A drawn motif lies ON the page. It is painted without any shadow of
+ * its own — see `KEY_COLOUR` in @incitio/decor — so the page gives it
+ * one: soft, small, from the same top-left light the products have.
+ */
+.page__decor[data-decor-subject^="AI-motiv"] {
+  filter: drop-shadow(0.35cqw 0.6cqw 0.7cqw rgb(20 24 30 / 0.22));
+}
+
+
+/* ------------------------------------------------ an offer's layout
+ *
+ * Chosen by the chain's rules — see `OFFER_LAYOUTS`. Drawn as a frame,
+ * so these only add what a measured frame never needed: a photograph
+ * filling the cell, the darkening under its words, and the sticker.
+ */
+.tile--cover .tile__media > img { object-fit: cover; }
+.tile__scrim {
+  position: absolute; inset: 0; z-index: 15; pointer-events: none;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0) 45%, rgb(0 0 0 / 0.55) 100%);
+}
+.tile--light .tile__words, .tile--light .tile__name, .tile--light .tile__description,
+.tile--light .tile__meta, .tile--light .price--plain { color: #fff; }
+.tile--light .price--plain { text-shadow: 0 0 0.2em rgb(0 0 0 / 0.35); }
+.tile__sticker {
+  position: absolute; z-index: 32;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: 0.2em 0.35em; box-sizing: border-box; border-radius: 0.3em;
+  font-family: var(--heading-font); font-weight: 800;
+  font-size: min(calc(var(--name-size) * 0.8), var(--sticker-fit, 100cqw)); line-height: 1.05;
+  white-space: nowrap; overflow: hidden;
+}
+
+/* A layout's words and price, capped to their own boxes — see `--fit-price` in `OfferTile`. */
+.tile--laid .price { font-size: min(calc(var(--price-size) * var(--price-scale, 1)), var(--fit-price, 100cqw)); }
+.tile--laid .price--plain { font-size: min(calc(var(--name-size) * var(--price-ratio) * var(--price-scale, 1)), var(--fit-price, 100cqw)); }
+.tile--laid .tile__name { font-size: min(var(--name-size), var(--fit-name, 100cqw)); }
+.tile--laid .tile__description,
+.tile--laid .tile__quantity,
+.tile--laid .tile__meta { font-size: min(1.4cqh, calc(var(--fit-name, 100cqw) * 0.62)); }
+.tile--laid .tile__marks img { height: min(3.2cqh, calc(var(--fit-name, 100cqw) * 1.5)); }
+.tile--laid .tile__brand { font-size: min(1.4cqh, calc(var(--fit-name, 100cqw) * 0.6)); }
+.tile--laid .tile__sticker { font-size: min(calc(var(--name-size) * 0.8), var(--sticker-fit, 100cqw)); }
+/* The words stay in their box: a long "Kg-pris maks." line ran on under the price. */
+.tile--laid .tile__words { overflow: hidden; }
+
+/* ------------------------------------------------ offer designs (incito)
+ * A tile drawn from one of the chain's offer designs: absolutely placed
+ * layers at the design's own fractions of the cell. See DesignTile.tsx. */
+.dtile {
+  position: absolute; inset: 0;
+  container-type: size;
+  /* Not cropped: a product moved or bleeding past its cell stays whole, as on the chain's own tiles. */
+  overflow: visible;
+  cursor: pointer;
+  color: var(--ink);
+}
+.dtile.is-selected { outline: 2px solid #ec4899; outline-offset: -2px; }
+.dtile__layer {
+  position: absolute; box-sizing: border-box;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+/* The artwork's frame places the products; it does not crop them when they are moved. */
+.dtile__layer--image { overflow: visible; }
+.dtile__p { overflow-wrap: break-word; white-space: normal; flex-shrink: 0; }
+.dtile__pack { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; isolation: isolate; }
+.dtile__pack img { flex: 1 1 0; min-width: 0; max-width: 100%; max-height: 100%; object-fit: contain; }
+.dtile__pack img + img { margin-left: -8%; }
+.dtile__cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.dtile__logo { width: 100%; max-height: 24%; object-fit: contain; margin-bottom: 4%; }

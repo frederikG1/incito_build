@@ -1,0 +1,390 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EditOps",
+  "type": "array",
+  "items": {
+    "anyOf": [
+      {
+        "description": "Swap two offers.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "swap"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "withOfferId": {
+            "description": "A placed offer trades places; a reserve offer takes this one's slot and this one goes to reserve.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "op",
+          "offerId",
+          "withOfferId"
+        ]
+      },
+      {
+        "description": "Put an offer in a slot. The slot's occupant moves to where the offer was, or to reserve.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "place"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "slotId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "op",
+          "offerId",
+          "pageId",
+          "slotId"
+        ]
+      },
+      {
+        "description": "Put an offer on a page, in its first empty slot — or, on a full page, in the chain's layout with one more slot.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "add"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "op",
+          "offerId",
+          "pageId"
+        ]
+      },
+      {
+        "description": "Take an offer off its page, into reserve.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "remove"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "op",
+          "offerId"
+        ]
+      },
+      {
+        "description": "Make an offer its page's lead: move it into the page's biggest slot.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "lead"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "op",
+          "offerId"
+        ]
+      },
+      {
+        "description": "Rewrite a line of a tile.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "text"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "part": {
+            "enum": [
+              "name",
+              "description",
+              "brand",
+              "quantity",
+              "meta"
+            ]
+          },
+          "text": {
+            "description": "The words to print; \"\" removes the line; null goes back to the feed's.",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "op",
+          "offerId",
+          "part",
+          "text"
+        ]
+      },
+      {
+        "description": "Move, size or hide one box of a tile. media: offsets ±1 of its frame, scale 0.5–2; others: offsets ±25 page %, scale 0.4–3.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "part"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "part": {
+            "enum": [
+              "media",
+              "price",
+              "marks",
+              "brand",
+              "name",
+              "quantity",
+              "description",
+              "meta",
+              "tags"
+            ]
+          },
+          "offsetX": {
+            "type": "number"
+          },
+          "offsetY": {
+            "type": "number"
+          },
+          "scale": {
+            "type": "number"
+          },
+          "hidden": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "op",
+          "offerId",
+          "part"
+        ]
+      },
+      {
+        "description": "How a several-product tile stands its products: row, stagger, grid or fan; null lets the page decide.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "arrange"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "arrangement": {
+            "anyOf": [
+              {
+                "enum": [
+                  "row",
+                  "stagger",
+                  "grid",
+                  "fan"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "op",
+          "offerId",
+          "arrangement"
+        ]
+      },
+      {
+        "description": "Lock a tile in its slot: a new week and a re-layout leave it where it is.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "pin"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pinned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "op",
+          "offerId",
+          "pinned"
+        ]
+      },
+      {
+        "description": "Correct an offer's price or previous price.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "price"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "prePrice": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "op",
+          "offerId"
+        ]
+      },
+      {
+        "description": "Rewrite a page's heading.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "pageText"
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "subtitle": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "op",
+          "pageId"
+        ]
+      },
+      {
+        "description": "Give a page another of the chain's layouts. Offers keep their order; what does not fit goes to reserve.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "layout"
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "templateId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "op",
+          "pageId",
+          "templateId"
+        ]
+      },
+      {
+        "description": "Move a page to position `to` (0 is the front page).",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "movePage"
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "op",
+          "pageId",
+          "to"
+        ]
+      },
+      {
+        "description": "Leave a page out of this edition — the national cover in a store's copy, a store page in the national one. Its offers go to reserve.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "removePage"
+          },
+          "pageId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "op",
+          "pageId"
+        ]
+      },
+      {
+        "description": "Undo every tweak on a tile — boxes, picture, wording — but keep it pinned if it was.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "const": "reset"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "op",
+          "offerId"
+        ]
+      }
+    ]
+  },
+  "maxItems": 200
+}

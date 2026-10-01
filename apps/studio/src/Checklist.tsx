@@ -1,5 +1,6 @@
 import { useStudio } from './state.js';
 import type { Finding, FindingKind } from './findings.js';
+import { usePopover } from './popover.js';
 
 /**
  * What is missing, as a list you can work through.
@@ -28,6 +29,7 @@ const MARKS: Record<FindingKind, string> = {
   uge: '⏱',
   skabelon: '⚠',
   regler: '§',
+  skalmed: '★',
 };
 
 function Line({ finding }: { finding: Finding }) {
@@ -57,6 +59,7 @@ export function Checklist() {
   const document = useStudio((s) => s.document);
   const open = useStudio((s) => s.findingsOpen);
   const setOpen = useStudio((s) => s.setFindingsOpen);
+  usePopover(open, () => setOpen(false));
   const refresh = useStudio((s) => s.refreshFindings);
   // Inside a page the right edge is the panel you fix things with: the list moves left.
   const onPage = useStudio((s) => s.view === 'side');

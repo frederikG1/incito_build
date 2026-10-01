@@ -427,7 +427,8 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
     selectPart(part);
     setEditing({
       part,
-      value: target.textContent ?? '',
+      // A designed tile may print the words shortened; edit the whole of them.
+      value: target.dataset['text'] ?? target.textContent ?? '',
       box,
       type: typeOf(target),
     });
@@ -628,7 +629,7 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
       // the artwork is half the width of the cell it sits in. Not
       // fenced in either: panning artwork is cropping it, and a
       // packshot that cannot be pushed past the edge cannot be framed.
-      const media = element.parentElement?.querySelector('.tile__media');
+      const media = element.parentElement?.querySelector('.tile__media, .dtile [data-part="media"]');
       const frame = (media ?? element).getBoundingClientRect();
       perX = offsetPerPixel(frame.width);
       perY = offsetPerPixel(frame.height);

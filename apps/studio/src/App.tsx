@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { ImagePage, PageView, incitoSlotOf } from "@incitio/renderer";
+import { ImagePage, ImageSize, PageView, incitoSlotOf } from "@incitio/renderer";
 import { resolveTemplate } from "@incitio/brands";
 import { packLimits, pageTextLimits, partLimits } from "@incitio/schema";
-import { useStudio } from "./state.js";
+import { EDITOR_PX, useStudio } from "./state.js";
 
 import { Inspector } from "./Inspector.js";
 import { TileEditor } from "./TileEditor.js";
 import { EmptyCells } from "./EmptyCells.js";
 import { LayoutEditor } from "./LayoutEditor.js";
-import { LayoutGallery } from "./LayoutGallery.js";
 import { PageTextEditor } from "./PageTextEditor.js";
 import { Comparison, Reproduce } from "./Reproduce.js";
+import { OfferRulesPanel } from "./OfferRules.js";
+import { DesignsPanel } from "./Designs.js";
 import { DecorBar } from "./DecorBar.js";
 import { Ways } from "./Ways.js";
 import { Book } from "./Book.js";
@@ -20,7 +21,13 @@ import { Top } from "./Shell.js";
 import { Checklist } from "./Checklist.js";
 import { AskWeek } from "./Week.js";
 import { SaveSection } from "./Weekly.js";
+import { EditionsBoard } from "./Editions.js";
+import { FillPageButton } from "./FillPage.js";
+import { GoodsBoard } from "./Goods.js";
+import { Home } from "./Home.js";
+import { ThemesPanel } from "./Themes.js";
 import { Keys, Palette } from "./Palette.js";
+import { usePopover } from "./popover.js";
 
 /**
  * Put a whole-sheet picture into the book here.
@@ -56,18 +63,16 @@ function InsertImage({ at }: { at: number }) {
 /**
  * The page's rarer errands, behind ⋯.
  *
- * Order, a picture page after this one, and taking the page out. They
- * used to be arrows and a cross on every sheet; inside a page they are
- * a menu, because none of them is what you came to the page to do.
+ * Only what belongs to this one page. Order, inserting sections and
+ * deleting are the overview's work (drag, ＋, ×) and Slet side already
+ * sits in the bar, so repeating them here was a second, slower door.
  */
-function PageMore({ pageId, index }: { pageId: string; index: number }) {
+function PageMore({ pageId }: { pageId: string }) {
   const [open, setOpen] = useState(false);
+  usePopover(open, () => setOpen(false));
   const [saving, setSaving] = useState(false);
-  const count = useStudio((s) => s.document?.pages.length ?? 0);
-  const movePage = useStudio((s) => s.movePage);
-  const removePage = useStudio((s) => s.removePage);
-  const setSectionsOpen = useStudio((s) => s.setSectionsOpen);
   const clearPage = useStudio((s) => s.clearPage);
+  const removePage = useStudio((s) => s.removePage);
 
   return (
     <div className="more">
@@ -85,21 +90,66 @@ function PageMore({ pageId, index }: { pageId: string; index: number }) {
                 ☆ Gem som sektion…
               </button>
             )}
-            <button onClick={() => setSectionsOpen(true, index + 1)}>
-              ＋ Indsæt sektion efter denne side…
-            </button>
-            <button disabled={index === 0} onClick={() => movePage(pageId, -1)}>
-              ↑ Tidligere i avisen
-            </button>
-            <button disabled={index === count - 1} onClick={() => movePage(pageId, 1)}>
-              ↓ Senere i avisen
-            </button>
             <button onClick={() => clearPage(pageId)}>
               ⌫ Tøm siden — behold designet
             </button>
-            <button className="more__drop" onClick={() => removePage(pageId)}>
-              × Slet siden
+            {/* Out of the bar: a red word beside everyday buttons invites the wrong click. */}
+            <button className="more__drop" onClick={() => removePage(pageId)} title="⌘Z fortryder">
+              ✕ Slet siden
             </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Stil alle varer op", asked once before it runs.
+ *
+ * It is an AI call on every tile of the page — it takes a while and it
+ * changes what is there. Not a warning: a short "this is what happens"
+ * with the go button on it, anchored to the button that opened it.
+ */
+function StandUp({ pageId }: { pageId: string }) {
+  const [asking, setAsking] = useState(false);
+  const busy = useStudio((s) => Boolean(s.busy));
+  const ready = useStudio((s) => s.decorReady);
+  const standUp = useStudio((s) => s.standUpClusters);
+  const tiles = useStudio((s) => s.document?.pages.find((p) => p.id === pageId)?.placements.length ?? 0);
+
+  usePopover(asking, () => setAsking(false));
+
+  return (
+    <div className="more">
+      <button
+        className="pagebar__pics pagebar__model"
+        title={ready ? "AI stiller varerne i alle sidens fliser pænt op" : "AI-hjælpen er slået fra på denne maskine"}
+        disabled={busy || !ready}
+        aria-expanded={asking}
+        onClick={() => setAsking(!asking)}
+      >
+        <span aria-hidden="true">✦</span> Stil alle varer op
+      </button>
+      {asking && (
+        <>
+          <div className="more__away" onPointerDown={() => setAsking(false)} />
+          <div className="aiask" role="dialog" aria-label="Stil alle varer op med AI">
+            <b className="aiask__title"><span aria-hidden="true">✦</span> Stil varerne op med AI?</b>
+            <p className="aiask__say">
+              AI finder varerne i billederne på sidens {tiles} {tiles === 1 ? "flise" : "fliser"} og
+              stiller dem pænt op. Det kan tage et minut.
+            </p>
+            <div className="aiask__does">
+              <button className="aiask__no" onClick={() => setAsking(false)}>Annuller</button>
+              <button
+                className="aiask__go"
+                autoFocus
+                onClick={() => { setAsking(false); void standUp(pageId); }}
+              >
+                Ja, stil dem op
+              </button>
+            </div>
           </div>
         </>
       )}
@@ -628,7 +678,7 @@ export function App() {
        * and the page it is about has to stay readable behind it.
        */}
       {s.panel && (
-        <div className="panel">
+        <div className={s.panel === "stemning" ? "panel panel--side" : "panel"}>
           {/* A click anywhere else shuts it. Its own layer rather than
               the card's backdrop, because the card is anchored under
               the button and this has to cover the whole screen. */}
@@ -646,11 +696,10 @@ export function App() {
               <>
                 {/* Your own pictures first — uploading one is the common
                     errand; having a model draw one is the rarer. */}
-                <section className="decor">
-                  <h3 className="inspector__group">Billeder</h3>
+                <div className="pp">
                   <Pictures />
-                </section>
-                <DecorBar />
+                  <DecorBar />
+                </div>
               </>
             )}
           </div>
@@ -685,6 +734,9 @@ export function App() {
       <Keys />
 
       <Reproduce />
+      <OfferRulesPanel />
+      <DesignsPanel />
+      <ThemesPanel />
 
       {/*
        * Two screens. The book is the whole avis as printed spreads —
@@ -693,8 +745,13 @@ export function App() {
        * cell is the same gesture it was on the overview.
        */}
       {s.view === "bog" && s.brand && <Book />}
+      {s.view === "hjem" && s.brand && <Home />}
+      {s.view === "udgaver" && s.brand && <EditionsBoard />}
+      {s.view === "varer" && s.brand && <GoodsBoard />}
 
       {s.view === "side" && (
+      /* Photographs at the size a page on screen shows them — see `ImageSize`. */
+      <ImageSize.Provider value={EDITOR_PX}>
       <div className="page2">
         {/* The products without a page, beside the page they go on. */}
         <Tray />
@@ -885,10 +942,9 @@ export function App() {
                     />
                   </div>
                   <div className="pagebar">
-                    {/* How many products, in which shape — drawn, one
-                        click; see `LayoutGallery`. */}
-                    <LayoutGallery page={page} template={template} spare={bench.length} />
-                    <div className="pagebar__rule" />
+                    {/* No layout to pick: the page's shape follows its
+                        offers, and each offer's look follows the chain's
+                        rules — see `OfferRules`. */}
 
                     {/*
                       * Everything that is a picture rather than a
@@ -930,6 +986,9 @@ export function App() {
                       </button>
                     )}
 
+                    {/* The empty band under the products, used: bigger tiles or more of them. */}
+                    {page.kind === "offers" && <FillPageButton pageId={page.id} />}
+
                     {/* Words anywhere on the page — a headline of your
                         own, "Kun i weekenden", a price note. */}
                     <button
@@ -940,33 +999,17 @@ export function App() {
                       + Tekst
                     </button>
 
-                    {/* Every cluster on the sheet in one errand — the
-                        model composes each, the chain's cutouts move to
-                        match. Violet, as everything a model does. */}
-                    {page.placements.some(
-                      (placement) => (offers.get(placement.offerId)?.members.length ?? 0) > 1,
-                    ) && (
-                      <button
-                        className="pagebar__model"
-                        title={
-                          s.decorReady
-                            ? "Lad AI stille alle sidens samlede tilbud pænt op"
-                            : "AI-hjælpen er slået fra på denne maskine"
-                        }
-                        disabled={Boolean(s.busy) || !s.decorReady}
-                        onClick={() => void s.standUpClusters(page.id)}
-                      >
-                        Stil samlede tilbud op
-                      </button>
+
+                    {/* Every tile on the sheet in one errand — the ones put
+                        together by hand, and every packshot that shows
+                        several products. Violet, as everything a model does. */}
+                    {page.placements.some((placement) => {
+                      const offer = offers.get(placement.offerId);
+                      return Boolean(offer && (offer.imageUrl || offer.imagePack.length > 0));
+                    }) && (
+                      <StandUp pageId={page.id} />
                     )}
-                    <button
-                      className="pagebar__btn pagebar__drop"
-                      onClick={() => s.removePage(page.id)}
-                      title="Slet siden (⌘Z fortryder)"
-                    >
-                      Slet side
-                    </button>
-                    <PageMore pageId={page.id} index={index} />
+                    <PageMore pageId={page.id} />
                   </div>
 
                   {/*
@@ -1110,6 +1153,7 @@ export function App() {
         </main>
         <Inspector />
       </div>
+      </ImageSize.Provider>
       )}
 
 

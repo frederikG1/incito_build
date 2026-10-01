@@ -1,6 +1,9 @@
 import { create } from 'zustand';
+import {
+  applyOps, applySection, newVariant, recordVariant, resolveVariant, sectionsBehind, type EditOp,
+} from '@incitio/edit/core';
 import type {
-  Brand, CatalogDocument, CatalogWeek, IncitoEdit, DecorAnchor, Offer, PageBackground, PageDecoration, PageNote,
+  Brand, CatalogDocument, CatalogWeek, IncitoEdit, DecorAnchor, Offer, OfferDesign, OfferRule, PageBackground, PageDecoration, PageNote,
   PagePart, PageTemplate, PageTextOverride,
   FrameLine, PackOverride, Placement, PartOverride, PlacementOverrides, SlotRole, TemplateSlot, TileArrangement, TilePart,
 } from '@incitio/schema';
@@ -8,13 +11,13 @@ import {
   CatalogDocument as CatalogDocumentSchema,
   CatalogPage, mergeCatalogDocuments, pageTextLimits, pageTextOverride, pageTextPatch,
   packLimits, packOverride, packPatch,
-  partLimits, partOverride, partPatch, slotAssignmentOrder, slotCells,
+  partLimits, partOverride, partPatch, slotAssignmentOrder, slotCells, STARTER_RULES, offerFacts,
 } from '@incitio/schema';
 import { groupOffers, healLabelPrices, notOnePhotograph, readPackSize, rememberPrinted } from '@incitio/schema';
-import { nextWeek, weekName, weekOf } from '@incitio/schema';
-import { bySeverity, measureFindings, readFindings, type Finding } from './findings.js';
+import { nextWeek, weekName, weekOf, OfferFeed, withTheme, type Theme } from '@incitio/schema';
+import { bySeverity, coveredByText, measureFindings, readFindings, type Finding } from './findings.js';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
-import { incitoOfferBoxes, offerViewIds, packStyle, pageBlocks, pagedSheet } from '@incitio/renderer';
+import { incitoOfferBoxes, offerViewIds, sizedImage, packStyle, pageBlocks, pagedSheet } from '@incitio/renderer';
 import { freeSlots, growTemplate, grownId } from './grid.js';
 import * as api from './api.js';
 import { countPages } from './pdf.js';
@@ -24,13 +27,16 @@ import {
 } from './cluster-layout.js';
 import { inkOf, onWhite, WHOLE, type InkBox } from './ink.js';
 import { pool } from './pool.js';
-import { MOTIF_SUBJECT, measurePage, motifDecoration } from './backdropMeasure.js';
+import { MOTIF_SUBJECT, loadPagePictures, measurePage, motifDecoration, motifTarget } from './backdropMeasure.js';
+import { nearestAspect } from '@incitio/decor/backdrop';
 import { chooseBackdrop, measureBackdrop } from './backdrop.js';
 import { placePrompt, type PlacePromptId } from '@incitio/curator/place-prompt';
 import {
-  DEPARTMENTS, DEPARTMENT_NAMES, applyFeedDiff, carryForward, compareByImportance, departmentOf, familyOf,
+  DEPARTMENTS, DEPARTMENT_NAMES, applyFeedDiff, byImportance, carryForward, departmentOf, familyOf,
   feedDiff, pageDepartment, type CarryReport, type Department, type FeedDiff,
+  BASE_EDITION, feedToEdition, mergeEditionFeeds, splitMergedFeed,
 } from '@incitio/compose';
+import { addRows, measureRoom, readPageBoxes, stretch, type Box } from './fill.js';
 
 /**
  * Which chain the user works for.
@@ -253,7 +259,7 @@ export type PanelKey = 'trin' | 'stemning' | 'sider';
  * sheets: to see whether the book worked you scrolled, and to compare
  * page three with page four you could not.
  */
-export type StudioView = 'bog' | 'side';
+export type StudioView = 'hjem' | 'bog' | 'side' | 'udgaver' | 'varer';
 
 /** Spreads, the way it prints — or one page at a time. */
 export type BookView = 'opslag' | 'sider';
@@ -351,6 +357,70 @@ export interface StudioState {
   setTrayFilter: (category: string | null) => void;
   /** When the open avis was last saved, for the header's quiet line. */
   savedAt: string | null;
+  /**
+   * Where saving stands. The avis is saved to the server as it is
+   * worked on — a few seconds after the last change — so the question
+   * "did I save?" never comes up; this says the answer.
+   *
+   * `conflict`: somebody else saved the same avis in between. Nothing
+   * is overwritten until the person chooses — see `resolveConflict`.
+   */
+  saveState: 'saved' | 'dirty' | 'saving' | 'failed' | 'conflict';
+  /** What the server last said each avis's `updatedAt` was — sent as `expected`. */
+  serverStamps: Record<string, string>;
+  historyOpen: boolean;
+  setHistoryOpen: (open: boolean) => void;
+  /** An earlier version back on screen — one undo step, and saved as a version of its own. */
+  restoreVersion: (version: number) => Promise<void>;
+  /** After a conflict: take the colleague's version, or save this one over it. */
+  resolveConflict: (keep: 'theirs' | 'mine') => Promise<void>;
+  /**
+   * Save to the server now, under `label` ("auto" for the automatic
+   * ones). `force` skips the check that nobody else saved in between.
+   * Resolves true when it was saved.
+   */
+  persist: (label: string, force?: boolean) => Promise<boolean>;
+  /**
+   * The edition on screen — a store's or a region's — or null for the
+   * base, which is every edition at once. See `PublicationVariant`.
+   *
+   * While one is open, `document` is that edition, worked out from the
+   * base, and `variantBase` holds the base. Edits land on the edition as
+   * usual; switching away or saving records them as ops against the base.
+   */
+  variantId: string | null;
+  variantBase: CatalogDocument | null;
+  /** What the open edition could not carry: stale ops, edits the ops cannot say. */
+  variantNotes: string[];
+  openVariant: (variantId: string | null) => void;
+  addVariant: (name: string) => void;
+  removeVariant: (variantId: string) => void;
+  /** The Udgaver screen: every edition, what it carries, and whether it matches its file. */
+  openEditions: () => void;
+  /** The Varer screen: the whole week's products, where they stand and what they lack. */
+  openGoods: () => void;
+  /** Which filter Varer opens on, when something sent you there. Read once. */
+  goodsShow: string | null;
+  /** Mark products as "skal med" in the open avis — or take the mark off. */
+  setMustInclude: (offerIds: string[], on: boolean) => void;
+  /** The front page: this week, next week, and everything before. */
+  openHome: () => void;
+  /** Rename an avis or change its status — the open one by editing it, any other on the server. */
+  setCatalogueMeta: (id: string, patch: { name?: string; status?: api.CatalogStatus }) => Promise<void>;
+  /**
+   * A new week's avis: last week's (`fromId`) carried onto the new week's
+   * file, or — with no `fromId` — an empty one waiting for its pages.
+   */
+  startWeek: (fromId: string | null, file: File, week: CatalogWeek, themeId?: string | null) => Promise<void>;
+  /** A store's or region's own file, read and written into its edition. Returns what it could not hold. */
+  setEditionFeed: (variantId: string, name: string, text: string) => Promise<void>;
+  /** A merged feed — the one the platform reads — back into its editions. */
+  loadMergedFeed: (name: string, text: string) => Promise<void>;
+  setVariantStores: (variantId: string, stores: string[]) => void;
+  /** Every edition's file as the one feed the platform reads, as a download. */
+  downloadMergedFeed: () => void;
+  /** The document as it is stored: the base, with the open edition recorded into it. */
+  storedDocument: () => CatalogDocument | null;
   /** Open it, or close it if it is the one already open. */
   togglePanel: (panel: PanelKey) => void;
   closePanel: () => void;
@@ -615,6 +685,12 @@ export interface StudioState {
   /** Take a cell off the page; its product goes to the reserve. */
   removeCell: (pageId: string, slotId: string) => void;
   /**
+   * Use the empty band under a page's products: stretch the cells into
+   * it, or add rows of the page's own last row, filled from the reserve.
+   * See `fill.ts`.
+   */
+  fillPage: (pageId: string, mode: 'grow' | 'more') => void;
+  /**
    * Give a crowded cell the room of an empty neighbour: the two boxes
    * become one and the empty cell goes. Needs the page's cells in boxes
    * — see `ownLayout`, which the caller runs first.
@@ -696,6 +772,18 @@ export interface StudioState {
   downloadPdf: (forPrint?: boolean) => Promise<void>;
 
   setReproduceOpen: (open: boolean) => void;
+  setRulesOpen: (open: boolean) => void;
+  /** The chain's offer designs panel — see `Designs.tsx`. */
+  designsOpen: boolean;
+  setDesignsOpen: (open: boolean) => void;
+  designsSaving: 'saved' | 'saving' | 'failed';
+  /** The chain's offer designs and default tag, saved for the chain. */
+  setOfferDesigns: (designs: OfferDesign[], tag: string | null) => void;
+  /**
+   * The chain's offer rules, changed. The pages redraw at once; the list
+   * is saved for the chain a moment after the last change.
+   */
+  setOfferRules: (rules: OfferRule[]) => void;
   /** Add pages to rebuild: images, or PDFs to take pages out of. */
   addReferences: (files: File[]) => Promise<void>;
   /** Which pages of a PDF this reference stands for — "4", "1-6", "2,5,9". */
@@ -903,7 +991,19 @@ export interface StudioState {
    */
   importPublication: () => Promise<void>;
   /** A product's price, corrected by hand — the page's price mark follows. */
+  /**
+   * Apply edit ops — the vocabulary the API, the CLI and the AI speak —
+   * as ONE step on the undo stack. Returns why not, or null.
+   */
+  applyEdits: (ops: EditOp[]) => string | null;
   setOfferPrice: (offerId: string, price: number) => void;
+  /**
+   * Correct a price by hand — the price and the before-price. The feed's
+   * own values are kept on the offer (`Offer.corrected`) the first time.
+   */
+  correctPrice: (offerId: string, patch: { price?: number; prePrice?: number | null }) => void;
+  /** Back to what the feed said. */
+  uncorrectPrice: (offerId: string) => void;
 
   setLayoutCells: (cells: number) => void;
   setLayoutNote: (note: string) => void;
@@ -1095,6 +1195,18 @@ export interface StudioState {
   /** The chain's saved page designs — the gallery the CMS calls Sections. */
   sections: api.Section[];
   sectionsOpen: boolean;
+  /** The chain's themes — see `Theme`. */
+  themes: Theme[];
+  themesOpen: boolean;
+  setThemesOpen: (open: boolean) => void;
+  /** Save the chain's themes, whole. */
+  saveThemes: (themes: Theme[]) => Promise<void>;
+  /** The open avis in this theme, or in none. One undo step. */
+  applyTheme: (themeId: string | null) => void;
+  /** The chain's offer rules are open for editing — see `OfferRules`. */
+  rulesOpen: boolean;
+  /** Where saving the rules stands: written, on its way, or refused. */
+  rulesSaving: 'saved' | 'saving' | 'failed';
   /** Where the gallery inserts: the index the new page will take. */
   sectionsAt: number;
   /** Open (or close) the gallery, optionally aimed at one place in the book. */
@@ -1102,12 +1214,21 @@ export interface StudioState {
   setSectionsAt: (at: number) => void;
   refreshSections: () => Promise<void>;
   /** Keep this page's design for later weeks, under a name and tags. */
+  /**
+   * Save this page's design as a new version of the section it came from
+   * — every other page made from that section can then take it.
+   */
+  updateSectionFromPage: (pageId: string) => Promise<void>;
+  /** Give pages the newest version of their section's design, keeping their products. All behind pages when none are named. */
+  pullSections: (pageIds?: string[]) => void;
   saveSection: (pageId: string, name: string, tags: string[]) => Promise<void>;
   /** Every page of the open avis as a section — how a library starts. */
   saveAllSections: () => Promise<void>;
   removeSection: (id: string) => Promise<void>;
   /** A section as a new page, its cells dealt from the reserve by tag. */
-  insertSection: (id: string, at?: number) => void;
+  insertSection: (id: string, at?: number, batch?: string) => void;
+  /** Several sections at once, in the order given, from `at` on — one undo step. */
+  insertSections: (ids: string[], at?: number) => void;
   /**
    * A feed arrived while an avis was open, and the two questions it
    * raises: is this a correction to THIS avis, or next week's file?
@@ -1296,7 +1417,7 @@ function cellCount(document: CatalogDocument): number {
     .reduce((sum, page) => sum + (document.templates.find((t) => t.id === page.templateId)?.slots.length ?? 0), 0);
 }
 
-function withTemplates(brand: Brand, templates: PageTemplate[]): Brand {
+export function withTemplates(brand: Brand, templates: PageTemplate[]): Brand {
   const all = new Map<string, PageTemplate>();
   for (const template of [...templates, ...brand.templates]) {
     if (!all.has(template.id)) all.set(template.id, template);
@@ -1576,7 +1697,7 @@ async function standUpCluster(args: {
    * browser that laid the cluster out.
    */
   const tile = window.document.querySelector(`[data-offer-id="${CSS.escape(offerId)}"]`);
-  const media = tile?.querySelector('.tile__media')?.getBoundingClientRect();
+  const media = tile?.querySelector('.tile__media, .dtile__pack')?.getBoundingClientRect();
   const page = tile?.closest('.page')?.getBoundingClientRect();
   if (!media || !page || media.width === 0 || page.width === 0) {
     return { error: `${tileName(members)}: flisen skal være synlig på siden` };
@@ -1965,6 +2086,9 @@ function seatOrder(page: CatalogPage, brand: Brand): Placement[] {
 /** A cell's size on the page, in shares of it, and what it is for. */
 export type CellSize = { w: number; h: number; role: SlotRole };
 
+/** How far a cell's shape may change before a tile's nudges no longer fit it. */
+export const SHAPE_KEEPS = 1.25;
+
 function cellSize(brand: Brand, templates: PageTemplate[], templateId: string, slotId: string): CellSize | null {
   const template = templates.find((t) => t.id === templateId) ?? resolveTemplate(brand, templateId);
   const slot = template?.slots.find((entry) => entry.id === slotId);
@@ -1973,6 +2097,42 @@ function cellSize(brand: Brand, templates: PageTemplate[], templateId: string, s
   const cell = slotCells(template, brand.pageAspect).get(slotId);
   if (!cell) return null;
   return { w: cell.width, h: (cell.width * brand.pageAspect) / cell.aspect, role: slot.role };
+}
+
+type Rect = { x: number; y: number; w: number; h: number };
+
+/** `box` shrunk or grown evenly to fit `into`, and centred in it — how a printed offer follows its cell. */
+function fitBox(box: Rect, into: Rect): Rect {
+  const k = Math.min(into.w / box.w, into.h / box.h);
+  return { x: into.x + (into.w - box.w * k) / 2, y: into.y + (into.h - box.h * k) / 2, w: box.w * k, h: box.h * k };
+}
+
+/**
+ * The box a published page's offer was printed in — what its cell grows
+ * and shrinks around — or `null` on a page drawn by the chain's tiles.
+ */
+function printedBase(page: CatalogPage, placement: Placement): Rect | null {
+  const incito = page.incito;
+  if (!incito || !page.exact || (incito.view as { paged?: unknown }).paged) return null;
+  const base = incito.cellBase?.[placement.slotId];
+  if (base) return base;
+  const views = offerViewIds(incito.view as Parameters<typeof offerViewIds>[0]);
+  const view = incito.slots?.[placement.slotId] ?? (views.has(placement.offerId) ? placement.offerId : undefined);
+  return view ? incitoOfferBoxes(incito).get(view) ?? null : null;
+}
+
+/**
+ * The room a tile is actually drawn in.
+ *
+ * On a published page the offer is its printed design fitted evenly into
+ * the cell (`cellFit`), so the box keeps the print's shape whatever the
+ * cell's — and a cluster's composition, laid out in that box, is carried
+ * by the change in THAT box, evenly, not by the cell's.
+ */
+function tileSize(cell: CellSize | null, base: Rect | null): CellSize | null {
+  if (!cell || !base || base.w <= 0 || base.h <= 0) return cell;
+  const k = Math.min(cell.w / base.w, cell.h / base.h);
+  return { w: base.w * k, h: base.h * k, role: cell.role };
 }
 
 /**
@@ -1995,16 +2155,31 @@ export function carryOverrides(
   from: CellSize | null,
   to: CellSize | null,
 ): Placement['overrides'] {
-  if (!from || !to || from.w <= 0 || from.h <= 0) return overrides;
+  if (!from || !to || from.w <= 0 || from.h <= 0 || to.h <= 0) return overrides;
+  const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
   const sx = to.w / from.w;
   const sy = to.h / from.h;
-  const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
+  /*
+   * Nudges are made for a SHAPE. Scaled apart into a cell of another
+   * one — a tall cell turned wide — x grows, y shrinks, and the products
+   * slide off each other. Past a quarter's change:
+   *
+   *   - a cluster's composition keeps its shape, grown or shrunk evenly
+   *     to what the new cell has room for. It is the arranged group —
+   *     the model's, or somebody's by hand — and the point of the tile;
+   *   - the words and the price go back to where the cell's design puts
+   *     them, which is drawn for the new shape.
+   */
+  const reshaped = Math.abs(Math.log(sx / sy)) > Math.log(SHAPE_KEEPS);
+  const even = Math.min(sx, sy);
   const pack = Object.fromEntries(Object.entries(overrides.pack ?? {}).map(([key, item]) => [key, {
-    ...item, offsetX: clamp(item.offsetX * sx, 100), offsetY: clamp(item.offsetY * sy, 100),
+    ...item,
+    offsetX: clamp(item.offsetX * (reshaped ? even : sx), 100),
+    offsetY: clamp(item.offsetY * (reshaped ? even : sy), 100),
   }]));
-  const parts = Object.fromEntries(Object.entries(overrides.parts ?? {}).map(([key, part]) => [key, {
-    ...part, offsetX: clamp(part.offsetX * sx, 25), offsetY: clamp(part.offsetY * sy, 25),
-  }]));
+  const parts = Object.fromEntries(Object.entries(overrides.parts ?? {}).map(([key, part]) => [key, reshaped
+    ? { ...part, offsetX: 0, offsetY: 0, scale: 1 }
+    : { ...part, offsetX: clamp(part.offsetX * sx, 25), offsetY: clamp(part.offsetY * sy, 25) }]));
   const touched = Object.keys(overrides.pack ?? {}).length > 0;
   const count = offer?.imagePack.length ?? 0;
   const arrangement = overrides.arrangement
@@ -2177,47 +2352,88 @@ function fitLayout(
    * relative to that cell in the product's new one; everything else — the
    * headline, the banner — stays where the page put it.
    */
+  /*
+   * Everything laid on a product moves as ONE piece with it — the same
+   * even scale, the same centring — or the tile comes apart: the motif
+   * one way, the group another, "Storkøb" a third. The piece is the box
+   * the offer is drawn in (its print fitted into the cell, on a
+   * published page), so what was on the tile stays where it was on it.
+   */
   const moves = page.placements.map((placement) => {
-    const from = current.slots.find((slot) => slot.id === placement.slotId)?.rect;
-    const to = slots.find((slot) => slot.id === placements.find((p) => p.offerId === placement.offerId)?.slotId)?.rect;
-    return from && to ? { from, to } : null;
+    const cell = current.slots.find((slot) => slot.id === placement.slotId)?.rect;
+    const target = slots.find((slot) => slot.id === placements.find((p) => p.offerId === placement.offerId)?.slotId)?.rect;
+    if (!cell || !target) return null;
+    const base = printedBase(page, placement);
+    const from = base ? fitBox(base, cell) : cell;
+    const to = fitBox(from, base ? fitBox(base, target) : target);
+    return { cell, from, to, k: to.w / from.w };
   }).filter((move): move is NonNullable<typeof move> => Boolean(move));
-  const carrierOf = (cx: number, cy: number) => moves.find(({ from }) =>
-    cx >= from.x && cx <= from.x + from.w && cy >= from.y && cy <= from.y + from.h);
+  const carrierOf = (cx: number, cy: number) => moves.find(({ cell }) =>
+    cx >= cell.x && cx <= cell.x + cell.w && cy >= cell.y && cy <= cell.y + cell.h);
   const clampPos = (v: number) => Math.min(1.5, Math.max(-0.5, v));
+  const carry = (move: (typeof moves)[number], x: number, y: number) => ({
+    x: move.to.x + (x - move.from.x) * move.k,
+    y: move.to.y + (y - move.from.y) * move.k,
+  });
   const notes = (page.notes ?? []).map((note) => {
     if (note.behind) return note;
     const h = note.h ?? 0.03;
     const move = carrierOf(note.x + note.w / 2, note.y + h / 2);
     if (!move) return note;
-    const sx = move.to.w / move.from.w;
-    const sy = move.to.h / move.from.h;
-    const k = Math.sqrt(sx * sy);
+    const at = carry(move, note.x, note.y);
     return {
       ...note,
-      x: clampPos(move.to.x + (note.x - move.from.x) * sx),
-      y: clampPos(move.to.y + (note.y - move.from.y) * sy),
-      w: Math.min(2, Math.max(0.02, note.w * k)),
-      ...(note.h !== null ? { h: Math.min(2, Math.max(0.01, note.h * k)) } : {}),
-      size: Math.min(0.3, Math.max(0.005, note.size * k)),
+      x: clampPos(at.x),
+      y: clampPos(at.y),
+      w: Math.min(2, Math.max(0.02, note.w * move.k)),
+      ...(note.h !== null ? { h: Math.min(2, Math.max(0.01, note.h * move.k)) } : {}),
+      size: Math.min(0.3, Math.max(0.005, note.size * move.k)),
     };
   });
+  const ratio = brand.pageAspect;
   const decorations = page.decorations.map((decor) => {
-    if (!decor.rect || decor.id.startsWith('pub-masthead')) return decor;
-    const r = decor.rect;
-    const move = carrierOf(r.x + r.w / 2, r.y + r.h / 2);
+    if (decor.id.startsWith('pub-masthead')) return decor;
+    if (decor.rect) {
+      const r = decor.rect;
+      const move = carrierOf(r.x + r.w / 2, r.y + r.h / 2);
+      if (!move) return decor;
+      const at = carry(move, r.x, r.y);
+      return {
+        ...decor,
+        rect: {
+          x: clampPos(at.x), y: clampPos(at.y),
+          w: Math.min(2, Math.max(0.01, r.w * move.k)),
+          h: Math.min(2, Math.max(0.01, r.h * move.k)),
+        },
+      };
+    }
+    /*
+     * A picture hung off a corner — an AI motif beside its product. Its
+     * corner point is carried (see `motifDecoration` for the geometry),
+     * so a bottom- or right-hung picture needs no height to move.
+     */
+    const w = decor.scale;
+    const left = decor.anchor.endsWith('left');
+    const top = decor.anchor.startsWith('top');
+    const bleedX = 0.14 * w;
+    const bleedY = 0.14 * w * ratio;
+    const px = left ? decor.offsetX / 100 - bleedX : decor.offsetX / 100 + 1 + bleedX;
+    const py = top ? decor.offsetY / 100 - bleedY : decor.offsetY / 100 + 1 + bleedY;
+    // Its middle, near enough to tell which tile it stands by.
+    const cx = left ? px + w / 2 : px - w / 2;
+    const cy = top ? py + (w * ratio) / 2 : py - (w * ratio) / 2;
+    const move = carrierOf(cx, cy);
     if (!move) return decor;
-    const sx = move.to.w / move.from.w;
-    const sy = move.to.h / move.from.h;
-    const k = Math.sqrt(sx * sy);
+    const at = carry(move, px, py);
+    const scale = Math.min(0.6, Math.max(0.05, w * move.k));
+    const bx = 0.14 * scale;
+    const by = 0.14 * scale * ratio;
+    const round = (v: number) => Math.round(Math.min(75, Math.max(-75, v * 100)) * 10) / 10;
     return {
       ...decor,
-      rect: {
-        x: clampPos(move.to.x + (r.x - move.from.x) * sx),
-        y: clampPos(move.to.y + (r.y - move.from.y) * sy),
-        w: Math.min(2, Math.max(0.01, r.w * k)),
-        h: Math.min(2, Math.max(0.01, r.h * k)),
-      },
+      scale,
+      offsetX: round(left ? at.x + bx : at.x - 1 - bx),
+      offsetY: round(top ? at.y + by : at.y - 1 - by),
     };
   });
 
@@ -2236,8 +2452,8 @@ function fitLayout(
           ? carryOverrides(
             before.overrides,
             document.offers.find((offer) => offer.id === placement.offerId),
-            cellSize(brand, document.templates, page.templateId, before.slotId),
-            cellSize(brand, templates, id, placement.slotId),
+            tileSize(cellSize(brand, document.templates, page.templateId, before.slotId), printedBase(page, before)),
+            tileSize(cellSize(brand, templates, id, placement.slotId), printedBase(page, before)),
           )
           : placement.overrides,
       };
@@ -2265,11 +2481,264 @@ function reseat(
         overrides: carryOverrides(
           placement.overrides,
           offer,
-          cellSize(brand, templates, page.templateId, placement.slotId),
-          cellSize(brand, templates, next.id, slotId),
+          tileSize(cellSize(brand, templates, page.templateId, placement.slotId), printedBase(page, placement)),
+          tileSize(cellSize(brand, templates, next.id, slotId), printedBase(page, placement)),
         ),
       };
     });
+}
+
+/**
+ * Offers built into the document that no page is showing.
+ *
+ * A product inside a placed group is ON the page, even though no
+ * placement names it: the tile shows its photograph and the price
+ * covers it. Counting it as bench would tell the editor there are six
+ * spare products waiting when in fact they are printed.
+ */
+export function benchOf(document: CatalogDocument): Offer[] {
+  const placed = new Set(document.pages.flatMap((p) => p.placements).map((p) => p.offerId));
+  const shown = new Set(document.offers
+    .filter((offer) => placed.has(offer.id))
+    .flatMap((offer) => offer.members));
+  return document.offers.filter(
+    (offer) => !placed.has(offer.id) && !shown.has(offer.id) && !isVariantPiece(offer.id),
+  );
+}
+
+/**
+ * A published page's tree, told where each of its offers stands now.
+ *
+ * The tree finds an offer's printed design by the NAME of its cell
+ * (`IncitoSource.slots`), and every layout names its cells a, b, c… — so
+ * a product moved into a new layout's "a" was drawn in the design of
+ * whichever offer the publication printed in its "a": another product's
+ * price mark, another product's words. The names are rewritten to follow
+ * the products, and each cell's starting box (`cellBase`) with them.
+ */
+function incitoFollows(page: CatalogPage, placements: Placement[]): CatalogPage['incito'] {
+  const incito = page.incito;
+  if (!incito || (incito.view as { paged?: unknown }).paged) return incito;
+  const views = offerViewIds(incito.view as Parameters<typeof offerViewIds>[0]);
+  const printed = incitoOfferBoxes(incito);
+  const slots: Record<string, string> = {};
+  const cellBase: Record<string, { x: number; y: number; w: number; h: number }> = {};
+  for (const placement of placements) {
+    const before = page.placements.find((entry) => entry.offerId === placement.offerId);
+    const view = before
+      ? incito.slots?.[before.slotId] ?? (views.has(placement.offerId) ? placement.offerId : undefined)
+      : undefined;
+    if (!view || !views.has(view)) continue;
+    slots[placement.slotId] = view;
+    const base = (before ? incito.cellBase?.[before.slotId] : undefined) ?? printed.get(view);
+    if (base) cellBase[placement.slotId] = base;
+  }
+  return { ...incito, slots, cellBase };
+}
+
+/**
+ * The facts a rule reads, filled in from the week's file on products
+ * saved before the reader knew them — billedtype, besparelse i %,
+ * kampagne, medlemspris, mængderabat. Only what is missing: nothing the
+ * avis already says, and nothing anybody wrote, is replaced.
+ */
+export function withFeedFacts(document: CatalogDocument, feed: Offer[]): CatalogDocument {
+  const byId = new Map(feed.map((offer) => [offer.id, offer]));
+  let changed = false;
+  const offers = document.offers.map((offer) => {
+    const fresh = byId.get(offer.id);
+    if (!fresh) return offer;
+    const patch: Partial<Offer> = {};
+    if ((offer.imageKind ?? null) === null && fresh.imageKind) patch.imageKind = fresh.imageKind;
+    if ((offer.savingsPercent ?? null) === null && fresh.savingsPercent !== null) patch.savingsPercent = fresh.savingsPercent;
+    if (!offer.campaign && fresh.campaign) patch.campaign = fresh.campaign;
+    if ((offer.memberPrice ?? null) === null && fresh.memberPrice !== null) patch.memberPrice = fresh.memberPrice;
+    const missing = fresh.labels.filter((label) => label.kind === 'multibuy'
+      && !offer.labels.some((own) => own.kind === 'multibuy'));
+    if (missing.length > 0) patch.labels = [...offer.labels, ...missing];
+    if (Object.keys(patch).length === 0) return offer;
+    changed = true;
+    return { ...offer, ...patch };
+  });
+  return changed ? { ...document, offers } : document;
+}
+
+/** The page put on another layout with the same number of cells. */
+function onTemplate(document: CatalogDocument, brand: Brand, pageId: string, next: PageTemplate): CatalogDocument {
+  const page = document.pages.find((entry) => entry.id === pageId);
+  if (!page) return document;
+  const seated = reseat(page, brand, next, document);
+  // A page in its own style keeps it — see `fitLayout`.
+  const fitted = next.id.startsWith('own/') ? null : fitLayout(document, brand, page, next, seated);
+  return {
+    ...document,
+    templates: fitted
+      ? [...document.templates.filter((t) => t.id !== fitted.template.id), fitted.template]
+      : document.templates,
+    pages: document.pages.map((entry) => (entry.id === pageId
+      ? {
+        ...entry,
+        templateId: fitted?.template.id ?? next.id,
+        placements: fitted?.placements ?? seated,
+        incito: incitoFollows(entry, fitted?.placements ?? seated),
+        ...(fitted ? { notes: fitted.notes, decorations: fitted.decorations } : {}),
+      }
+      : entry)),
+  };
+}
+
+/**
+ * The page at another number of products: dropping takes from the
+ * bottom of the page, adding fills the weakest cells from the bench.
+ */
+function atCount(
+  document: CatalogDocument, brand: Brand, pageId: string, count: number, chosen: PageTemplate | null,
+): CatalogDocument {
+  const page = document.pages.find((p) => p.id === pageId);
+  if (!page) return document;
+  /*
+   * A layout at the new count, preferring one whose shape is closest to
+   * the current page's — a six-up that becomes a three-up should not
+   * also swap its hero for a flat row unless the brand has nothing else.
+   */
+  const here = resolveTemplate(brand, page.templateId);
+  const next = chosen
+    ?? templatesForCount(brand, count).find((t) => t.slots[0]?.role === here?.slots[0]?.role)
+    ?? templatesForCount(brand, count)[0];
+  if (!next) return document;
+
+  const offers = seatOrder(page, brand).slice(0, count).map((p) => p.offerId);
+  for (const offer of benchOf(document)) {
+    if (offers.length >= count) break;
+    offers.push(offer.id);
+  }
+  if (offers.length === 0) return document;
+
+  const kept = new Map(page.placements.map((p) => [p.offerId, p]));
+  const slots = slotAssignmentOrder(next).slice(0, offers.length);
+  const seated = slots.map((slot, index) => {
+    const offerId = offers[index]!;
+    const before = kept.get(offerId);
+    // An offer coming off the bench has no corrections yet;
+    // one that was already here keeps the ones it has.
+    return before
+      ? {
+        ...before,
+        slotId: slot.id,
+        overrides: carryOverrides(
+          before.overrides,
+          document.offers.find((entry) => entry.id === offerId),
+          tileSize(cellSize(brand, document.templates, page.templateId, before.slotId), printedBase(page, before)),
+          tileSize(cellSize(brand, [...document.templates, next], next.id, slot.id), printedBase(page, before)),
+        ),
+      }
+      : { offerId, slotId: slot.id, overrides: FRESH };
+  });
+  // A page in its own style keeps it — see `fitLayout`. The
+  // corrections are already carried; fitting only moves the cells.
+  const fitted = fitLayout(document, brand, page, next, seated.map((placement) => {
+    const before = kept.get(placement.offerId);
+    return before ? { ...placement, overrides: before.overrides } : placement;
+  }));
+  return {
+    ...document,
+    templates: fitted
+      ? [...document.templates.filter((t) => t.id !== fitted.template.id), fitted.template]
+      : document.templates,
+    pages: document.pages.map((p) => (p.id === pageId
+      ? {
+        ...p,
+        templateId: fitted?.template.id ?? next.id,
+        placements: fitted?.placements ?? seated,
+        incito: incitoFollows(p, fitted?.placements ?? seated),
+        ...(fitted ? { notes: fitted.notes, decorations: fitted.decorations } : {}),
+      }
+      : p)),
+  };
+}
+
+/** Bumped when carrying changes, so a layout remembered by the old carry is not brought back. */
+const LAYOUT_MEMORY_V = 2;
+
+/** Which of the gallery's layouts the page is in — its template's id when none. */
+export function layoutKey(page: CatalogPage): string {
+  return page.layout && page.layout.templateId === page.templateId ? page.layout.option : page.templateId;
+}
+
+/**
+ * The page in one of the gallery's layouts — worked out, not applied.
+ *
+ * Pure, so the gallery can draw the page in every layout before any is
+ * chosen, and the choice is the drawing it showed. The layout the page
+ * is leaving is written down on the page first, and a layout it has
+ * been in before comes back as it was left: trying three shapes and
+ * returning to the first must give the first back, not the third
+ * stretched into it.
+ */
+export function pageInLayout(
+  document: CatalogDocument, brand: Brand, pageId: string, option: PageTemplate,
+): CatalogDocument | null {
+  const page = document.pages.find((entry) => entry.id === pageId);
+  if (!page) return null;
+  const known = document.templates.some((t) => t.id === option.id)
+    ? document
+    : { ...document, templates: [...document.templates, option] };
+  const chain = withTemplates(brand, known.templates);
+  const current = known.templates.find((t) => t.id === page.templateId) ?? resolveTemplate(chain, page.templateId);
+  const leaving = layoutKey(page);
+  const layouts = current
+    ? {
+      ...page.layouts,
+      [leaving]: { v: LAYOUT_MEMORY_V, template: current, placements: page.placements, notes: page.notes, decorations: page.decorations },
+    }
+    : page.layouts;
+
+  const memory = option.id === leaving ? undefined : page.layouts?.[option.id];
+  const bench = new Set(benchOf(known).map((offer) => offer.id));
+  const here = new Set(page.placements.map((p) => p.offerId));
+  // Only while every product it held is still here or on the bench.
+  const recallable = memory && memory.v === LAYOUT_MEMORY_V && memory.placements.length > 0 && memory.placements.every(
+    (p) => here.has(p.offerId) || bench.has(p.offerId),
+  );
+
+  let next: CatalogDocument;
+  if (recallable) {
+    const byId = <T extends { id: string }>(list: T[]) => new Map(list.map((entry) => [entry.id, entry]));
+    const notes = byId(memory.notes);
+    const decorations = byId(memory.decorations);
+    next = {
+      ...known,
+      templates: [...known.templates.filter((t) => t.id !== memory.template.id), memory.template],
+      pages: known.pages.map((entry) => (entry.id === pageId
+        ? {
+          ...entry,
+          templateId: memory.template.id,
+          placements: memory.placements,
+          incito: incitoFollows(entry, memory.placements),
+          // Where the words and pictures stood — what they say is today's.
+          notes: entry.notes.map((note) => {
+            const was = notes.get(note.id);
+            return was ? { ...note, x: was.x, y: was.y, w: was.w, h: was.h, size: was.size } : note;
+          }),
+          decorations: entry.decorations.map((decor) => {
+            const was = decorations.get(decor.id);
+            return was ? { ...decor, rect: was.rect } : decor;
+          }),
+        }
+        : entry)),
+    };
+  } else if (option.slots.length === page.placements.length) {
+    next = onTemplate(known, chain, pageId, option);
+  } else {
+    next = atCount(known, chain, pageId, option.slots.length, option);
+  }
+  if (next === known) return null;
+  return {
+    ...next,
+    pages: next.pages.map((entry) => (entry.id === pageId
+      ? { ...entry, layouts, layout: { option: option.id, templateId: entry.templateId } }
+      : entry)),
+  };
 }
 
 /* -------------------------------------------------- the week, carried */
@@ -2465,6 +2934,10 @@ function feedWeek(offers: Offer[]): CatalogWeek | null {
   return [...counts.values()].sort((a, b) => b.n - a.n)[0]?.week ?? null;
 }
 
+/** Pixels a product photograph is fetched at: on the overview's cards and the shelf, and in the page editor. */
+export const THUMB_PX = 240;
+export const EDITOR_PX = 560;
+
 export const useStudio = create<StudioState>((set, get) => {
   /*
    * The open gesture, if one is running. Not part of the public state:
@@ -2503,6 +2976,32 @@ export const useStudio = create<StudioState>((set, get) => {
    * be pointed at the right source by hand — so a file this could not
    * read stays loaded, and only the library is empty.
    */
+  /*
+   * The week's photographs, fetched before anybody asks for them.
+   *
+   * Laying a new week into the avis takes a few milliseconds; what the
+   * pages then wait for is several hundred product photographs. Fetched
+   * here, quietly and a few at a time, at the sizes the overview and the
+   * page editor draw them, they are in the browser's cache by the time
+   * the pages want them. A newer feed stops an older warm-up.
+   */
+  let warming = 0;
+  function warmImages(offers: Offer[]): void {
+    const run = ++warming;
+    const urls = [...new Set(offers.flatMap((offer) => [offer.imageUrl, ...offer.imagePack])
+      .filter((url): url is string => Boolean(url)))];
+    const queue = [...urls.map((url) => sizedImage(url, THUMB_PX)), ...urls.map((url) => sizedImage(url, EDITOR_PX))];
+    const next = (): void => {
+      const url = queue.shift();
+      if (!url || run !== warming) return;
+      const image = new Image();
+      image.decoding = 'async';
+      image.onload = image.onerror = () => next();
+      image.src = url;
+    };
+    for (let lane = 0; lane < 6; lane += 1) next();
+  }
+
   async function loadFeed(
     brandId: string, name: string, text: string, announce: boolean,
   ): Promise<void> {
@@ -2522,7 +3021,12 @@ export const useStudio = create<StudioState>((set, get) => {
           await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
         }
       }
+      warmImages(reading.offers);
+      // What the avis's own products did not know yet, from the week's file — see `withFeedFacts`.
+      const open = get().document;
+      const healed = open ? withFeedFacts(open, reading.offers) : null;
       set({
+        ...(healed && healed !== open ? { document: healed } : {}),
         feedOffers: reading.offers,
         feedReading: { source: reading.source, withImage: reading.withImage },
         librarySelection: [],
@@ -2547,6 +3051,22 @@ export const useStudio = create<StudioState>((set, get) => {
           : { error: 'Ugens varer kunne ikke hentes — genindlæs siden om lidt.' }),
       });
     }
+  }
+
+  /**
+   * What a new cell may be filled with: the avis's own unplaced products
+   * and this week's feed, photographed, strongest first — the departments
+   * asked for, then their neighbours, never the whole shop. None asked
+   * for: the strongest of anything.
+   */
+  function reserveFor(document: CatalogDocument, wanted: Department[]): { reserve: Offer[]; fromFeed: Offer[] } {
+    const related = new Set(wanted.flatMap(familyOf));
+    const inAvis = new Set(document.offers.map((offer) => offer.id));
+    const fromFeed = get().feedOffers.filter((offer) => !inAvis.has(offer.id) && offer.members.length === 0);
+    const free = [...unplaced(document), ...fromFeed].filter((offer) => offer.imageUrl).sort(byImportance(get().brand?.offerRules));
+    const own = free.filter((offer) => wanted.length === 0 || wanted.includes(departmentOf(offer)));
+    const near = wanted.length === 0 ? [] : free.filter((offer) => !own.includes(offer) && related.has(departmentOf(offer)));
+    return { reserve: [...own, ...near], fromFeed };
   }
 
   /** One placement's corrections, or undefined if it is not on a page. */
@@ -2732,6 +3252,43 @@ export const useStudio = create<StudioState>((set, get) => {
    * one go is one undo step, and every failure is a line in the note
    * rather than an exception that takes the other tiles with it.
    */
+  /**
+   * One product's picture taken apart into the products it shows — three
+   * bottles in one packshot become three pictures, each movable. A feed
+   * that already photographs each variant needs nothing cut. Returns how
+   * many products the tile now holds; below two, nothing is changed.
+   */
+  async function splitOffer(offerId: string): Promise<number> {
+    const { brandId, document } = get();
+    const offer = document?.offers.find((entry) => entry.id === offerId);
+    if (!brandId || !document || !offer || !(offer.imageUrl || offer.imagePack.length > 1)) return 0;
+    const products = offer.imagePack.length > 1
+      ? offer.imagePack.map((ref) => ({ name: '', ref }))
+      : (await api.splitVariants(brandId, offer.imageUrl!)).products;
+    if (products.length < 2) return products.length;
+    const children = products.map((product, index) => ({
+      ...offer,
+      id: `${offer.id}~v${index + 1}`,
+      name: product.name || `${offer.name} ${index + 1}`,
+      imageUrl: product.ref,
+      imagePack: [],
+      members: [],
+    }));
+    gesture = null;
+    mutate((doc) => ({
+      ...doc,
+      offers: [
+        ...doc.offers
+          .filter((entry) => !entry.id.startsWith(`${offerId}~v`))
+          .map((entry) => (entry.id === offerId
+            ? { ...entry, imagePack: children.map((child) => child.imageUrl!), members: children.map((child) => child.id) }
+            : entry)),
+        ...children,
+      ],
+    }));
+    return children.length;
+  }
+
   async function standUpOn(
     pages: CatalogPage[],
     onlyOfferId?: string,
@@ -2776,7 +3333,7 @@ export const useStudio = create<StudioState>((set, get) => {
     if (tasks.length === 0) {
       set({
         standingUp: [],
-        error: notes.length > 0 ? notes.join(' · ') : 'der er ingen sammensatte fliser på siden',
+        error: notes.length > 0 ? notes.join(' · ') : 'ingen af sidens fliser viser flere varer at stille op',
       });
       return;
     }
@@ -2846,7 +3403,7 @@ export const useStudio = create<StudioState>((set, get) => {
            */
           const tile = window.document
             .querySelector(`[data-offer-id="${CSS.escape(task.offerId)}"]`);
-          const box = tile?.querySelector('.tile__media')?.getBoundingClientRect();
+          const box = tile?.querySelector('.tile__media, .dtile__pack')?.getBoundingClientRect();
           const aspects = await Promise.all(
             ready.files.map((copy) => cutoutAspect(copy.url)),
           );
@@ -3081,6 +3638,74 @@ export const useStudio = create<StudioState>((set, get) => {
    * prints the new number. A product pulled from the feed IS a stop —
    * printing it is advertising something the shop will not have.
    */
+  /**
+   * The products the chain says must be in the avis and no page shows.
+   * Here and not in `readFindings`: the product may only be in the
+   * week's feed, not yet in the avis at all.
+   */
+  /**
+   * Products dealt in under one of the page's own texts, taken back off.
+   *
+   * Measured once the pages are drawn — a text's height is only known
+   * then — and run after anything that fills cells in bulk: a section,
+   * several, a new week. What came off goes back to the reserve and is
+   * said, so nobody wonders where it went. One undo step of its own.
+   */
+  function clearUnderText(pageIds: string[] | null): void {
+    window.setTimeout(() => {
+      const document = get().document;
+      if (!document) return;
+      const wanted = new Set(pageIds ?? document.pages.map((page) => page.id));
+      const covered = new Map<string, Set<string>>();
+      for (const element of window.document.querySelectorAll<HTMLElement>('.page[data-page-id]')) {
+        const pageId = element.dataset['pageId']!;
+        if (!wanted.has(pageId)) continue;
+        for (const { offerId } of coveredByText(element)) {
+          if (!covered.has(pageId)) covered.set(pageId, new Set());
+          covered.get(pageId)!.add(offerId);
+        }
+      }
+      const count = [...covered.values()].reduce((n, ids) => n + ids.size, 0);
+      if (count === 0) return;
+      const names = [...covered.values()].flatMap((ids) => [...ids])
+        .map((id) => document.offers.find((offer) => offer.id === id)?.name.split(/[,(]/)[0]!.trim() ?? id);
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        pages: doc.pages.map((page) => (covered.has(page.id)
+          ? { ...page, placements: page.placements.filter((placement) => !covered.get(page.id)!.has(placement.offerId)) }
+          : page)),
+      }));
+      set({
+        note: `${[get().note, `${names.length === 1 ? 'Én vare' : `${names.length} varer`} lagt tilbage i reserven — en tekst på siden dækkede pladsen: ${names.join(', ')}`].filter(Boolean).join(' · ')}`,
+      });
+      get().refreshFindings();
+    }, 400);
+  }
+
+  function mustFindings(): Finding[] {
+    const { document, feedOffers } = get();
+    const must = document?.mustInclude ?? [];
+    if (!document || must.length === 0) return [];
+    const byId = new Map([...feedOffers, ...document.offers].map((offer) => [offer.id, offer]));
+    const shown = new Set<string>();
+    for (const placement of document.pages.flatMap((page) => page.placements)) {
+      shown.add(placement.offerId);
+      for (const member of byId.get(placement.offerId)?.members ?? []) shown.add(member);
+    }
+    return must
+      .filter((id) => !shown.has(id) && byId.has(id))
+      .map((id) => ({
+        id: `skalmed:${id}`,
+        kind: 'skalmed' as const,
+        said: `${byId.get(id)!.name} skal med, men er ikke på en side`,
+        pageId: null,
+        pageNumber: null,
+        offerId: id,
+        weight: 'stop' as const,
+      }));
+  }
+
   function changeFindings(): Finding[] {
     const { feedChanges, document } = get();
     if (!feedChanges || !document) return [];
@@ -3167,6 +3792,16 @@ export const useStudio = create<StudioState>((set, get) => {
     addPagesOpen: false,
     trayFilter: null,
     savedAt: null,
+    goodsShow: null,
+    themes: [],
+    themesOpen: false,
+    saveState: 'saved',
+    // Kept across reloads, so the avis parked in this browser is checked against what the server had.
+    serverStamps: rememberedStamps(),
+    historyOpen: false,
+    variantId: null,
+    variantBase: null,
+    variantNotes: [],
     uploads: [],
     drawer: 'varer',
     panel: null,
@@ -3201,6 +3836,10 @@ export const useStudio = create<StudioState>((set, get) => {
     feedReading: null,
     sections: [],
     sectionsOpen: false,
+    rulesOpen: false,
+    rulesSaving: 'saved',
+    designsOpen: false,
+    designsSaving: 'saved',
     sectionsAt: 0,
     feedArrival: null,
     feedChanges: null,
@@ -3327,10 +3966,17 @@ export const useStudio = create<StudioState>((set, get) => {
           .filter((placement) => Object.keys(placement.overrides.pack ?? {}).length === 0)
           .map((placement) => placement.offerId),
       );
+      const byId = new Map((document?.offers ?? []).map((offer) => [offer.id, offer]));
+      const crowding = new Map((document?.pages ?? [])
+        .flatMap((page) => page.placements)
+        .filter((placement) => !placement.overrides.crowdOk)
+        .map((placement) => byId.get(placement.offerId))
+        .filter((offer): offer is Offer => Boolean(offer))
+        .map((offer) => [offer.id, { products: Math.max(offer.imagePack.length, offer.members.length, 1), name: offer.name }] as const));
       const measured = document
-        ? measureFindings(window.document, document.pages.map((page) => page.id), untouched)
+        ? measureFindings(window.document, document.pages.map((page) => page.id), untouched, crowding)
         : [];
-      set({ findings: [...read, ...measured, ...changeFindings()].sort(bySeverity) });
+      set({ findings: [...read, ...measured, ...changeFindings(), ...mustFindings()].sort(bySeverity) });
     },
 
     /**
@@ -3395,6 +4041,8 @@ export const useStudio = create<StudioState>((set, get) => {
       // Products with no cell are dealt from the library, so open it:
       // the line names the problem and this is the tool for it.
       if (!finding.pageId && finding.kind === 'plads') set({ libraryOpen: true });
+      // A product that must be in the avis: Varer, showing just those, is where it gets a page.
+      if (finding.kind === 'skalmed') set({ view: 'varer', openPageId: null, goodsShow: 'skalmed-mangler', findingsOpen: false });
     },
 
     async start() {
@@ -3487,7 +4135,10 @@ export const useStudio = create<StudioState>((set, get) => {
         void get().refreshCatalogues();
         void get().refreshUploads();
         void get().refreshSections();
+        void api.fetchThemes(brandId).then((themes) => { if (get().brandId === brandId) set({ themes }); }).catch(() => undefined);
         const parked = parkedWork(brandId);
+        // Read before the restore below: putting the parked avis on screen marks it as changed.
+        const parkedWasSaved = workWasSaved(brandId);
         set({
           brandId,
           brand: profile.brand,
@@ -3537,6 +4188,15 @@ export const useStudio = create<StudioState>((set, get) => {
           // Back where you were, without saying so: the pages on screen say it.
           busy: null,
         });
+        /*
+         * Parked but already saved: the server's copy is the same work or
+         * newer — a colleague may have saved since. Open that, rather than
+         * treating an old copy in this browser as unsaved changes.
+         */
+        if (parked && get().document?.id === parked.document.id && parkedWasSaved) {
+          clean = { document: get().document, base: null };
+          void get().openCatalogue(parked.document.id);
+        }
         // The shipped sample fills the library too, quietly: it is what
         // the editor opens with, not something somebody just did.
         if (text && sample?.path) {
@@ -3684,16 +4344,89 @@ export const useStudio = create<StudioState>((set, get) => {
     },
 
     async save() {
-      const { brandId, document } = get();
-      if (!brandId || !document) return;
-      set({ busy: 'Gemmer…', error: null });
+      // ⌘S and the button: a named point in the history, saved now.
+      window.clearTimeout(autosaveTimer);
+      if (await get().persist('manuel')) set({ note: 'Gemt' });
+      await get().refreshCatalogues();
+    },
+
+    async persist(label, force = false) {
+      const { brandId } = get();
+      const document = get().storedDocument();
+      if (!brandId || !document) return false;
+      // One save at a time: a second waits for the first, then saves what is on screen then.
+      while (saving) await saving;
+      const snapshot = { document: get().document, base: get().variantBase };
+      const stored = get().storedDocument() ?? document;
+      set({ saveState: 'saving' });
+      let done: () => void = () => {};
+      saving = new Promise<void>((resolve) => { done = resolve; });
       try {
-        await api.saveCatalogue(brandId, document, 'manuel');
-        set({ busy: null, note: 'Gemt', savedAt: new Date().toISOString() });
-        await get().refreshCatalogues();
+        const expected = force ? undefined : get().serverStamps[stored.id];
+        const { updatedAt } = await api.saveCatalogue(brandId, stored, label, expected);
+        clean = snapshot;
+        const moved = get().document !== snapshot.document || get().variantBase !== snapshot.base;
+        rememberStamp(stored.id, updatedAt);
+        set({
+          serverStamps: { ...get().serverStamps, [stored.id]: updatedAt },
+          savedAt: updatedAt,
+          saveState: moved ? 'dirty' : 'saved',
+          ...(get().variantBase ? { variantBase: get().variantBase } : {}),
+        });
+        if (moved) scheduleAutosave();
+        else markWork(brandId, true);
+        return true;
+      } catch (error) {
+        if (error instanceof api.SaveConflict) {
+          set({ saveState: 'conflict' });
+          return false;
+        }
+        // Offline or the server restarting: said quietly, and tried again.
+        set({ saveState: 'failed' });
+        scheduleAutosave(15000);
+        return false;
+      } finally {
+        saving = null;
+        done();
+      }
+    },
+
+    setHistoryOpen: (historyOpen) => set({ historyOpen }),
+
+    async restoreVersion(version) {
+      const { brandId } = get();
+      get().openVariant(null);
+      const current = get().document;
+      if (!brandId || !current) return;
+      set({ busy: 'Henter den tidligere udgave…', error: null });
+      try {
+        const earlier = await api.fetchVersion(brandId, current.id, version);
+        gesture = null;
+        mutate(() => ({ ...earlier, updatedAt: current.updatedAt }));
+        set({ busy: null, historyOpen: false });
+        window.clearTimeout(autosaveTimer);
+        await get().persist(`gendannet fra ${version}`);
+        set({ note: `Udgave ${version} er tilbage — ⌘Z fortryder` });
+        get().refreshFindings();
       } catch (error) {
         set({ busy: null, error: message(error) });
       }
+    },
+
+    async resolveConflict(keep) {
+      const { brandId } = get();
+      const current = get().storedDocument();
+      if (!brandId || !current) return;
+      if (keep === 'mine') {
+        if (await get().persist('manuel', true)) set({ note: 'Din udgave er gemt — kollegaens ligger i historikken' });
+        return;
+      }
+      get().openVariant(null);
+      const mine = get().document;
+      await get().openCatalogue(current.id);
+      // Yours one undo step back — ⌘Z brings it back if theirs was the wrong choice.
+      if (mine && get().document?.id === mine.id) set({ past: [mine] });
+      set({ note: 'Kollegaens udgave er åbnet — ⌘Z henter din tilbage' });
     },
 
     async refreshCatalogues() {
@@ -3720,8 +4453,13 @@ export const useStudio = create<StudioState>((set, get) => {
         // Prices an older publication import filed under the name — see
         // `healLabelPrices`. Healed on open, saved with the next save.
         const { document, healed } = healLabelPrices(stored);
+        clean = { document, base: null };
+        markWork(brandId, true);
         set({
           document,
+          serverStamps: rememberStamp(stored.id, stored.updatedAt),
+          savedAt: stored.updatedAt,
+          saveState: 'saved',
           /*
            * Opening week 38's avis moves the studio to week 38.
            *
@@ -3763,22 +4501,32 @@ export const useStudio = create<StudioState>((set, get) => {
      * and only visible once someone compared the PDF to the screen.
      */
     async downloadPdf(forPrint = false) {
-      const { brandId, document } = get();
+      const { brandId, variantId } = get();
+      const document = get().storedDocument();
       if (!brandId || !document) return;
       set({ busy: forPrint ? 'Printer tryk-PDF med beskæring…' : 'Printer PDF…', error: null });
       try {
-        await api.saveCatalogue(brandId, document, forPrint ? 'til tryk' : 'før print');
-        const blob = await api.fetchCataloguePdf(brandId, document.id, forPrint);
+        window.clearTimeout(autosaveTimer);
+        if (!await get().persist(forPrint ? 'til tryk' : 'før print')) {
+          set({
+            busy: null,
+            error: get().saveState === 'conflict'
+              ? 'Avisen er gemt af en anden imens — vælg hvilken udgave der gælder, før du printer.'
+              : 'Avisen kunne ikke gemmes, så PDF\'en ville vise den gamle udgave. Prøv igen om lidt.',
+          });
+          return;
+        }
+        // The open edition prints as that store's; the server works it out from the base just saved.
+        const blob = await api.fetchCataloguePdf(brandId, document.id, forPrint, variantId);
         const url = URL.createObjectURL(blob);
         const link = window.document.createElement('a');
         link.href = url;
-        link.download = `${document.id}${forPrint ? '-tryk' : ''}.pdf`;
+        link.download = `${document.id}${variantId ? `-${variantId}` : ''}${forPrint ? '-tryk' : ''}.pdf`;
         link.click();
         URL.revokeObjectURL(url);
         set({
           busy: null,
           note: forPrint ? 'Tryk-PDF hentet · 3 mm beskæring og skæremærker' : 'PDF hentet',
-          savedAt: new Date().toISOString(),
         });
       } catch (error) {
         set({ busy: null, error: message(error) });
@@ -3787,6 +4535,33 @@ export const useStudio = create<StudioState>((set, get) => {
 
 
     setReproduceOpen: (open) => set({ reproduceOpen: open, error: null }),
+
+    setRulesOpen: (open) => set({ rulesOpen: open, ...(open ? { designsOpen: false } : {}) }),
+    setDesignsOpen: (open) => set({ designsOpen: open, ...(open ? { rulesOpen: false } : {}) }),
+
+    setOfferDesigns(designs, tag) {
+      const { brand, brandId } = get();
+      if (!brand || !brandId) return;
+      set({ brand: { ...brand, offerDesigns: designs, designTag: tag }, designsSaving: 'saving' });
+      window.clearTimeout(designsTimer);
+      designsTimer = window.setTimeout(() => {
+        api.saveOfferDesigns(brandId, designs, tag)
+          .then(() => { if (get().brandId === brandId) set({ designsSaving: 'saved' }); })
+          .catch(() => { if (get().brandId === brandId) set({ designsSaving: 'failed' }); });
+      }, 600);
+    },
+
+    setOfferRules(rules) {
+      const { brand, brandId } = get();
+      if (!brand || !brandId) return;
+      set({ brand: { ...brand, offerRules: rules }, rulesSaving: 'saving' });
+      window.clearTimeout(rulesTimer);
+      rulesTimer = window.setTimeout(() => {
+        api.saveOfferRules(brandId, rules)
+          .then(() => { if (get().brandId === brandId) set({ rulesSaving: 'saved' }); })
+          .catch(() => { if (get().brandId === brandId) set({ rulesSaving: 'failed' }); });
+      }, 600);
+    },
 
     /*
      * The files, read once and kept as base64.
@@ -4149,8 +4924,9 @@ export const useStudio = create<StudioState>((set, get) => {
     async drawBackdrops(pageIds) {
       const { brandId, document, decorStyle } = get();
       if (!brandId || !document) return;
+      // The published pages' packshots, measured by the product and not its box.
+      await Promise.all(pageIds.map(loadPagePictures));
 
-      const empty: number[] = [];
       const tasks = pageIds.map((pageId) => {
         const page = document.pages.find((entry) => entry.id === pageId);
         if (!page || page.kind === 'image') return null;
@@ -4159,18 +4935,11 @@ export const useStudio = create<StudioState>((set, get) => {
         const offers = page.placements
           .map((placement) => document.offers.find((entry) => entry.id === placement.offerId))
           .filter((offer): offer is Offer => Boolean(offer));
-        if (!measure.spots || measure.spots.length === 0) {
-          empty.push(document.pages.indexOf(page) + 1);
-          return null;
-        }
-        return { page, measure, offers };
+        // The place is chosen here, and there always is one — see `motifTarget`.
+        return { page, measure, offers, target: motifTarget(measure) };
       }).filter((task): task is NonNullable<typeof task> => Boolean(task));
       if (tasks.length === 0) {
-        set({
-          error: empty.length > 0
-            ? `Side ${empty.join(', ')} har ingen fri plads at tegne i — gør en flise mindre eller fjern en vare`
-            : 'fandt ingen sider at tegne til — åbn siden først',
-        });
+        set({ error: 'fandt ingen sider at tegne til — åbn siden først' });
         return;
       }
 
@@ -4182,8 +4951,19 @@ export const useStudio = create<StudioState>((set, get) => {
         // What the page is about: its heading, else its leading offer.
         const about = task.page.title.trim() || task.offers[0]?.name || 'tilbud';
         try {
+          /*
+           * One motif, drawn in exactly the shape of its place. The model
+           * draws at the nearest shape it offers; that picture is fitted
+           * into the place, and the cut-out lands where it sat in the
+           * picture — there is nothing about the page to get wrong.
+           */
+          const t = task.target;
+          const ratio = task.measure.ratio;
+          const aspect = nearestAspect(((t.x1 - t.x0) * ratio) * 10, (t.y1 - t.y0) * 10);
+          const [aw, ah] = aspect.split(':').map(Number) as [number, number];
           const reply = await api.drawBackdrop(brandId, {
             ...task.measure,
+            aspect,
             offer: about,
             /*
              * The page's lead product only. Every name on the page made
@@ -4192,34 +4972,27 @@ export const useStudio = create<StudioState>((set, get) => {
              */
             products: task.offers[0] ? [task.offers[0].name] : [],
             ...(decorStyle.trim() ? { style: decorStyle.trim() } : {}),
+            isolated: true,
           });
           const stamp = Date.now().toString(36);
-          const under = reply.motifs.length;
-          const result = {
-            pageId: task.page.id,
-            /*
-             * Each motif exactly where the model put it — except one
-             * that landed under a product anyway, which nobody would see.
-             */
-            decorations: reply.motifs
-              .filter((motif) => {
-                const m = motif.spot;
-                const area = Math.max(1e-6, (m.x1 - m.x0) * (m.y1 - m.y0));
-                const hidden = task.measure.productBoxes.reduce((sum, r) => sum
-                  + Math.max(0, Math.min(m.x1, r.x1) - Math.max(m.x0, r.x0))
-                  * Math.max(0, Math.min(m.y1, r.y1) - Math.max(m.y0, r.y0)), 0);
-                return hidden / area < 0.5;
-              })
-              .map((motif, index) => motifDecoration(
-                motif, task.measure.ratio, `motif-${stamp}-${index}`, `${MOTIF_SUBJECT} ${about}`, 0,
-              )),
-          };
-          // Said, not reported as done: nothing landed where it can be seen.
-          if (result.decorations.length === 0) {
-            failures.push(`Side ${number}: ${under > 0 ? 'motivet landede under varerne' : 'intet motiv'} — prøv igen`);
+          const tw = t.x1 - t.x0; const th = t.y1 - t.y0;
+          // Width over height on the page, in the page's own percent units.
+          const drawn = aw / ah / ratio;
+          const fw = Math.min(tw, th * drawn);
+          const fh = fw / drawn;
+          const frame = { x0: t.x0 + (tw - fw) / 2, y0: t.y0 + (th - fh) / 2, w: fw, h: fh };
+          const decorations = reply.motifs.slice(0, 1).map((motif, index) => motifDecoration({
+            ...motif,
+            spot: {
+              x0: frame.x0 + (motif.spot.x0 / 100) * frame.w, x1: frame.x0 + (motif.spot.x1 / 100) * frame.w,
+              y0: frame.y0 + (motif.spot.y0 / 100) * frame.h, y1: frame.y0 + (motif.spot.y1 / 100) * frame.h,
+            },
+          }, ratio, `motif-${stamp}-${index}`, `${MOTIF_SUBJECT} ${about}`, 0));
+          if (decorations.length === 0) {
+            failures.push(`Side ${number}: billedet havde intet motiv — prøv igen`);
             return null;
           }
-          return result;
+          return { pageId: task.page.id, decorations };
         } catch (error) {
           failures.push(`Side ${number}: ${message(error)}`);
           return null;
@@ -4420,6 +5193,105 @@ export const useStudio = create<StudioState>((set, get) => {
           }
           : t)),
       }));
+    },
+
+    fillPage(pageId, mode) {
+      const { document, brand } = get();
+      const page = document?.pages.find((entry) => entry.id === pageId);
+      if (!document || !brand || !page) return;
+      const template = document.templates.find((t) => t.id === page.templateId) ?? resolveTemplate(brand, page.templateId);
+      const drawn = readPageBoxes(pageId);
+      if (!template || !drawn) {
+        set({ error: 'Siden kan ikke måles — åbn den og prøv igen.' });
+        return;
+      }
+      const boxes = drawn.cells.filter((cell) => template.slots.some((slot) => slot.id === cell.slotId));
+      const room = measureRoom(boxes.map((cell) => cell.box), drawn.obstacles);
+      if (!room || room.free < 0.04) {
+        set({ note: 'Der er ingen tom plads på siden at fylde ud.' });
+        return;
+      }
+
+      /*
+       * More rows only as far as the reserve reaches: a row the reserve
+       * cannot fill is a row of empty cells, and then the tiles grow instead.
+       */
+      const onPage = page.placements.map((placement) => document.offers.find((offer) => offer.id === placement.offerId))
+        .filter((offer): offer is Offer => Boolean(offer));
+      const department = pageDepartment(onPage);
+      const { reserve, fromFeed } = reserveFor(document, department ? [department] : []);
+      const rows = mode === 'more' ? Math.min(room.rows, Math.floor(reserve.length / Math.max(1, room.perRow))) : 0;
+      if (mode === 'more' && rows === 0) {
+        set({
+          error: room.rows === 0
+            ? 'Der er ikke plads til en hel række mere — gør fliserne større i stedet.'
+            : 'Reserven har ikke varer nok med billede til en række mere — gør fliserne større i stedet.',
+        });
+        return;
+      }
+      const plan = rows > 0
+        ? addRows(boxes.map((cell) => cell.box), room.to, rows)
+        : { cells: stretch(boxes.map((cell) => cell.box), room.to), added: [] as Box[] };
+      const rects = new Map(boxes.map((cell, index) => [cell.slotId, plan.cells[index]!]));
+
+      const used = new Set(template.slots.map((slot) => slot.id));
+      const names = [...'abcdefghijklmnopqrstuvwxyz', ...[...'abcdefghijklmnopqrstuvwxyz'].map((c) => `x${c}`)]
+        .filter((candidate) => !used.has(candidate));
+      const width = template.areas[0]!.split(' ').length;
+      const added = plan.added.map((box, index) => ({ id: names[index]!, rect: box, offer: reserve[index]! }))
+        .filter((entry) => entry.id);
+      const own = document.templates.some((t) => t.id === template.id);
+      const id = own ? template.id : `own/${pageId}`;
+      const next: PageTemplate = {
+        ...template,
+        id,
+        name: own ? template.name : `Side ${document.pages.indexOf(page) + 1} — egen opsætning`,
+        areas: [...template.areas, ...added.map((entry) => new Array(width).fill(entry.id).join(' '))],
+        slots: [
+          ...template.slots.map((slot) => (rects.has(slot.id) ? { ...slot, rect: rects.get(slot.id)! } : slot)),
+          ...added.map((entry) => ({ id: entry.id, role: 'standard' as const, bleed: 1, rect: entry.rect })),
+        ],
+      };
+      const known = new Set(document.offers.map((offer) => offer.id));
+      const incoming = added.map((entry) => entry.offer).filter((offer) => !known.has(offer.id) && fromFeed.includes(offer));
+
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        offers: [...doc.offers, ...incoming],
+        templates: [...doc.templates.filter((t) => t.id !== id), next],
+        pages: doc.pages.map((entry) => (entry.id === pageId
+          ? {
+            ...entry,
+            templateId: id,
+            placements: [
+              // The tiles keep their arrangement as their cells grow — see `setCellRect`.
+              ...entry.placements.map((placement) => {
+                const was = boxes.find((cell) => cell.slotId === placement.slotId)?.box;
+                const now = rects.get(placement.slotId);
+                const role = template.slots.find((slot) => slot.id === placement.slotId)?.role ?? 'standard';
+                return was && now
+                  ? {
+                    ...placement,
+                    overrides: carryOverrides(
+                      placement.overrides,
+                      doc.offers.find((offer) => offer.id === placement.offerId),
+                      { w: was.w, h: was.h, role },
+                      { w: now.w, h: now.h, role },
+                    ),
+                  }
+                  : placement;
+              }),
+              ...added.map((entry) => ({ offerId: entry.offer.id, slotId: entry.id, overrides: FRESH })),
+            ],
+          }
+          : entry)),
+      }));
+      set({
+        note: added.length > 0
+          ? `${count(added.length, 'vare', 'varer')} lagt ind fra reserven: ${added.map((entry) => entry.offer.name.split(/[,(]/)[0]!.trim()).join(', ')}`
+          : `Fliserne fylder nu siden ud — ${Math.round(room.free * 100)} % af siden var tom`,
+      });
     },
 
     removeCell(pageId, slotId) {
@@ -4701,60 +5573,51 @@ export const useStudio = create<StudioState>((set, get) => {
       }
     },
 
-    standUpClusters: (pageId: string) => standUpOn(
-      (get().document?.pages ?? []).filter((page) => page.id === pageId),
-    ),
+    /*
+     * The whole page in one press — every tile, not only the ones put
+     * together by hand. A tile of one product first has its picture
+     * taken apart into the products it shows (a few at a time, as the
+     * single tile's own button does it); then every tile of two or more
+     * is stood up in one run. A picture of one product stays as it is.
+     */
+    async standUpClusters(pageId: string) {
+      const { document } = get();
+      const page = document?.pages.find((entry) => entry.id === pageId);
+      if (!document || !page) return;
+      const singles = page.placements
+        .map((placement) => document.offers.find((offer) => offer.id === placement.offerId))
+        .filter((offer): offer is Offer => offer !== undefined)
+        .filter((offer) => offer.members.length <= 1 && Boolean(offer.imageUrl || offer.imagePack.length > 1));
+      if (singles.length > 0) {
+        let done = 0;
+        set({ busy: `Finder varerne i billederne… 0/${singles.length}`, error: null, note: null });
+        await pool(singles, 3, async (offer) => {
+          try { await splitOffer(offer.id); } catch { /* one tile's picture failing is not the page's */ }
+          done += 1;
+          set({ busy: `Finder varerne i billederne… ${done}/${singles.length}` });
+        });
+        set({ busy: null });
+      }
+      await standUpOn((get().document?.pages ?? []).filter((entry) => entry.id === pageId));
+    },
 
     standUpAllClusters: () => standUpOn(get().document?.pages ?? []),
 
     standUpOneCluster: (offerId: string) => standUpOn(get().document?.pages ?? [], offerId),
 
     async splitAndStandUp(offerId) {
-      const { brandId, document } = get();
-      const offer = document?.offers.find((entry) => entry.id === offerId);
-      if (!brandId || !document || !offer || !(offer.imageUrl || offer.imagePack.length > 1)) return;
-
-      /*
-       * A product the feed already photographs one variant at a time —
-       * several pictures, no members — needs nothing cut: each picture
-       * is a variant. Only a single picture of several packages goes to
-       * the server to be taken apart.
-       */
-      let products: { name: string; ref: string }[];
-      if (offer.imagePack.length > 1) {
-        products = offer.imagePack.map((ref) => ({ name: '', ref }));
-      } else {
-        set({ busy: 'Finder varerne i billedet…', error: null, note: null });
-        try {
-          ({ products } = await api.splitVariants(brandId, offer.imageUrl!));
-        } catch (error) {
-          set({ busy: null, error: message(error) });
+      set({ busy: 'Finder varerne i billedet…', error: null, note: null });
+      try {
+        const found = await splitOffer(offerId);
+        if (found < 2) {
+          set({ busy: null, note: 'billedet viser kun én vare — der er intet at stille op' });
           return;
         }
+        set({ busy: null, note: `${count(found, 'vare', 'varer')} fundet i billedet — stiller dem op` });
+        await get().standUpOneCluster(offerId);
+      } catch (error) {
+        set({ busy: null, error: message(error) });
       }
-
-      const children = products.map((product, index) => ({
-        ...offer,
-        id: `${offer.id}~v${index + 1}`,
-        name: product.name || `${offer.name} ${index + 1}`,
-        imageUrl: product.ref,
-        imagePack: [],
-        members: [],
-      }));
-      gesture = null;
-      mutate((doc) => ({
-        ...doc,
-        offers: [
-          ...doc.offers
-            .filter((entry) => !entry.id.startsWith(`${offerId}~v`))
-            .map((entry) => (entry.id === offerId
-              ? { ...entry, imagePack: children.map((child) => child.imageUrl!), members: children.map((child) => child.id) }
-              : entry)),
-          ...children,
-        ],
-      }));
-      set({ busy: null, note: `${count(children.length, 'vare', 'varer')} fundet i billedet — stiller dem op` });
-      await get().standUpOneCluster(offerId);
     },
 
     toggleGhost: (offerId) => set((state) => ({
@@ -5064,6 +5927,30 @@ export const useStudio = create<StudioState>((set, get) => {
 
     setSectionsAt: (sectionsAt) => set({ sectionsAt }),
 
+    setThemesOpen: (themesOpen) => set({ themesOpen }),
+
+    async saveThemes(themes) {
+      const { brandId } = get();
+      if (!brandId) return;
+      const before = get().themes;
+      set({ themes });
+      try {
+        set({ themes: await api.saveThemes(brandId, themes) });
+      } catch (error) {
+        set({ themes: before, error: `Temaerne kunne ikke gemmes: ${message(error)}` });
+      }
+    },
+
+    applyTheme(themeId) {
+      const theme = themeId ? get().themes.find((entry) => entry.id === themeId) ?? null : null;
+      if (themeId && !theme) return;
+      get().openVariant(null);
+      if (!get().document) return;
+      gesture = null;
+      mutate((doc) => withTheme(doc, theme));
+      set({ note: theme ? `Temaet «${theme.name}» er lagt på avisen — ⌘Z fortryder` : 'Temaet er taget af avisen' });
+    },
+
     async refreshSections() {
       const { brandId } = get();
       if (!brandId) return;
@@ -5080,7 +5967,12 @@ export const useStudio = create<StudioState>((set, get) => {
       const section = sectionOf(document, pageId, name, tags);
       if (!section) return;
       try {
-        await api.saveSection(brandId, section);
+        const saved = await api.saveSection(brandId, section);
+        // The page now follows the design it was saved as.
+        mutate((doc) => ({
+          ...doc,
+          pages: doc.pages.map((p) => (p.id === pageId ? { ...p, section: { id: saved.id, version: saved.version ?? 1 } } : p)),
+        }));
         set({ note: `Gemt som sektion: ${name}` });
         await get().refreshSections();
       } catch (error) {
@@ -5108,6 +6000,48 @@ export const useStudio = create<StudioState>((set, get) => {
       }
     },
 
+    async updateSectionFromPage(pageId) {
+      const { brandId, document, sections } = get();
+      const link = document?.pages.find((p) => p.id === pageId)?.section;
+      const existing = link ? sections.find((s) => s.id === link.id) : undefined;
+      if (!brandId || !document || !link || !existing) return;
+      const packaged = sectionOf(document, pageId, existing.name, existing.tags);
+      if (!packaged) return;
+      try {
+        const saved = await api.saveSection(brandId, { ...packaged, id: existing.id, createdAt: existing.createdAt });
+        mutate((doc) => ({
+          ...doc,
+          pages: doc.pages.map((p) => (p.id === pageId ? { ...p, section: { id: saved.id, version: saved.version ?? 1 } } : p)),
+        }));
+        await get().refreshSections();
+        const behind = sectionsBehind(get().document!, get().sections).filter((b) => b.section.id === existing.id).length;
+        set({
+          note: `«${existing.name}» er opdateret til version ${saved.version ?? 1}`
+            + (behind ? ` · ${count(behind, 'anden side', 'andre sider')} i denne avis kan hente den` : ''),
+        });
+      } catch (error) {
+        set({ error: message(error) });
+      }
+    },
+
+    pullSections(pageIds) {
+      const { brand, document, sections } = get();
+      if (!brand || !document) return;
+      const behind = sectionsBehind(document, sections).filter((b) => !pageIds || pageIds.includes(b.pageId));
+      if (behind.length === 0) return;
+      let dropped = 0;
+      gesture = null;
+      mutate((doc) => behind.reduce((current, item) => {
+        const result = applySection(current, brand, item.pageId, item.section);
+        dropped += result.dropped;
+        return result.document;
+      }, doc));
+      set({
+        note: `${count(behind.length, 'side', 'sider')} har fået det nye design`
+          + (dropped ? ` · ${count(dropped, 'vare', 'varer')} gik i reserve, fordi designet har færre pladser` : ''),
+      });
+    },
+
     async removeSection(id) {
       const { brandId } = get();
       if (!brandId) return;
@@ -5119,7 +6053,29 @@ export const useStudio = create<StudioState>((set, get) => {
       }
     },
 
-    insertSection(id, at) {
+    insertSections(ids, at) {
+      const start = at ?? get().document?.pages.length ?? 0;
+      const names: string[] = [];
+      gesture = null;
+      ids.forEach((id, n) => {
+        const before = get().document?.pages.length ?? 0;
+        get().insertSection(id, start + names.length, 'sektioner');
+        if ((get().document?.pages.length ?? 0) > before) {
+          names.push(get().sections.find((entry) => entry.id === id)?.name ?? `sektion ${n + 1}`);
+        }
+      });
+      gesture = null;
+      if (names.length === 0) return;
+      set({
+        sectionsOpen: false,
+        note: names.length === 1
+          ? get().note
+          : `${names.length} sektioner lagt ind som side ${start + 1}–${start + names.length}: ${names.join(', ')}`,
+      });
+      clearUnderText(null);
+    },
+
+    insertSection(id, at, batch) {
       const { brand, sections, brandId } = get();
       const section = sections.find((entry) => entry.id === id);
       if (!brand || !brandId || !section) return;
@@ -5165,31 +6121,31 @@ export const useStudio = create<StudioState>((set, get) => {
        * anything. Cells it cannot fill stay empty and say so.
        */
       const wanted = section.tags.filter((tag): tag is Department => (DEPARTMENTS as readonly string[]).includes(tag));
-      const related = new Set(wanted.flatMap(familyOf));
       /*
        * The reserve is what the shelf shows: the avis's own products and
        * this week's feed. An avis fetched from a link carries only what it
        * printed, and a section dealt from that alone came out empty with
        * the whole feed sitting unplaced beside it.
        */
-      const inAvis = new Set(document.offers.map((offer) => offer.id));
-      const fromFeed = get().feedOffers.filter((offer) => !inAvis.has(offer.id) && offer.members.length === 0);
-      const free = [...unplaced(document), ...fromFeed].filter((offer) => offer.imageUrl).sort(compareByImportance);
-      // Its own departments first, then their neighbours — never the whole shop.
-      const own = free.filter((offer) => wanted.length === 0 || wanted.includes(departmentOf(offer)));
-      const near = wanted.length === 0 ? [] : free.filter((offer) => !own.includes(offer) && related.has(departmentOf(offer)));
-      const reserve = [...own, ...near];
+      const { reserve, fromFeed } = reserveFor(document, wanted);
       const placements = cells.slice(0, reserve.length).map((slotId, n) => ({
         offerId: reserve[n]!.id,
         slotId,
         overrides: {},
       }));
 
-      const pageId = `sec-${Date.now().toString(36)}`;
-      const page = CatalogPage.parse({ ...rememberPrinted(section.page, section.preview ?? []), id: pageId, placements });
+      // Unique within one millisecond too: several sections go in at once.
+      const pageId = `sec-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      const page = CatalogPage.parse({
+        ...rememberPrinted(section.page, section.preview ?? []),
+        id: pageId,
+        placements,
+        // A reference to the design, so a newer version of it can reach this page.
+        section: { id: section.id, version: section.version ?? 1 },
+      });
       const where = Math.max(0, Math.min(at ?? document.pages.length, document.pages.length));
 
-      gesture = null;
+      if (!batch) gesture = null;
       mutate((doc) => {
         const pages = [...doc.pages];
         pages.splice(where, 0, page);
@@ -5203,7 +6159,7 @@ export const useStudio = create<StudioState>((set, get) => {
           .map((placement) => fromFeed.find((offer) => offer.id === placement.offerId))
           .filter((offer): offer is Offer => Boolean(offer) && !known.has(offer!.id));
         return { ...doc, pages, templates, offers: [...doc.offers, ...incoming] };
-      });
+      }, batch);
       set({
         sectionsOpen: false,
         scrollToPageId: pageId,
@@ -5214,6 +6170,7 @@ export const useStudio = create<StudioState>((set, get) => {
             ? ` — reserven har ikke flere ${wanted.map((tag) => DEPARTMENT_NAMES[tag].toLowerCase()).join('/')}-varer`
             : ''),
       });
+      if (!batch) clearUnderText([pageId]);
     },
 
     dismissFeedArrival: () => set({ feedArrival: null }),
@@ -5252,7 +6209,8 @@ export const useStudio = create<StudioState>((set, get) => {
       // it does not say.
       const week = feedWeek(feedOffers) ?? (document.week ? nextWeek(document.week) : get().week);
       let id = week ? weekId(brandId, week) : `${brandId}-${Date.now().toString(36)}`;
-      if (id === document.id) id = `${id}-${Date.now().toString(36)}`;
+      // Never onto an avis that already exists: saving would write the new week over it.
+      if (id === document.id || get().catalogues.some((saved) => saved.id === id)) id = `${id}-${Date.now().toString(36)}`;
 
       const { document: carried, report } = carryForward(document, feedOffers, {
         templateFor: (templateId) => resolveTemplate(brand, templateId)
@@ -5260,9 +6218,11 @@ export const useStudio = create<StudioState>((set, get) => {
         week,
         brandName: brand.name,
         id,
+        rules: brand.offerRules,
       });
       // Published pages keep their cells' layouts for the new products.
-      const next = rememberCells(document, carried);
+      // "Skal med" is the chain's list for ONE week; the new week starts without one.
+      const next = { ...rememberCells(document, carried), mustInclude: [] };
 
       if (week) {
         try {
@@ -5290,6 +6250,7 @@ export const useStudio = create<StudioState>((set, get) => {
         note: `${next.name} startet fra ${document.name}`,
       });
       get().refreshFindings();
+      clearUnderText(null);
     },
 
     dismissCarryReport: () => set({ carryReport: null }),
@@ -6374,12 +7335,304 @@ export const useStudio = create<StudioState>((set, get) => {
       }
     },
 
+    storedDocument() {
+      const { brand, document, variantBase, variantId } = get();
+      if (!document || !variantBase || !variantId || !brand) return document;
+      const variant = (variantBase.variants ?? []).find((v) => v.id === variantId);
+      if (!variant) return variantBase;
+      const { variant: recorded, unrepresented } = recordVariant(variantBase, variant, document, brand);
+      /*
+       * What an edition cannot hold — artwork moved, products shuffled
+       * inside a cluster — is said out loud at the moment it is lost,
+       * never discarded quietly. Deferred: this runs during render too.
+       */
+      const fresh = unrepresented.filter((line) => !get().variantNotes.includes(line));
+      if (fresh.length > 0) {
+        window.setTimeout(() => set({
+          variantNotes: [...get().variantNotes, ...fresh],
+          error: `${variant.name} kan ikke gemme ${count(fresh.length, 'ændring', 'ændringer')}: ${fresh.join('; ')}. `
+            + 'Lav den slags på "Alle butikker".',
+        }), 0);
+      }
+      return {
+        ...variantBase,
+        variants: (variantBase.variants ?? []).map((v) => (v.id === variantId ? recorded : v)),
+      };
+    },
+
+    openVariant(variantId) {
+      const { brand } = get();
+      const base = get().storedDocument();
+      if (!brand || !base || variantId === get().variantId) return;
+      gesture = null;
+      if (!variantId) {
+        set({ document: base, variantBase: null, variantId: null, variantNotes: [], past: [], future: [] });
+        return;
+      }
+      const resolved = resolveVariant(base, variantId, brand);
+      // Recorded before anything is edited, so what could not be said is known now.
+      const unsaid = recordVariant(base, resolved.variant, resolved.document, brand).unrepresented;
+      set({
+        document: resolved.document,
+        variantBase: base,
+        variantId,
+        variantNotes: [...resolved.conflicts, ...unsaid],
+        past: [],
+        future: [],
+      });
+    },
+
+    addVariant(name) {
+      const base = get().storedDocument();
+      if (!base || !name.trim()) return;
+      const variant = newVariant(base, name.trim());
+      const withIt = { ...base, variants: [...(base.variants ?? []), variant] };
+      if (get().variantBase) set({ variantBase: withIt });
+      else set({ document: withIt });
+      get().openVariant(variant.id);
+    },
+
+    openEditions() {
+      // The list is of the base and its editions, so no edition is open behind it.
+      get().openVariant(null);
+      set({ view: 'udgaver', openPageId: null, addPagesOpen: false });
+    },
+
+    openHome() {
+      void get().refreshCatalogues();
+      set({ view: 'hjem', openPageId: null, addPagesOpen: false, historyOpen: false });
+    },
+
+    async setCatalogueMeta(id, patch) {
+      const { brandId } = get();
+      if (!brandId) return;
+      const open = (get().variantBase ?? get().document)?.id === id;
+      if (open) {
+        get().openVariant(null);
+        gesture = null;
+        mutate((doc) => ({ ...doc, ...patch }));
+        window.clearTimeout(autosaveTimer);
+        await get().persist(patch.name ? 'omdøbt' : `status ${patch.status}`);
+      } else {
+        try {
+          const { updatedAt } = await api.patchCatalogue(brandId, id, patch);
+          set({ serverStamps: rememberStamp(id, updatedAt) });
+        } catch (error) {
+          set({ error: message(error) });
+          return;
+        }
+      }
+      await get().refreshCatalogues();
+    },
+
+    async startWeek(fromId, file, week, themeId) {
+      const text = await file.text();
+      if (fromId) {
+        await get().openCatalogue(fromId);
+        if (get().document?.id !== fromId) return;
+        await get().uploadFeed(file.name, text);
+        if (get().feedOffers.length === 0) return;
+        // A file for another week than the one asked for is a wrong file, not a new week.
+        const said = feedWeek(get().feedOffers);
+        if (said && (said.year !== week.year || said.week !== week.week)) {
+          set({
+            feedArrival: null,
+            error: `${file.name} har varer for uge ${said.week}, ikke uge ${week.week}. Vælg uge ${week.week}s fil.`,
+          });
+          return;
+        }
+        set({ week });
+        // The new week, from last week's pages: see `carryWeek` and the report it leaves.
+        get().carryWeek();
+        // Chosen up front: last week's theme comes off, this week's goes on — or none, when asked.
+        if (themeId !== undefined) get().applyTheme(themeId);
+        return;
+      }
+      // From the bottom: the week's products, then straight to the chain's sections to pick pages from.
+      get().startOver();
+      set({ week });
+      await get().uploadFeed(file.name, text);
+      if (get().feedOffers.length === 0) return;
+      set({ view: 'bog', note: null });
+      get().setSectionsOpen(true, 0);
+    },
+
+    setMustInclude(offerIds, on) {
+      get().openVariant(null);
+      gesture = null;
+      mutate((doc) => {
+        const now = new Set(doc.mustInclude ?? []);
+        for (const id of offerIds) { if (on) now.add(id); else now.delete(id); }
+        return { ...doc, mustInclude: [...now] };
+      });
+      get().refreshFindings();
+    },
+
+    openGoods() {
+      set({ view: 'varer', openPageId: null, addPagesOpen: false });
+    },
+
+    async setEditionFeed(variantId, name, text) {
+      const { brandId, brand } = get();
+      get().openVariant(null);
+      if (!brandId || !brand || !get().document?.variants?.some((v) => v.id === variantId)) return;
+      set({ busy: 'Læser udgavens feed…', error: null });
+      try {
+        const reading = await api.readFeed(brandId, text, name);
+        const base = get().document!;
+        const { variant, diff, unrepresented } = feedToEdition(
+          base, variantId, { name, readAt: new Date().toISOString(), offers: reading.offers }, brand,
+        );
+        mutate((document) => ({
+          ...document,
+          variants: (document.variants ?? []).map((v) => (v.id === variantId ? variant : v)),
+        }));
+        set({
+          busy: null,
+          note: [
+            `${variant.name}: ${count(reading.offers.length, 'vare', 'varer')}`,
+            diff.changed.length ? count(diff.changed.length, 'anden pris', 'andre priser') : '',
+            diff.removed.length ? `${diff.removed.length} taget af siderne` : '',
+            diff.added.length ? `${diff.added.length} egne varer` : '',
+          ].filter(Boolean).join(' · '),
+          ...(unrepresented.length
+            ? { error: `${variant.name} kan ikke holde ${count(unrepresented.length, 'ændring', 'ændringer')}: ${unrepresented.slice(0, 6).join('; ')}${unrepresented.length > 6 ? ' …' : ''}` }
+            : {}),
+        });
+      } catch (error) {
+        set({ busy: null, error: `${name} kunne ikke læses: ${message(error)}` });
+      }
+    },
+
+    async loadMergedFeed(name, text) {
+      const { brand } = get();
+      get().openVariant(null);
+      if (!brand || !get().document) return;
+      let feed: OfferFeed;
+      try {
+        feed = OfferFeed.parse(JSON.parse(text));
+      } catch {
+        set({ error: `${name} er ikke et samlet feed (Incitios eget format med udgaver).` });
+        return;
+      }
+      if (!feed.editions?.length) {
+        set({ error: `${name} har ingen udgaver — læg det ind som ugens feed i stedet.` });
+        return;
+      }
+      const lists = splitMergedFeed(feed);
+      let document = get().document!;
+      const made: string[] = [];
+      for (const edition of feed.editions) {
+        if (edition.id === BASE_EDITION) continue;
+        if (!document.variants?.some((v) => v.id === edition.id)) {
+          const fresh = { ...newVariant(document, edition.name, edition.stores), id: edition.id };
+          document = { ...document, variants: [...(document.variants ?? []), fresh] };
+        }
+        document = {
+          ...document,
+          variants: document.variants!.map((v) => (v.id === edition.id
+            ? feedToEdition(document, v.id, { name, readAt: new Date().toISOString(), offers: lists.get(edition.id) ?? [] }, brand).variant
+            : v)),
+        };
+        made.push(edition.name);
+      }
+      mutate(() => document);
+      set({ note: `${name}: ${made.length} udgaver lagt ind — ${made.join(', ')}` });
+    },
+
+    setVariantStores(variantId, stores) {
+      get().openVariant(null);
+      mutate((document) => ({
+        ...document,
+        variants: (document.variants ?? []).map((v) => (v.id === variantId ? { ...v, stores } : v)),
+      }));
+    },
+
+    downloadMergedFeed() {
+      const base = get().storedDocument();
+      const { brandId, feedOffers } = get();
+      if (!base || !brandId) return;
+      const offers = feedOffers.length ? feedOffers : base.offers.filter((offer) => offer.members.length === 0);
+      const merged = mergeEditionFeeds(brandId, offers, (base.variants ?? []).map((v) => ({
+        id: v.id, name: v.name, stores: v.stores, offers: v.feed?.offers ?? null,
+      })));
+      const url = URL.createObjectURL(new Blob([JSON.stringify(merged, null, 2)], { type: 'application/json' }));
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = `${base.id}-samlet-feed.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      set({ note: `Samlet feed: ${count(merged.offers.length, 'række', 'rækker')} til ${count(merged.editions!.length, 'udgave', 'udgaver')}` });
+    },
+
+    removeVariant(variantId) {
+      const base = get().storedDocument();
+      if (!base) return;
+      const without = { ...base, variants: (base.variants ?? []).filter((v) => v.id !== variantId) };
+      if (get().variantId === variantId) {
+        set({ document: without, variantBase: null, variantId: null, variantNotes: [], past: [], future: [] });
+      } else if (get().variantBase) {
+        set({ variantBase: without });
+      } else {
+        set({ document: without });
+      }
+    },
+
+    applyEdits(ops) {
+      const { brand, document } = get();
+      if (!brand || !document) return 'ingen avis åben';
+      let result: ReturnType<typeof applyOps>;
+      try {
+        result = applyOps(document, ops, brand);
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+      gesture = null;
+      mutate(() => result.document);
+      get().refreshFindings();
+      return null;
+    },
+
     setOfferPrice(offerId, price) {
       if (!Number.isFinite(price) || price < 0 || price > 100000) return;
       mutate((doc) => ({
         ...doc,
         offers: doc.offers.map((offer) => (offer.id === offerId ? { ...offer, price } : offer)),
       }), `price-${offerId}`);
+      get().refreshFindings();
+    },
+
+    correctPrice(offerId, patch) {
+      if (patch.price !== undefined && (!Number.isFinite(patch.price) || patch.price < 0 || patch.price > 100000)) return;
+      if (patch.prePrice !== undefined && patch.prePrice !== null && (!Number.isFinite(patch.prePrice) || patch.prePrice < 0)) return;
+      mutate((doc) => ({
+        ...doc,
+        offers: doc.offers.map((offer) => {
+          if (offer.id !== offerId) return offer;
+          const corrected = offer.corrected ?? { price: offer.price, prePrice: offer.prePrice };
+          const next = { ...offer, ...patch };
+          // Typed back to what the feed said: nothing is corrected any more.
+          const same = next.price === corrected.price && next.prePrice === corrected.prePrice;
+          if (same) {
+            const { corrected: _gone, ...rest } = next;
+            return rest;
+          }
+          return { ...next, corrected };
+        }),
+      }), `price-${offerId}`);
+      get().refreshFindings();
+    },
+
+    uncorrectPrice(offerId) {
+      gesture = null;
+      mutate((doc) => ({
+        ...doc,
+        offers: doc.offers.map((offer) => {
+          if (offer.id !== offerId || !offer.corrected) return offer;
+          const { corrected, ...rest } = offer;
+          return { ...rest, price: corrected.price, prePrice: corrected.prePrice };
+        }),
+      }));
       get().refreshFindings();
     },
 
@@ -6463,20 +7716,7 @@ export const useStudio = create<StudioState>((set, get) => {
 
     benched() {
       const { document } = get();
-      if (!document) return [];
-      const placed = new Set(document.pages.flatMap((p) => p.placements).map((p) => p.offerId));
-      /*
-       * A product inside a placed group is ON the page, even though no
-       * placement names it: the tile shows its photograph and the price
-       * covers it. Counting it as bench would tell the editor there are
-       * six spare products waiting when in fact they are printed.
-       */
-      const shown = new Set(document.offers
-        .filter((offer) => placed.has(offer.id))
-        .flatMap((offer) => offer.members));
-      return document.offers.filter(
-        (offer) => !placed.has(offer.id) && !shown.has(offer.id) && !isVariantPiece(offer.id),
-      );
+      return document ? benchOf(document) : [];
     },
 
     setPageTemplate(pageId, templateId) {
@@ -6484,27 +7724,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const next = brand ? resolveTemplate(brand, templateId) : null;
       if (!brand || !next) return;
       gesture = null;
-      mutate((document) => {
-        const page = document.pages.find((entry) => entry.id === pageId);
-        if (!page) return document;
-        const seated = reseat(page, brand, next, document);
-        // A page in its own style keeps it — see `fitLayout`.
-        const fitted = next.id.startsWith('own/') ? null : fitLayout(document, brand, page, next, seated);
-        return {
-          ...document,
-          templates: fitted
-            ? [...document.templates.filter((t) => t.id !== fitted.template.id), fitted.template]
-            : document.templates,
-          pages: document.pages.map((entry) => (entry.id === pageId
-            ? {
-              ...entry,
-              templateId: fitted?.template.id ?? next.id,
-              placements: fitted?.placements ?? seated,
-              ...(fitted ? { notes: fitted.notes, decorations: fitted.decorations } : {}),
-            }
-            : entry)),
-        };
-      });
+      mutate((document) => onTemplate(document, brand, pageId, next));
     },
 
     /*
@@ -6528,92 +7748,22 @@ export const useStudio = create<StudioState>((set, get) => {
 
     setPageCount(pageId, count, templateId) {
       const { brand, document } = get();
-      const page = document?.pages.find((p) => p.id === pageId);
-      if (!brand || !document || !page) return;
+      if (!brand || !document) return;
       // A specific layout, chosen from the gallery, when one was named.
-      const chosen = templateId ? resolveTemplate(brand, templateId) : null;
-
-      /*
-       * A layout at the new count, preferring one whose shape is
-       * closest to the current page's — a six-up that becomes a
-       * three-up should not also swap its hero for a flat row unless
-       * the brand has nothing else.
-       */
-      const options = templatesForCount(brand, count);
-      const here = resolveTemplate(brand, page.templateId);
-      const next = chosen
-        ?? options.find((t) => t.slots[0]?.role === here?.slots[0]?.role) ?? options[0];
-      if (!next) return;
-
-      const bench = get().benched();
-      // Strongest first, so dropping takes from the bottom of the page
-      // and adding fills the weakest slots.
-      const ordered = seatOrder(page, brand);
-      const offers = ordered.slice(0, count).map((p) => p.offerId);
-      for (const offer of bench) {
-        if (offers.length >= count) break;
-        offers.push(offer.id);
-      }
-      if (offers.length === 0) return;
-
+      const chosen = (templateId ? resolveTemplate(brand, templateId) : null) ?? null;
+      const next = atCount(document, brand, pageId, count, chosen);
+      if (next === document) return;
       gesture = null;
-      const kept = new Map(page.placements.map((p) => [p.offerId, p]));
-      const slots = slotAssignmentOrder(next).slice(0, offers.length);
-
-      mutate((doc) => {
-        const seated = slots.map((slot, index) => {
-            const offerId = offers[index]!;
-            const before = kept.get(offerId);
-            // An offer coming off the bench has no corrections yet;
-            // one that was already here keeps the ones it has.
-            return before
-              ? {
-                ...before,
-                slotId: slot.id,
-                overrides: carryOverrides(
-                  before.overrides,
-                  doc.offers.find((entry) => entry.id === offerId),
-                  cellSize(brand, doc.templates, page.templateId, before.slotId),
-                  cellSize(brand, [...doc.templates, next], next.id, slot.id),
-                ),
-              }
-              : { offerId, slotId: slot.id, overrides: FRESH };
-          });
-        // A page in its own style keeps it — see `fitLayout`. The
-        // corrections are already carried; fitting only moves the cells.
-        const fitted = fitLayout(doc, brand, page, next, seated.map((placement) => {
-          const before = kept.get(placement.offerId);
-          return before ? { ...placement, overrides: before.overrides } : placement;
-        }));
-        return {
-          ...doc,
-          templates: fitted
-            ? [...doc.templates.filter((t) => t.id !== fitted.template.id), fitted.template]
-            : doc.templates,
-          pages: doc.pages.map((p) => (p.id === pageId
-            ? {
-              ...p,
-              templateId: fitted?.template.id ?? next.id,
-              placements: fitted?.placements ?? seated,
-              ...(fitted ? { notes: fitted.notes, decorations: fitted.decorations } : {}),
-            }
-            : p)),
-        };
-      });
+      mutate(() => next);
     },
 
     applyLayout(pageId, template) {
       const { document, brand } = get();
-      const page = document?.pages.find((entry) => entry.id === pageId);
-      if (!document || !brand || !page) return;
-      // Known to the document before it is used — outside history: a
-      // layout on the list is not an edit.
-      if (!document.templates.some((t) => t.id === template.id)) {
-        const next = { ...document, templates: [...document.templates, template] };
-        set({ document: next, brand: withTemplates(brand, next.templates) });
-      }
-      if (template.slots.length === page.placements.length) get().setPageTemplate(pageId, template.id);
-      else get().setPageCount(pageId, template.slots.length, template.id);
+      if (!document || !brand) return;
+      const next = pageInLayout(document, brand, pageId, template);
+      if (!next) return;
+      gesture = null;
+      mutate(() => next);
     },
 
     focusOffer(pageId, offerId) {
@@ -6685,6 +7835,74 @@ const SAVE_AFTER_MS = 1500;
 
 let saveTimer: number | undefined;
 
+/*
+ * Saving to the server as the avis is worked on.
+ *
+ * `clean` is the document as last saved or opened — compared by
+ * reference, which is free: every edit makes a new document. Anything
+ * else on screen is unsaved, and a few seconds after the last change it
+ * is saved under "auto". The server folds automatic saves ten minutes
+ * apart into one point of the history, so this can run as often as it
+ * likes.
+ */
+const AUTOSAVE_AFTER_MS = 2500;
+let autosaveTimer: number | undefined;
+let clean: { document: CatalogDocument | null; base: CatalogDocument | null } = { document: null, base: null };
+let saving: Promise<void> | null = null;
+
+// A literal, not a const: this runs while the store is being created, above any const below.
+function rememberedStamps(): Record<string, string> {
+  try {
+    return JSON.parse(window.localStorage.getItem('incitio.serverStamps') ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+function rememberStamp(id: string, updatedAt: string): Record<string, string> {
+  const stamps = { ...useStudio.getState().serverStamps, [id]: updatedAt };
+  try { window.localStorage.setItem('incitio.serverStamps', JSON.stringify(stamps)); } catch { /* private window */ }
+  return stamps;
+}
+
+/** Whether the avis parked in this browser was also on the server — see the restore in `signInAs`. */
+function markWork(brandId: string, saved: boolean): void {
+  try { window.localStorage.setItem(`incitio.workSaved.${brandId}`, saved ? '1' : '0'); } catch { /* private window */ }
+}
+function workWasSaved(brandId: string): boolean {
+  try { return window.localStorage.getItem(`incitio.workSaved.${brandId}`) === '1'; } catch { return false; }
+}
+
+function scheduleAutosave(after = AUTOSAVE_AFTER_MS): void {
+  window.clearTimeout(autosaveTimer);
+  autosaveTimer = window.setTimeout(() => {
+    const state = useStudio.getState();
+    if (state.saveState === 'conflict' || !state.document) return;
+    if (state.document === clean.document && state.variantBase === clean.base) return;
+    void state.persist('auto');
+  }, after);
+}
+
+useStudio.subscribe((state, before) => {
+  if (state.document === before.document && state.variantBase === before.variantBase) return;
+  if (!state.document || (state.document === clean.document && state.variantBase === clean.base)) return;
+  if (state.saveState === 'saved') useStudio.setState({ saveState: 'dirty' });
+  if (state.brandId) markWork(state.brandId, false);
+  if (state.saveState !== 'conflict') scheduleAutosave();
+});
+
+// Closing the tab with work the server does not have yet asks first.
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', (event) => {
+    const { saveState, document } = useStudio.getState();
+    if (!document || saveState === 'saved') return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+}
+/** The rules' own save, a moment after the last change — see `setOfferRules`. */
+let rulesTimer: number | undefined;
+let designsTimer: number | undefined;
+
 /**
  * Keep the open catalogue across a reload.
  *
@@ -6700,12 +7918,25 @@ let saveTimer: number | undefined;
  * state, it never travels, and `Gem` is still the thing that shares
  * it.
  */
+/*
+ * An edition belongs to the catalogue it was opened from. Anything that
+ * puts another catalogue on screen — opening one, a new week, a fresh
+ * draft — leaves the edition, or its base would be saved over the new one.
+ */
+useStudio.subscribe((state) => {
+  if (state.variantBase && (!state.document || state.document.id !== state.variantBase.id)) {
+    useStudio.setState({ variantBase: null, variantId: null, variantNotes: [] });
+  }
+});
+
 useStudio.subscribe((state, before) => {
   if (state.document === before.document) return;
-  const { brandId, document } = state;
+  const { brandId } = state;
   if (!brandId) return;
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
+    // Parked as stored: the base, with an open edition recorded into it.
+    const document = useStudio.getState().storedDocument();
     try {
       if (document) {
         window.localStorage.setItem(

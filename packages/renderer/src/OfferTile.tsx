@@ -5,6 +5,7 @@ import type {
   SlotRole, TilePart, TileArrangement, TileFrame,
 } from '@incitio/schema';
 import { wordsBesidePrice } from './words.js';
+import { useSizedImage } from './image.js';
 import {
   TILE_PARTS, packOverride, packStack, partOverride, tileArranged, PlacementOverrides as Overrides,
 } from '@incitio/schema';
@@ -352,6 +353,7 @@ export function OfferTile({
   onSelect, frame, cellWidth, cellHeight, artworkOnly,
 }: OfferTileProps) {
   const corrections = overrides ?? UNTOUCHED;
+  const sized = useSizedImage();
 
   /**
    * Where a measured cell puts this part — its box, in shares of the
@@ -385,6 +387,7 @@ export function OfferTile({
         ...at(held),
         ...(frame.splash ? { backgroundImage: `url("${frame.splash}")` } : {}),
         ...(frame.priceInk ? { color: frame.priceInk } : {}),
+        ...(frame.priceFill ? { background: frame.priceFill } : {}),
       };
     }
     return null;
@@ -438,7 +441,8 @@ export function OfferTile({
   });
 
   /** Whether this box prints at all. */
-  const shown = (id: TilePart) => !partOverride(corrections, id).hidden;
+  // A part is shown unless somebody hid it — or the design does not say it (`TileFrame.hide`).
+  const shown = (id: TilePart) => !partOverride(corrections, id).hidden && !frame?.hide?.includes(id);
 
   // Where the words stand: the measured box, never under the price mark.
   const column = frame?.words
@@ -549,7 +553,8 @@ export function OfferTile({
 
   const room = offer.members.length > 0 ? MAX_GROUP[role] : MAX_PACK[role];
   const pack = offer.imagePack.slice(0, room);
-  const isPacked = pack.length > 1;
+  // A photograph filling the cell is one picture, not a cluster of packshots.
+  const isPacked = !frame?.cover && pack.length > 1;
   /*
    * Whoever decided, decides. The stylesheet's own answer is drawn from
    * the offer's id — stable and varied, and blind to what the products
@@ -668,6 +673,27 @@ export function OfferTile({
   };
 
 
+  /*
+   * A layout's words and price are sized to THEIR boxes, not the role's.
+   *
+   * The role sets an ideal (`--name-size`, `--price-size`), which is right
+   * for the chain's own grid and wrong for a box a layout drew: a lead's
+   * price in a narrow column ran off the page. The cap is in `cqw` — the
+   * page's width, the one unit the cell's size is known in — and taken
+   * from how much a figure and a name need: "50,-" is about 2.6 of its
+   * own heights wide, a name about nine characters to a line.
+   */
+  const fitVars: Record<string, string> = {};
+  if (frame?.laid && cellWidth && cellHeight) {
+    const cap = (value: number) => `${(value * 100).toFixed(3)}cqw`;
+    if (frame.price) {
+      fitVars['--fit-price'] = cap(Math.min((frame.price.w * cellWidth) / 2.6, frame.price.h * cellHeight * 0.5));
+    }
+    if (frame.words) {
+      fitVars['--fit-name'] = cap(Math.min((frame.words.w * cellWidth) / 9, (frame.words.h * cellHeight) / 4.5));
+    }
+  }
+
   const className = [
     'tile',
     `tile--${role}`,
@@ -698,6 +724,10 @@ export function OfferTile({
     tileArranged(corrections) && 'tile--arranged',
     frame && 'tile--framed',
     frame?.splash && 'tile--splashed',
+    // A picture that fills the cell, under white words — see `TileFrame.cover`.
+    frame?.laid && 'tile--laid',
+    frame?.cover && 'tile--cover',
+    frame?.light && 'tile--light',
     selected && 'is-selected',
   ].filter(Boolean).join(' ');
 
@@ -705,11 +735,15 @@ export function OfferTile({
     <article
       className={className}
       data-offer-id={offer.id}
-      style={frame?.type ? {
-        '--f-name': String(frame.type.name),
-        '--f-body': String(frame.type.body),
-        ...(frame.type.figure > 0 ? { '--f-figure': String(frame.type.figure) } : {}),
-        ...(frame.type.pack > 0 ? { '--f-pack': String(frame.type.pack) } : {}),
+      style={frame?.type || frame?.priceScale || frame?.laid ? {
+        ...(frame?.type ? {
+          '--f-name': String(frame.type.name),
+          '--f-body': String(frame.type.body),
+          ...(frame.type.figure > 0 ? { '--f-figure': String(frame.type.figure) } : {}),
+          ...(frame.type.pack > 0 ? { '--f-pack': String(frame.type.pack) } : {}),
+        } : {}),
+        ...(frame?.priceScale ? { '--price-scale': String(frame.priceScale) } : {}),
+        ...fitVars,
       } as CSSProperties : undefined}
       onClick={onSelect ? () => onSelect(offer.id) : undefined}
     >
@@ -742,7 +776,7 @@ export function OfferTile({
                  */
                 <img
                   key={`${index}-${url}`}
-                  src={url}
+                  src={sized(url)}
                   alt=""
                   loading="lazy"
                   /* Addressed like every other box, with its position in
@@ -789,7 +823,7 @@ export function OfferTile({
             })}
           </div>
         ) : offer.imageUrl ? (
-          <img src={offer.imageUrl} alt="" loading="lazy" style={mediaStyle} />
+          <img src={sized(offer.imageUrl)} alt="" loading="lazy" style={mediaStyle} />
         ) : (
           <div className="tile__placeholder" aria-hidden="true">
             <span>{name.slice(0, 1).toUpperCase()}</span>
@@ -1050,6 +1084,36 @@ export function OfferTile({
           }}
         />
       ))}
+      {/* The design's stickers, already worded — each only where there is something to say. */}
+      {frame?.stickers
+        // "Før 29,-" once: not as a sticker when the price mark already says it.
+        ?.filter((sticker) => !(sticker.kind === 'before' && hasBefore && role !== 'compact'))
+        .map((sticker, index) => (
+        <span
+          key={`sticker-${index}`}
+          className="tile__sticker"
+          style={{
+            left: `${sticker.rect.x * 100}%`, top: `${sticker.rect.y * 100}%`,
+            width: `${sticker.rect.w * 100}%`, height: `${sticker.rect.h * 100}%`,
+            background: sticker.fill, color: sticker.ink,
+            /*
+             * On one line, as large as its box allows: the words' length
+             * in ems (a heavy face runs ~0.62 em a letter, plus the
+             * padding) against the box's width, and never taller than it.
+             * Both in shares of the page's width, which is what cqw is here.
+             */
+            ...(cellWidth ? {
+              '--sticker-fit': `${Math.min(
+                (sticker.rect.w * cellWidth * 100) / (sticker.text.length * 0.62 + 0.8),
+                sticker.rect.h * (cellHeight ?? cellWidth) * 100 * 0.7,
+              )}cqw`,
+            } : {}),
+          } as CSSProperties}
+        >
+          {sticker.text}
+        </span>
+      ))}
+      {frame?.cover && <div className="tile__scrim" aria-hidden="true" />}
       {frame?.badges?.filter((badge) => !staleBadges.includes(badge)).map((badge, index) => (
         <div
           key={`badge-${index}`}

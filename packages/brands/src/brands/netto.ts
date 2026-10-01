@@ -1,6 +1,6 @@
 import { Brand } from '@incitio/schema';
 import { template } from '../grid.js';
-import { classifyLabels } from '../labels.js';
+import { demoCsv, DEMO_CSV_SIGNATURE } from '../mappings/demo-csv.js';
 import type { BrandDefinition } from '../types.js';
 
 /**
@@ -161,26 +161,7 @@ export const NETTO: BrandDefinition = {
     name: 'Demo-CSV',
     format: 'csv',
     path: '/feeds/sample-offers.csv',
-    signature: { fields: ['artikelnr', 'varenavn', 'pris'] },
-    mapping: {
-      retailerId: 'netto',
-      sourceName: 'sample-offers.csv',
-      currency: 'DKK',
-      fields: {
-        id: 'artikelnr',
-        name: 'varenavn',
-        brand: 'maerke',
-        category: 'kategori',
-        description: 'beskrivelse',
-        price: 'pris',
-        prePrice: 'foerpris',
-        quantity: 'maengde',
-        validFrom: 'gyldig_fra',
-        validTo: 'gyldig_til',
-        imageUrl: 'billede',
-        labels: (row: Record<string, unknown>) =>
-          classifyLabels(String(row['etiketter'] ?? '')),
-      },
-    },
+    signature: DEMO_CSV_SIGNATURE,
+    mapping: demoCsv('netto'),
   }],
 };

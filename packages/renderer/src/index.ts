@@ -9,3 +9,6 @@ export * from './incito.js';
 export * from './IncitoPage.js';
 export * from './paged.js';
 export { shifted, snap, targetsFrom, SNAP_WITHIN, type Guide, type Snapped, type Rect as SnapRect } from './snap.js';
+export { ImageSize, sizedImage } from './image.js';
+export * from './DesignTile.js';
+export * from './liquid.js';

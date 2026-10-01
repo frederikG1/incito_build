@@ -140,8 +140,8 @@ export function DecorBar() {
    * folded away under "Tilpas".
    */
   return (
-    <section className="decor" aria-label="Motiver med AI">
-      <h3 className="inspector__group">Motiver med AI</h3>
+    <section className="decor pp__ai" aria-label="Motiver med AI">
+      <h3 className="pp__title"><span className="pp__spark" aria-hidden="true">✦</span> Motiver med AI</h3>
       <p className="decor__say">
         AI tegner motiver der passer til varerne — fx chili og lime på en mexicansk side — i sidens tomme plads.
       </p>

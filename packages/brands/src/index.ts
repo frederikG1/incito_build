@@ -1,16 +1,17 @@
 import type { Brand, PageTemplate } from '@incitio/schema';
-import { parseCsv, sniffDelimiter } from '@incitio/ingest';
+import { parseCsv, parseXml, sniffDelimiter, sniffFormat } from '@incitio/ingest';
 import { NETTO } from './brands/netto.js';
 import { NEMLIG } from './brands/nemlig.js';
 import { SUPERBRUGSEN } from './brands/superbrugsen.js';
 import { LOEVBJERG } from './brands/loevbjerg.js';
 import { WOLT } from './brands/wolt.js';
 import type { BrandDefinition, FeedSource } from './types.js';
-import { tjekOffers, tjekTransformed } from './tjek.js';
+import { tjekOffers, tjekTransformed } from './mappings/tjek.js';
 
 export * from './types.js';
 export * from './grid.js';
 export * from './labels.js';
+export * from './mappings/index.js';
 
 /**
  * Every tenant the system knows.
@@ -150,19 +151,23 @@ export function resolveSource(
   text: string,
   filename = '',
 ): SourceResult {
-  const trimmed = text.trimStart();
-  const looksJson = trimmed.startsWith('{') || trimmed.startsWith('[')
-    || filename.toLowerCase().endsWith('.json');
-  const format: 'csv' | 'json' = looksJson ? 'json' : 'csv';
+  const format = sniffFormat(text, filename);
 
   let fields: string[] = [];
   let nested = false;
 
-  if (looksJson) {
+  if (format === 'json') {
     try {
       ({ fields, nested } = jsonFields(JSON.parse(text)));
     } catch {
       return { source: null, reason: 'filen er ikke gyldig JSON', fields: [] };
+    }
+  } else if (format === 'xml') {
+    try {
+      const rows = parseXml(text);
+      fields = rows[0] ? Object.keys(rows[0]) : [];
+    } catch (error) {
+      return { source: null, reason: `filen kan ikke læses som XML: ${(error as Error).message}`, fields: [] };
     }
   } else {
     const rows = parseCsv(text, sniffDelimiter(text));
@@ -175,7 +180,10 @@ export function resolveSource(
 
   const present = new Set(fields);
   for (const source of definition.sources) {
-    if (source.format !== format) continue;
+    // A flat XML feed is the same records as its JSON conversion, so a
+    // JSON reader reads it — DataFeedWatch serves nemlig's feed as XML.
+    const readable = source.format === format || (format === 'xml' && source.format === 'json');
+    if (!readable) continue;
     if (source.signature.nested !== undefined && source.signature.nested !== nested) continue;
     if (source.signature.fields.every((f) => present.has(f))) {
       return { source, reason: `${source.name} — genkendt på ${source.signature.fields.join(', ')}` };

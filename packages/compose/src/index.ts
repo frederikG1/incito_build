@@ -5,3 +5,4 @@ export * from './compose.js';
 export * from './department.js';
 export * from './carry.js';
 export * from './diff.js';
+export * from './editions.js';

@@ -3,6 +3,7 @@ import { slotAssignmentOrder } from '@incitio/schema';
 import { resolveTemplate } from '@incitio/brands';
 import { useStudio } from './state.js';
 import { gridRects } from './LayoutEditor.js';
+import { isCrowded } from './findings.js';
 
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -52,8 +53,9 @@ export function Crowded({ pageId, slotId, offerId }: { pageId: string; slotId: s
   if (!page || !offer || !template || !brand) return null;
 
   const products = Math.max(offer.imagePack.length, offer.members.length, 1);
-  const crowded = (products >= 3 && area < 0.13) || (products === 2 && area < 0.07);
+  const crowded = isCrowded(products, area);
   const placement = page.placements.find((entry) => entry.slotId === slotId);
+  const selected = s.selectedOfferId === offerId;
   if (!crowded || placement?.overrides.crowdOk) return <span ref={probe} hidden />;
 
   const lead = slotAssignmentOrder(template)[0]?.id === slotId;
@@ -85,9 +87,24 @@ export function Crowded({ pageId, slotId, offerId }: { pageId: string; slotId: s
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
     >
-      <button className="crowd__chip" onClick={() => setOpen(!open)} title="Flisen er for lille til så mange varer">
-        {products} varer på lidt plads ▾
-      </button>
+      {/*
+        * A dot, not a sentence, until the tile is the one being worked on.
+        * A label on every other tile taught people to read past all of
+        * them; the sentence is in the checks before print, where it can
+        * be walked to, and here when the tile is selected.
+        */}
+      {selected || open ? (
+        <button className="crowd__chip" onClick={() => setOpen(!open)} title="Flisen er for lille til så mange varer">
+          {products} varer på lidt plads ▾
+        </button>
+      ) : (
+        <button
+          className="crowd__dot"
+          onClick={() => setOpen(true)}
+          aria-label={`${products} varer på lidt plads`}
+          title={`${products} varer på lidt plads — klik for at se hvad du kan gøre`}
+        />
+      )}
       {open && (
         <div className="crowd__menu">
           <button disabled={lead} onClick={() => { setOpen(false); s.focusOffer(pageId, offerId); }}>

@@ -23,6 +23,7 @@
     "zod": "^3.24.1",
     "@incitio/decor": "0.1.0",
     "@incitio/publication": "0.1.0",
-    "@incitio/curator": "0.1.0"
+    "@incitio/curator": "0.1.0",
+    "@incitio/edit": "0.1.0"
   }
 }

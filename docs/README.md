@@ -67,6 +67,53 @@ skabelonopslagsfunktion; man kan kun slå et layout op *inden for* én kæde.
 En Netto-session kan ikke se, printe eller overskrive SuperBrugsens avis,
 heller ikke med id'et i hånden.
 
+## Opgaven, punkt for punkt
+
+Oplægget bad om fire ting. Sådan ser de ud i koden:
+
+| Krav | Hvor | Prøv |
+|---|---|---|
+| **Let feed-pipeline** — fil ind, mapper, vores format ud | `@incitio/ingest` (`normalizeRows`, CSV/JSON/XML) + én fil pr. mapping i `packages/brands/src/mappings/` | `npm run map -- data/feeds/SuperBrugsenW36.json --as tjek` (Tjeks transformed offers) |
+| **Claude kan lave og validere mappingen** | `--check`: tabte rækker med årsag, udfyldning pr. felt, kolonner mappingen aldrig læser. Snapshot-test over hver fil i `data/feeds`. JSON Schema i `docs/schema/` | `npm run map -- data/feeds/nemlig.json --check` |
+| **Fælles designs** | Sektioner er versionerede og *refereres* fra siden (`CatalogPage.section`). Gem en ny version, og siderne der bruger den tilbydes det nye design med deres varer | ⋯ på en side → Opdatér «sektion» for alle |
+| **Lokale udgaver** | Én avis + pr. butik en kort liste ændringer (`PublicationVariant`). Rettes basen, når det alle butikker | Udgave ▾ i topbjælken |
+| **Varedesigns (som CMS'ets)** | Kædens egne offer designs, hentet fra Tjek CMS: faste felter til billede, pris, besparelse, tekst og mærker. Regler vælger design (har ikke billede → «… Uden billede»), designet bestemmer hvor alt står. Kan rettes i studiet og kopieres tilbage til CMS'et | ⌘K → Varedesigns |
+| **Sider der ikke ligner et gitter** | Flise-varianter, bleed, klynger (række/forskudt/vifte), målte celler fra trykte sider, dekorationer | se den store README |
+| **Finjustering oven på det genererede** | Hver kasse i en flise kan flyttes/skaleres/omskrives; låste varer står fast til næste uge | klik, træk, `⌘`+scroll |
+| **AI-venlig redigering** | Én ordliste, `EditOp`, som studiet, API'et, CLI'en og Claude taler. `outline` er avisen i få linjer | `⌘K` → skriv en ændring → Spørg AI |
+
+### Udgaver, konkret
+
+Biltemas "Alt til en god september" er i Tjeks CMS **19 udgivelser** —
+én pr. butik — holdt i takt med knapper der kopierer design og config fra
+den ene til de andre. Forskellen mellem Næstved og Holbæk er én vare
+(affaldsposer, 8,90) i én sektion. Her er det én avis og:
+
+```json
+{ "id": "holbaek", "name": "Holbæk", "stores": ["auto-generated-for-store-415"],
+  "offers": [{ "id": "262023", "name": "Affaldspose 30 liter, 20-pak", "price": 8.9, … }],
+  "ops": [{ "op": "add", "offerId": "262023", "pageId": "miljo-nederst" }] }
+```
+
+Udgaven regnes ud fra basen hver gang, så en rettelse i basen når alle
+butikker. En ændring der ikke længere passer (varen er væk fra basen),
+springes over og vises — den forsvinder ikke i stilhed. Det man retter
+mens en udgave er åben, gemmes som ops (`diffToOps`), ikke som en kopi.
+
+### Redigér uden studiet
+
+```bash
+npm run edit -- avis.json --outline                     # avisen i linjer: sider, felter, varer, reserve
+npm run edit -- avis.json --op '{"op":"lead","offerId":"1073780"}'
+npm run edit -- avis.json --say "byt pizzaen og kyllingen"   # ét modelkald, viser forslaget
+npm run edit -- avis.json --say "…" --apply
+```
+
+Samme ops over HTTP: `GET /api/brand/catalogs/:id/outline`,
+`POST /api/brand/catalogs/:id/ops` (alt eller intet, gemmes som version),
+begge med `?variant=holbaek` for én butik. Ordlisten er
+`docs/schema/edit-ops.schema.json`.
+
 ## Prøv det
 
 ```bash

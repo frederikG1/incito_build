@@ -3,6 +3,9 @@ import { weekRange } from '@incitio/schema';
 import { useStudio } from './state.js';
 import { ReadyPill } from './Checklist.js';
 import { SearchButton } from './Palette.js';
+import { EditionNote, EditionPicker, SectionUpdates } from './Editions.js';
+import { ConflictNote, SaveStatus } from './Saving.js';
+import { usePopover } from './popover.js';
 
 /**
  * The chrome both screens wear: who you are, what is in the way, and
@@ -26,135 +29,43 @@ import { SearchButton } from './Palette.js';
  * behind it holds the three ways to change it, plus the explicit save
  * that used to sit beside them.
  */
+/**
+ * The avis you are in — and, one click on, all of them.
+ *
+ * It used to open a menu of six unrelated things: the chain, the week,
+ * nineteen saved files in a dropdown, the feed, save, start over. Those
+ * now live where they belong — the front page, the Varer tab, the
+ * saving status — and this simply says which avis is open and takes
+ * you to the front page.
+ */
 function Document() {
   const s = useStudio();
-  const [open, setOpen] = useState(false);
-  const week = s.week;
-  const pages = s.document?.pages.length ?? 0;
-  const offers = s.document?.offers.length ?? 0;
+  const document = s.variantBase ?? s.document;
+  const week = document?.week ?? s.week;
+  const pages = document?.pages.length ?? 0;
 
   return (
-    <div className="docwrap">
-      <button className="doc" onClick={() => setOpen(!open)} aria-expanded={open}>
+    <div className="docwrap docwrap--doc">
+      <button
+        className={`doc${s.view === 'hjem' ? ' is-on' : ''}`}
+        onClick={() => s.openHome()}
+        title="Alle aviser — denne uge, næste uge og tidligere"
+      >
         <span className="doc__lines">
           <strong className="doc__name">
-            {s.brand?.name ?? '—'}{week ? ` · uge ${week.week}` : ''}
+            {document ? document.name : (s.brand?.name ?? 'Incitio')}
           </strong>
           <span className="doc__said">
-            {[
-              week ? weekRange(week) : 'ingen uge',
-              `${pages} ${pages === 1 ? 'side' : 'sider'}`,
-              `${offers} varer`,
-            ].join(' · ')}
+            {/* Before the chain has loaded there is nothing to count — say that, not "0 sider". */}
+            {!s.brand
+              ? 'indlæser…'
+              : document
+                ? [week ? weekRange(week) : 'ingen uge', `${pages} ${pages === 1 ? 'side' : 'sider'}`].join(' · ')
+                : 'ingen avis åben'}
           </span>
         </span>
-        <span className="doc__caret" aria-hidden="true">▾</span>
+        <span className="doc__caret" aria-hidden="true">⌂</span>
       </button>
-
-      {open && (
-        <>
-          <div className="sheetaway" onPointerDown={() => setOpen(false)} />
-          <div className="docmenu">
-            <label className="docmenu__field">
-              <span>Kæde</span>
-              <select
-                value={s.brandId ?? ''}
-                disabled={Boolean(s.busy)}
-                onChange={(event) => void s.signInAs(event.target.value)}
-              >
-                {s.brands.map((brand) => (
-                  <option key={brand.id} value={brand.id}>{brand.name}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className="docmenu__field">
-              <span>Uge</span>
-              <input
-                type="number"
-                min={1}
-                max={53}
-                value={week?.week ?? ''}
-                placeholder="—"
-                onChange={(event) => {
-                  const next = Number(event.target.value);
-                  if (week && next >= 1 && next <= 53) s.setWeek({ ...week, week: next });
-                }}
-              />
-            </label>
-
-            {s.catalogues.length > 0 && (
-              <label className="docmenu__field">
-                <span>Åbn en anden</span>
-                <select
-                  value=""
-                  disabled={Boolean(s.busy)}
-                  onChange={(event) => {
-                    if (event.target.value) void s.openCatalogue(event.target.value);
-                    setOpen(false);
-                  }}
-                >
-                  <option value="">{s.catalogues.length} gemte aviser…</option>
-                  {[...s.catalogues]
-                    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-                    .map((saved) => (
-                      /* When it was last touched, so two with one name can be told apart. */
-                      <option key={saved.id} value={saved.id}>
-                        {saved.name} · {new Date(saved.updatedAt).toLocaleString('da-DK', {
-                          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                        })}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            )}
-
-            {/* The week's products, from a file. Lived in the tray; the
-                tray is only inside a page now, and a feed is chosen
-                before there are pages. */}
-            <label className="docmenu__do" style={{ display: 'block', cursor: 'pointer' }}>
-              <input
-                type="file"
-                accept=".csv,.json,.txt"
-                style={{ display: 'none' }}
-                onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = '';
-                  setOpen(false);
-                  if (file) await s.uploadFeed(file.name, await file.text());
-                }}
-              />
-              Hent ugens varer fra fil <i>{s.feed ? s.feed.source : 'ingen endnu'}</i>
-            </label>
-
-            <button
-              className="docmenu__do"
-              disabled={!s.document || Boolean(s.busy)}
-              onClick={() => { setOpen(false); void s.save(); }}
-            >
-              Gem <i>⌘S</i>
-            </button>
-
-            {/*
-              * A clean table. Asked once, because it cannot be undone
-              * from here — but it only closes the working copy: a saved
-              * avis is still in "Åbn en anden".
-              */}
-            <button
-              className="docmenu__do docmenu__do--drop"
-              disabled={!s.document || Boolean(s.busy)}
-              onClick={() => {
-                setOpen(false);
-                if (window.confirm('Start forfra med en tom avis?\n\nDet der ikke er gemt, forsvinder. Gemte aviser ligger stadig under "Åbn en anden".')) {
-                  s.startOver();
-                }
-              }}
-            >
-              Start forfra <i>tom avis</i>
-            </button>
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -210,6 +121,7 @@ function PageHead() {
 function PdfButton() {
   const s = useStudio();
   const [open, setOpen] = useState(false);
+  usePopover(open, () => setOpen(false));
   const off = !s.document || Boolean(s.busy);
   return (
     <div className="pdfwrap">
@@ -238,16 +150,22 @@ function PdfButton() {
 
 export function Top() {
   const s = useStudio();
-  const saved = s.savedAt
-    ? new Date(s.savedAt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
-    : null;
-
   return (
     <>
       <header className={s.view === 'side' ? 'top top--side' : 'top'}>
         <strong className="top__mark">Incitio</strong>
         <div className="top__rule" />
         <Document />
+        <EditionPicker />
+        {s.document && s.view !== 'side' && (
+          <div className="seg top__tabs" role="tablist" aria-label="Skærm">
+            <button role="tab" aria-selected={s.view === 'bog'} className={s.view === 'bog' ? 'is-on' : ''} onClick={() => s.openPage(null)}>Avisen</button>
+            <button role="tab" aria-selected={s.view === 'varer'} className={s.view === 'varer' ? 'is-on' : ''} onClick={() => s.openGoods()}>Varer</button>
+            <button role="tab" aria-selected={s.view === 'udgaver'} className={s.view === 'udgaver' ? 'is-on' : ''} onClick={() => s.openEditions()}>
+              Udgaver{(s.variantBase ?? s.document).variants?.length ? ` · ${(s.variantBase ?? s.document).variants!.length}` : ''}
+            </button>
+          </div>
+        )}
 
         {/* Back to the book, only from inside a page. */}
         {s.view === 'side' && (
@@ -259,19 +177,15 @@ export function Top() {
             only visible way to save besides ⌘S and the avis menu. */}
         <SearchButton />
         <ReadyPill />
-        <button
-          className="top__save"
-          disabled={!s.document || Boolean(s.busy)}
-          onClick={() => void s.save()}
-          title="Gem avisen (⌘S)"
-        >
-          Gem{saved ? <i> · gemt {saved}</i> : null}
-        </button>
+        <SaveStatus />
         <button className="quiet" onClick={s.undo} disabled={s.past.length === 0} title="Fortryd (⌘Z)">↶</button>
         <button className="quiet" onClick={s.redo} disabled={s.future.length === 0} title="Gentag (⇧⌘Z)">↷</button>
 
         <PdfButton />
       </header>
+      <ConflictNote />
+      <EditionNote />
+      <SectionUpdates />
 
     </>
   );

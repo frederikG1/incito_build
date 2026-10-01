@@ -7,7 +7,7 @@ import { departmentOf, pageDepartment } from '../department.js';
 function offer(id: string, name: string, overrides: Partial<Offer> = {}): Offer {
   return {
     id, name, description: '', brand: '', category: 'Side 1',
-    price: 10, priceFrom: false, prePrice: null, savings: null, savingsMax: null,
+    price: 10, priceFrom: false, prePrice: null, savings: null, savingsMax: null, memberPrice: null, savingsPercent: null, imageKind: null, campaign: '',
     currency: 'DKK', comparison: null,
     quantity: { size: null, unit: 'pcs', pieceCount: 1 }, pack: '',
     validFrom: '2026-09-28', validTo: '2026-10-04',
@@ -174,5 +174,47 @@ describe('feedDiff', () => {
     expect(next.offers.some((o) => o.id === 'b')).toBe(true);
     expect(next.offers.some((o) => o.id === 'n')).toBe(true);
     expect(next.pages[0]!.placements.map((p) => p.offerId)).toEqual(['a', 'b']);
+  });
+});
+
+describe('carryForward keeps what was locked', () => {
+  const pinned = (doc: CatalogDocument, offerId: string, extra: Partial<PlacementOverrides> = {}): CatalogDocument => ({
+    ...doc,
+    pages: doc.pages.map((page) => ({
+      ...page,
+      placements: page.placements.map((p) => (p.offerId === offerId
+        ? { ...p, overrides: PlacementOverrides.parse({ ...p.overrides, pinned: true, ...extra }) }
+        : p)),
+    })),
+  });
+
+  it('keeps a pinned tile in its cell when the product returns under a new id, corrections and all', () => {
+    const last = pinned(book([{ offers: [offer('a1', 'Coop kylling'), offer('a2', 'Thise vesterhavsost')] }]), 'a2', { displayName: 'Vesterhavsost' });
+    // Week 41: Coop gives every offer a new id, and the strongest offer would otherwise take the hero cell.
+    const feed = [offer('b9', 'Lurpak smør', { priority: 1 }), offer('b1', 'Thise Vesterhavsost '), offer('b2', 'Coop kylling')];
+    const { document, report } = carryForward(last, feed, options);
+    const cell = document.pages[0]!.placements.find((p) => p.slotId === 'b')!;
+    expect(cell.offerId).toBe('b1');
+    expect(cell.overrides).toMatchObject({ pinned: true, displayName: 'Vesterhavsost' });
+    expect(report.kept).toBe(1);
+  });
+
+  it('says so when a pinned product is gone, and deals the cell as usual', () => {
+    const last = pinned(book([{ offers: [offer('a1', 'Coop kylling'), offer('a2', 'Thise vesterhavsost')] }]), 'a2');
+    const { document, report } = carryForward(last, [offer('b1', 'Coop kylling'), offer('b2', 'Arla mælk')], options);
+    expect(report.pinnedGone).toEqual([{ pageId: 'p0', slotId: 'b', name: 'Thise vesterhavsost' }]);
+    expect(document.pages[0]!.placements).toHaveLength(2);
+  });
+
+  it('keeps where a cell\'s boxes stand for the next product, not the old product\'s words', () => {
+    const last = book([{ offers: [offer('a1', 'Coop kylling'), offer('a2', 'Thise vesterhavsost')] }]);
+    last.pages[0]!.placements[1]!.overrides = PlacementOverrides.parse({
+      displayName: 'Ost!',
+      parts: { price: { offsetX: 4, scale: 1.3 }, quantity: { hidden: true } },
+    });
+    const { document } = carryForward(last, [offer('b1', 'Arla mælk'), offer('b2', 'Coop kylling')], options);
+    const cell = document.pages[0]!.placements.find((p) => p.slotId === 'b')!;
+    expect(cell.overrides.displayName).toBeNull();
+    expect(cell.overrides.parts).toEqual({ price: { offsetX: 4, offsetY: 0, scale: 1.3, hidden: false, text: null } });
   });
 });

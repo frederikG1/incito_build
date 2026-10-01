@@ -14,11 +14,25 @@ describe('a tile moved into a cell of another size', () => {
   });
 
   it('scales its nudges with the cell, so the products keep their places in it', () => {
-    const moved = carryOverrides(nudged, offer, { w: 0.2, h: 0.4, role: 'standard' }, { w: 0.4, h: 0.2, role: 'standard' });
-    expect(moved.pack['0']!.offsetX).toBeCloseTo(-20);
+    const moved = carryOverrides(nudged, offer, { w: 0.2, h: 0.4, role: 'standard' }, { w: 0.3, h: 0.5, role: 'standard' });
+    expect(moved.pack['0']!.offsetX).toBeCloseTo(-15);
+    expect(moved.pack['0']!.offsetY).toBeCloseTo(5);
+    expect(moved.parts['price']!.offsetX).toBeCloseTo(3);
+    expect(moved.parts['price']!.offsetY).toBeCloseTo(-3.75);
+  });
+
+  it('keeps a cluster\'s composition in a cell of another shape, evenly scaled — and lets the words go back', () => {
+    const hidden = PlacementOverrides.parse({
+      ...nudged, displayName: 'Mit navn', pack: { 0: { offsetX: -10, offsetY: 4, hidden: true } },
+    });
+    const moved = carryOverrides(hidden, offer, { w: 0.2, h: 0.4, role: 'standard' }, { w: 0.4, h: 0.2, role: 'standard' });
+    // Wider by two, lower by half: the group shrinks by half, both ways.
+    expect(moved.pack['0']!.offsetX).toBeCloseTo(-5);
     expect(moved.pack['0']!.offsetY).toBeCloseTo(2);
-    expect(moved.parts['price']!.offsetX).toBeCloseTo(4);
-    expect(moved.parts['price']!.offsetY).toBeCloseTo(-1.5);
+    expect(moved.pack['0']!.hidden).toBe(true);
+    expect(moved.parts['price']!.offsetX).toBe(0);
+    expect(moved.displayName).toBe('Mit navn');
+    expect(moved.arrangement).not.toBeNull();
   });
 
   it('pins the arrangement it was nudged in, which the new cell would otherwise change', () => {

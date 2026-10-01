@@ -1,3 +1,4 @@
+import { sizedImage } from './image.js';
 import { splitLabelPrice, type IncitoEditInput, type IncitoSource, type Offer } from '@incitio/schema';
 
 /**
@@ -215,6 +216,10 @@ interface Walk {
   at: { x: number; y: number };
   /** Offer view id → its cell's box before and now, in sheet points — see `cellFit`. */
   cells: Map<string, CellMove>;
+  /** A photograph at the size it is drawn — see `ImageSize`. */
+  sized: (url: string) => string;
+  /** Offers moved into another cell — every box around one lets it out, see `holdsMoved`. */
+  moved: Set<string>;
 }
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -402,7 +407,7 @@ function viewHtml(view: View, walk: Walk, offer: { was: IncitoBinding; now: Inci
     put('background-size', typeof current['background_image_size'] === 'string'
       ? current['background_image_size'] as string
       : SCALE_TYPE[String(current['background_image_scale_type'])] ?? 'auto');
-    put('background-image', `url("${image.replace(/"/g, '%22')}")`);
+    put('background-image', `url("${walk.sized(image).replace(/"/g, '%22')}")`);
   }
 
   if ((starts && walk.edits[walk.path]?.hidden) || gone || current['stale']) put('display', 'none');
@@ -412,6 +417,15 @@ function viewHtml(view: View, walk: Walk, offer: { was: IncitoBinding; now: Inci
    * was cut in half — on screen and in the PDF.
    */
   if (!starts && !block && movedWithin(walk.edits, walk.path)) put('overflow', 'visible');
+  /*
+   * An offer that follows its cell out of the group the publication set
+   * it in: the group clips, and a product dragged into the space of a
+   * removed neighbour was cut off where the group ended — as if the cell
+   * it replaced were still there. Every box around it lets it out, and
+   * it lies over what it now stands on.
+   */
+  if (!root && current.role !== 'offer' && holdsMoved(current, walk.moved)) put('overflow', 'visible');
+  if (fit) put('z-index', '2');
   const style = styles.length ? ` style="${escape(styles.join(';'))};"` : '';
   const blockAttr = starts ? ` data-incito-block="${escape(walk.path)}"` : '';
   const gravity = typeof current['layout_gravity'] === 'string' ? ` data-gravity="${escape(current['layout_gravity'] as string)}"` : '';
@@ -426,7 +440,7 @@ function viewHtml(view: View, walk: Walk, offer: { was: IncitoBinding; now: Inci
   }
   // Its products are the chain's own tile over the sheet — see `incitoPacks`.
   if (packed) {
-    return `<div class="tjek-incito__view"${gravity}${offerAttr}${blockAttr}${style}></div>`;
+    return `<div class="tjek-incito__view" data-incito-packed="true"${gravity}${offerAttr}${blockAttr}${style}></div>`;
   }
   const children = (current.child_views ?? [])
     .map((child, index) => viewHtml(child, { ...walk, path: root ? keyOf(child, index) : `${walk.path}.${keyOf(child, index)}`, block, parent: current, at: here }, scope, false))
@@ -648,6 +662,8 @@ export function incitoHtml(
   printed: Map<string, Offer> = new Map(),
   /** Offer view id → its cell before and now, in shares of the sheet — see `incitoCellBoxes`. */
   cells: Map<string, CellMove> = new Map(),
+  /** Pixels a photograph needs here; `null` keeps the feed's own — see `ImageSize`. */
+  imageSize: number | null = null,
 ): string {
   const bind = new Map<string, IncitoBinding | null>();
   for (const [id, offer] of offers) bind.set(id, offer ? binding(offer) : null);
@@ -660,7 +676,8 @@ export function incitoHtml(
   }]));
   return viewHtml(sheet.view, {
     bind, was, edits, sheetArea: sheet.width * sheet.height, sheetWidth: sheet.width, path: '', block: null, parent: null,
-    at: { x: 0, y: 0 }, cells: moves,
+    at: { x: 0, y: 0 }, cells: moves, sized: (url) => sizedImage(url, imageSize),
+    moved: movedOffers(sheet.view, moves),
   }, null, true);
 }
 
@@ -748,9 +765,20 @@ export function incitoPacks(
     const shot = viewId ? cells.printed.get(viewId)?.imageUrl : null;
     if (!viewId || !shot) continue;
     type Box = { x: number; y: number; w: number; h: number };
-    const moves: { at: Box; dx: number; dy: number; scale: number }[] = [];
+    type Move = { at: Box; dx: number; dy: number; scale: number };
+    const moves: Move[] = [];
+    const placedBy = (from: Box, stack: Move[]): Box => stack.reduceRight((at, move) => ({
+      x: move.at.x + move.dx + (at.x - move.at.x) * move.scale,
+      y: move.at.y + move.dy + (at.y - move.at.y) * move.scale,
+      w: at.w * move.scale,
+      h: at.h * move.scale,
+    }), from);
     let offerBox: Box | null = null;
-    const walk = (view: View, path: string, x0: number, y0: number, k0: number, inside: boolean): Box | null => {
+    let shotBox: Box | null = null;
+    // The offer's own marks with a measured box — the price splash.
+    const marks: Box[] = [];
+    // The whole offer, not up to the packshot: words printed after it are in the way too.
+    const walk = (view: View, path: string, x0: number, y0: number, k0: number, inside: boolean): void => {
       // The sheet stands at its own origin, at its own size — as `viewHtml` draws it.
       const root = view === sheet.view;
       const x = root ? 0 : x0 + (Number(view['layout_left']) || 0) * k0;
@@ -762,25 +790,20 @@ export function incitoPacks(
       const edit = path ? edits[path] : undefined;
       const moved = edit && (edit.dx || edit.dy || (edit.scale ?? 1) !== 1);
       if (moved) moves.push({ at: box, dx: edit.dx ?? 0, dy: edit.dy ?? 0, scale: edit.scale ?? 1 });
-      if (within && view['background_image'] === shot) return box;
+      if (within && view['background_image'] === shot && !shotBox) {
+        // A packshot taken in hand and put down elsewhere stays where it was put.
+        shotBox = placedBy(box, moves);
+      } else if (inside && box.w > 0 && box.h > 0 && typeof view['background_image'] === 'string') {
+        marks.push(placedBy(box, moves));
+      }
       for (const [index, child] of (view.child_views ?? []).entries()) {
-        const hit = walk(child, path ? `${path}.${keyOf(child, index)}` : keyOf(child, index), x, y, k, within);
-        if (hit) return hit;
+        walk(child, path ? `${path}.${keyOf(child, index)}` : keyOf(child, index), x, y, k, within);
       }
       if (moved) moves.pop();
-      return null;
     };
-    let box = walk(sheet.view, '', 0, 0, 1, false);
+    walk(sheet.view, '', 0, 0, 1, false);
+    let box = shotBox as Box | null;
     if (!box || box.w <= 0 || box.h <= 0) continue;
-    // A packshot taken in hand and put down elsewhere stays where it was put.
-    for (const move of moves.reverse()) {
-      box = {
-        x: move.at.x + move.dx + (box.x - move.at.x) * move.scale,
-        y: move.at.y + move.dy + (box.y - move.at.y) * move.scale,
-        w: box.w * move.scale,
-        h: box.h * move.scale,
-      };
-    }
     // The offer follows its cell — see `cellFit`.
     const move = cellBoxes.get(viewId);
     const own = offerBox as Box | null;
@@ -788,13 +811,64 @@ export function incitoPacks(
       base: inPoints(move.base, sheet.width, sheet.height),
       cell: inPoints(move.cell, sheet.width, sheet.height),
     }) : null;
-    if (fit && own) {
-      box = {
-        x: own.x + fit.dx + (box.x - own.x) * fit.scale,
-        y: own.y + fit.dy + (box.y - own.y) * fit.scale,
-        w: box.w * fit.scale,
-        h: box.h * fit.scale,
-      };
+    const fitted = (at: Box): Box => (fit && own ? {
+      x: own.x + fit.dx + (at.x - own.x) * fit.scale,
+      y: own.y + fit.dy + (at.y - own.y) * fit.scale,
+      w: at.w * fit.scale,
+      h: at.h * fit.scale,
+    } : at);
+    box = fitted(box);
+    /*
+     * The group gets the cell's spare room, not only the printed box.
+     *
+     * A cell made bigger by hand scales the printed offer evenly and
+     * centres it (`cellFit`), so a cell twice as wide as the print
+     * left half of itself empty — and six products were squeezed into
+     * the one packshot's box in the middle, which is also the box
+     * "Stil alle varer op" arranged them for. Where the packshot
+     * reaches an edge of its offer, it now reaches the same edge of
+     * the cell, keeping the padding it had. Words and price stay
+     * where the print put them; an untouched cell prints exactly.
+     */
+    /*
+     * Only while the cell is still roughly the print's shape. In a cell
+     * of another shape — a new layout — the offer is its print fitted
+     * evenly, and a group stretched out to the cell's far edges comes
+     * apart from its own price, words and motif: the tile keeps its
+     * form, the spare room stays paper.
+     */
+    const shape = (b: Box) => (b.w * sheet.width) / (b.h * sheet.height || 1);
+    const sameShape = !move || Math.abs(Math.log(shape(move.cell) / shape(move.base))) <= Math.log(1.25);
+    if (fit && own && move && sameShape) {
+      const cell = inPoints(move.cell, sheet.width, sheet.height);
+      const offer = fitted(own);
+      const near = (gap: number, size: number) => gap <= size * 0.12;
+      const left = box.x - offer.x;
+      const top = box.y - offer.y;
+      const right = offer.x + offer.w - (box.x + box.w);
+      const bottom = offer.y + offer.h - (box.y + box.h);
+      const x0 = near(left, offer.w) ? cell.x + left : box.x;
+      const x1 = near(right, offer.w) ? cell.x + cell.w - right : box.x + box.w;
+      const y0 = near(top, offer.h) ? cell.y + top : box.y;
+      const y1 = near(bottom, offer.h) ? cell.y + cell.h - bottom : box.y + box.h;
+      if (x1 > x0 && y1 > y0) box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+    /*
+     * Never over the price.
+     *
+     * The printed packshot could run under the price mark because the
+     * photograph was drawn with the corner left empty. A group laid
+     * over the page has no such corner — it paints on top of the
+     * sheet, and the price disappeared behind the products. A mark
+     * that reaches into the lower half of the box ends the box above it
+     * — in a cell somebody resized; an untouched cell keeps its print.
+     */
+    for (const mark of fit && move ? marks.map(fitted) : []) {
+      const covers = mark.x < box.x + box.w && box.x < mark.x + mark.w
+        && mark.y < box.y + box.h && box.y < mark.y + mark.h;
+      const inside = mark.x <= box.x && mark.y <= box.y
+        && mark.x + mark.w >= box.x + box.w && mark.y + mark.h >= box.y + box.h;
+      if (covers && !inside && mark.y > box.y + box.h / 2) box = { ...box, h: mark.y - box.y };
     }
     found.push({
       slotId: placement.slotId,
@@ -855,6 +929,31 @@ export function incitoOfferBoxes(source: IncitoSource): Map<string, Box> {
   };
   walk(sheet.view, 0, 0, true);
   return found;
+}
+
+/** The offers whose cell has been moved or resized — measured as `viewHtml` measures them. */
+function movedOffers(sheet: View, moves: Map<string, CellMove>): Set<string> {
+  const found = new Set<string>();
+  if (moves.size === 0) return found;
+  const walk = (view: View, x0: number, y0: number, root: boolean) => {
+    const x = root ? 0 : x0 + (Number(view['layout_left']) || 0);
+    const y = root ? 0 : y0 + (Number(view['layout_top']) || 0);
+    const move = view.role === 'offer' && view.id ? moves.get(view.id) : undefined;
+    if (move && cellFit({ x, y, w: Number(view['layout_width']) || 0, h: Number(view['layout_height']) || 0 }, move)) {
+      found.add(view.id!);
+    }
+    for (const child of view.child_views ?? []) walk(child, x, y, false);
+  };
+  walk(sheet, 0, 0, true);
+  return found;
+}
+
+/** Whether a moved offer stands anywhere inside this box. */
+function holdsMoved(view: View, moved: Set<string>): boolean {
+  if (moved.size === 0) return false;
+  const ids = offerViewIds(view);
+  for (const id of moved) if (ids.has(id)) return true;
+  return false;
 }
 
 const viewIds = new WeakMap<View, Set<string>>();

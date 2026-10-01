@@ -1,11 +1,14 @@
-import { useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from 'react';
+import { useContext, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from 'react';
 import type { CatalogPage, IncitoSource, Offer, PageTemplate } from '@incitio/schema';
 import { INCITO_CSS, incitoCellBoxes, incitoCells, incitoFontCss, incitoHtml, incitoSheet } from './incito.js';
 import { boundIncito } from './paged.js';
 import { shifted, snap, type Guide, type Rect } from './snap.js';
+import { ImageSize } from './image.js';
 
 export interface IncitoPageProps {
   page: CatalogPage & { incito: IncitoSource };
+  /** The publication's offer views drawn over the sheet instead — see `PageView`. */
+  drawnElsewhere?: ReadonlySet<string>;
   offers?: Map<string, Offer>;
   /** Editor only: the element in hand, and how to take one — see `incitoBlocks`. */
   selectedBlock?: string | null;
@@ -40,21 +43,31 @@ export interface IncitoPageProps {
  */
 export function IncitoPage({
   page, offers, selectedBlock, onSelectBlock, onMoveBlock, onScaleBlock, onMoveEnd,
-  onDropOnOffer, dropType, template, children,
+  onDropOnOffer, dropType, template, drawnElsewhere, children,
 }: IncitoPageProps) {
+  // A press a mark took from the tile over it: its click is not the tile's either.
+  const swallowClick = useRef(false);
   const drag = useRef<{
     path: string; x: number; y: number; dx: number; dy: number; k: number; moved: boolean;
     box: Rect | null; targets: Rect[]; frame: DOMRect;
   } | null>(null);
   // The lines a drag is lined up on, in the page's own pixels on screen.
   const [guides, setGuides] = useState<Guide[]>([]);
+  const imageSize = useContext(ImageSize);
   const { theme, fonts } = page.incito;
   // The page's own size, not the viewer's section around it — see `incitoSheet`.
   const { width, height } = incitoSheet(page.incito);
   const cells = incitoCells(page, offers ?? new Map());
+  /*
+   * Offers the page draws itself, over the sheet, in a layout the
+   * chain's rules chose — see `PageView`. Their printed design is taken
+   * off, as for a product taken off the page, so it is not drawn twice.
+   */
+  const now = new Map(cells?.now ?? []);
+  for (const id of drawnElsewhere ?? []) now.set(id, null);
   const html = incitoHtml(
-    boundIncito(page, offers ?? new Map(), template), cells?.now ?? new Map(), page.incitoEdits ?? {}, cells?.printed ?? new Map(),
-    incitoCellBoxes(page, template),
+    boundIncito(page, offers ?? new Map(), template), now, page.incitoEdits ?? {}, cells?.printed ?? new Map(),
+    incitoCellBoxes(page, template), imageSize,
   );
   const editable = Boolean(onSelectBlock);
   // The element in hand wears the same ring the tiles do. Written as a
@@ -67,11 +80,66 @@ export function IncitoPage({
     background: theme.background,
   };
 
+  /** Take an element of the sheet — select it, and start moving it with the same press. */
+  const take = (event: ReactPointerEvent<HTMLElement>, hit: Element | null) => {
+    const path = hit?.getAttribute('data-incito-block') ?? null;
+    onSelectBlock!(path);
+    if (!path || !onMoveBlock) return;
+    const frame = event.currentTarget.getBoundingClientRect();
+    const was = page.incitoEdits?.[path];
+    /*
+     * What it may line up with: the page's edges and middle, and
+     * every other element and product on it. Measured once, at
+     * the start — nothing else moves while this does.
+     */
+    const rectOf = (element: Element): Rect => {
+      const r = element.getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
+    };
+    const targets: Rect[] = [rectOf(event.currentTarget)];
+    for (const other of event.currentTarget.querySelectorAll('[data-incito-block], .tile__media > img, .tile__pack > img')) {
+      if (other === hit || hit?.contains(other) || other.contains(hit!)) continue;
+      const r = rectOf(other);
+      if (r.width >= 4 && r.height >= 4) targets.push(r);
+    }
+    drag.current = {
+      path, x: event.clientX, y: event.clientY,
+      dx: was?.dx ?? 0, dy: was?.dy ?? 0,
+      k: frame.width / width, moved: false,
+      box: hit ? rectOf(hit) : null, targets, frame,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch { /* a pointer the browser no longer knows — the drag still works without capture */ }
+    event.preventDefault();
+  };
+
   return (
     <section
       className={`page page--incito${editable ? ' page--incito-editable' : ''}`}
       style={style}
       {...(editable ? {
+        /*
+         * A mark the publication printed over a product — "100 stk.",
+         * "Storkøb min. 1,3 kg" — lies under the cluster drawn in that
+         * product's box, whose handle took every click on it: the one
+         * thing on the page nobody could take. Caught before the tile
+         * does, and only when an element of the sheet's own is under the
+         * pointer: the product itself is still the tile's.
+         */
+        onPointerDownCapture: (event: ReactPointerEvent<HTMLElement>) => {
+          if (event.button !== 0 || !(event.target as Element).closest?.('.page--overlay')) return;
+          const mark = markAt(event.currentTarget, event.clientX, event.clientY);
+          if (!mark) return;
+          event.stopPropagation();
+          swallowClick.current = true;
+          take(event, mark);
+        },
+        onClickCapture: (event: MouseEvent<HTMLElement>) => {
+          if (!swallowClick.current) return;
+          swallowClick.current = false;
+          event.stopPropagation();
+        },
         /*
          * Press to take an element, and move it in the same gesture —
          * a tile's box answers the same way. Distances are converted to
@@ -82,37 +150,7 @@ export function IncitoPage({
           if (event.button !== 0) return;
           // A tile over the sheet is the tile's business, not the sheet's.
           if ((event.target as Element).closest?.('.page--overlay')) return;
-          const hit = (event.target as Element).closest?.('[data-incito-block]');
-          const path = hit?.getAttribute('data-incito-block') ?? null;
-          onSelectBlock!(path);
-          if (!path || !onMoveBlock) return;
-          const frame = event.currentTarget.getBoundingClientRect();
-          const was = page.incitoEdits?.[path];
-          /*
-           * What it may line up with: the page's edges and middle, and
-           * every other element and product on it. Measured once, at
-           * the start — nothing else moves while this does.
-           */
-          const rectOf = (element: Element): Rect => {
-            const r = element.getBoundingClientRect();
-            return { left: r.left, top: r.top, width: r.width, height: r.height };
-          };
-          const targets: Rect[] = [rectOf(event.currentTarget)];
-          for (const other of event.currentTarget.querySelectorAll('[data-incito-block], .tile__media > img, .tile__pack > img')) {
-            if (other === hit || hit?.contains(other) || other.contains(hit!)) continue;
-            const r = rectOf(other);
-            if (r.width >= 4 && r.height >= 4) targets.push(r);
-          }
-          drag.current = {
-            path, x: event.clientX, y: event.clientY,
-            dx: was?.dx ?? 0, dy: was?.dy ?? 0,
-            k: frame.width / width, moved: false,
-            box: hit ? rectOf(hit) : null, targets, frame,
-          };
-          try {
-            event.currentTarget.setPointerCapture(event.pointerId);
-          } catch { /* a pointer the browser no longer knows — the drag still works without capture */ }
-          event.preventDefault();
+          take(event, (event.target as Element).closest?.('[data-incito-block]') ?? null);
         },
         onPointerMove: (event: ReactPointerEvent<HTMLElement>) => {
           const held = drag.current;
@@ -212,6 +250,44 @@ export function IncitoPage({
       ))}
     </section>
   );
+}
+
+/**
+ * The sheet's own element under a point, beneath whatever is laid over it.
+ *
+ * Only something printed there — words, or a picture: the box a cluster
+ * was drawn into is empty, and the whole offer is the tile's to take.
+ */
+function markAt(sheet: Element, x: number, y: number): Element | null {
+  for (const element of document.elementsFromPoint(x, y)) {
+    if (!sheet.contains(element) || element.closest('.page--overlay')) continue;
+    const block = element.closest('[data-incito-block]');
+    if (!block || !sheet.contains(block)) continue;
+    if (block.hasAttribute('data-offer-view') || block.hasAttribute('data-incito-packed')) return null;
+    /*
+     * On the words themselves, not merely in their box: a text block's
+     * box can reach over the packshot beside it, and taking the whole
+     * box took every press on the picture — nothing in the cell could
+     * be picked up.
+     */
+    const printed = getComputedStyle(block).backgroundImage !== 'none' || onWords(block, x, y);
+    return printed ? block : null;
+  }
+  return null;
+}
+
+/** Whether a point lies on one of an element's lines of text. */
+function onWords(element: Element, x: number, y: number): boolean {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent?.trim()) continue;
+    range.selectNodeContents(node);
+    for (const r of range.getClientRects()) {
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
+    }
+  }
+  return false;
 }
 
 /**

@@ -41,88 +41,96 @@ export function Pictures() {
     }
   );
 
+  const ACCEPT = 'image/png,image/jpeg,image/webp,image/gif';
+  const onPage = activePageId && at >= 0;
+
   return (
     <>
-      {activePageId && at >= 0 && (
-        <div className="pics__here">
-          <b>Til side {at + 1}</b>
-          <div className="pics__uploads">
-            <label className={`pics__up${busy ? ' pics__add--busy' : ''}`}>
-              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={busy}
-                onChange={upload(addPageBackground)} />
-              <span>Upload baggrund<em>under hele siden</em></span>
+      <header className="pp__head">
+        <h2>Billeder og baggrund</h2>
+        {onPage && <span className="pp__page">Side {at + 1}</span>}
+      </header>
+
+      {onPage && (
+        <section className="pp__sec">
+          <h3 className="pp__title">Fra computeren</h3>
+          <div className="pp__uploads">
+            <label className={`pp__up${busy ? ' is-busy' : ''}`}>
+              <input type="file" accept={ACCEPT} disabled={busy} onChange={upload(addPageBackground)} />
+              <span className="pp__glyph pp__glyph--bg" aria-hidden="true" />
+              <span className="pp__uptext"><b>Baggrund</b><em>Fylder hele siden, bag varerne</em></span>
             </label>
-            <label className={`pics__up${busy ? ' pics__add--busy' : ''}`}>
-              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={busy}
-                onChange={upload(addPageImage)} />
-              <span>Upload billede<em>oven på siden</em></span>
+            <label className={`pp__up${busy ? ' is-busy' : ''}`}>
+              <input type="file" accept={ACCEPT} disabled={busy} onChange={upload(addPageImage)} />
+              <span className="pp__glyph pp__glyph--pin" aria-hidden="true" />
+              <span className="pp__uptext"><b>Billede</b><em>Ligger oven på siden — flyt det bagefter</em></span>
             </label>
           </div>
-        </div>
+        </section>
       )}
 
-      <label className={`pics__add${busy ? ' pics__add--busy' : ''}`}>
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-          multiple
-          disabled={busy}
-          onChange={async (event) => {
-            const files = [...(event.target.files ?? [])];
-            event.target.value = '';
-            // One after another: each is an upload, and the drawer
-            // should fill in the order they were picked.
-            for (const file of files) await add(file);
-          }}
-        />
-        <span>+ Læg billeder i biblioteket</span>
-      </label>
+      <section className="pp__sec">
+        <div className="pp__row">
+          <h3 className="pp__title">
+            Kædens bibliotek{uploads.length > 0 && <span className="pp__count">{uploads.length}</span>}
+          </h3>
+          <label className={`pp__add${busy ? ' is-busy' : ''}`}>
+            <input
+              type="file"
+              accept={`${ACCEPT},image/svg+xml`}
+              multiple
+              disabled={busy}
+              onChange={async (event) => {
+                const files = [...(event.target.files ?? [])];
+                event.target.value = '';
+                // One after another: each is an upload, and the drawer
+                // should fill in the order they were picked.
+                for (const file of files) await add(file);
+              }}
+            />
+            <span>+ Tilføj billeder</span>
+          </label>
+        </div>
 
-      {uploads.length === 0 ? (
-        <p className="library__empty">
-          Ingen billeder endnu. Læg kædens egne ind — balloner, flag, mønstre — så
-          ligger de her til næste avis.
-        </p>
-      ) : (
-        <ul className="pics">
-          {uploads.map((picture) => (
-            <li className="pic-card" key={picture.ref}>
-              <span className="pic-card__shot">
-                <img src={picture.ref} alt="" loading="lazy" />
-              </span>
-              <span className="pic-card__name" title={picture.name}>{picture.name}</span>
-              <span className="pic-card__does">
+        {uploads.length === 0 ? (
+          <p className="pp__empty">
+            Ingen billeder endnu. Læg kædens egne ind — balloner, flag, mønstre — så
+            ligger de her til næste avis.
+          </p>
+        ) : (
+          <ul className="pp__grid">
+            {uploads.map((picture) => (
+              <li className="pp__card" key={picture.ref}>
+                <span className="pp__shot">
+                  <img src={picture.ref} alt="" loading="lazy" />
+                  <button
+                    className="pp__drop"
+                    title="Tag det ud af biblioteket — sider der bruger det beholder det"
+                    aria-label={`Fjern ${picture.name}`}
+                    onClick={() => void remove(picture.ref)}
+                  >×</button>
+                </span>
+                <span className="pp__name" title={picture.name}>{picture.name}</span>
                 {/* Disabled rather than hidden with no page chosen:
                     the reason a button does nothing should be visible
                     before it is pressed. */}
-                <button
-                  disabled={!activePageId}
-                  title={activePageId
-                    ? 'Læg det under hele arket'
-                    : 'Klik på en side først'}
-                  onClick={() => {
-                    if (activePageId) place(activePageId, picture.ref, 'baggrund');
-                  }}
-                >Baggrund</button>
-                <button
-                  disabled={!activePageId}
-                  title={activePageId
-                    ? 'Læg det oven på siden, i et hjørne'
-                    : 'Klik på en side først'}
-                  onClick={() => {
-                    if (activePageId) place(activePageId, picture.ref, 'på siden');
-                  }}
-                >På siden</button>
-                <button
-                  className="pic-card__drop"
-                  title="Tag det ud af biblioteket — sider der bruger det beholder det"
-                  onClick={() => void remove(picture.ref)}
-                >×</button>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+                <span className="pp__does">
+                  <button
+                    disabled={!activePageId}
+                    title={activePageId ? 'Læg det under hele siden' : 'Klik på en side først'}
+                    onClick={() => { if (activePageId) place(activePageId, picture.ref, 'baggrund'); }}
+                  >Baggrund</button>
+                  <button
+                    disabled={!activePageId}
+                    title={activePageId ? 'Læg det oven på siden, i et hjørne' : 'Klik på en side først'}
+                    onClick={() => { if (activePageId) place(activePageId, picture.ref, 'på siden'); }}
+                  >På siden</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </>
   );
 }

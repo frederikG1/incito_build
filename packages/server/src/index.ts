@@ -1,14 +1,20 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
-import { CatalogDocument, CatalogWeek, Offer, packSizeOf } from '@incitio/schema';
+import {
+  CatalogDocument, CatalogWeek, Offer, OfferDesigns, OfferRules, packSizeOf, withOfferGrids, type Brand, type OfferDesign,
+  Themes,
+} from '@incitio/schema';
 import {
   findBrand, findSource, listBrands, resolveSource, type BrandDefinition,
 } from '@incitio/brands';
 import { buildCatalogue } from '@incitio/pipeline';
+import {
+  applyOps, EditError, findVariant, instruct, outline, outlineText, resolveVariant, variantSummary,
+} from '@incitio/edit';
 import { arrangeGroup, placeCluster, readClusterLayout } from '@incitio/curator';
 import {
-  EMPTY_LABEL_DICTIONARY, ingestCsv, ingestJson, type LabelDictionary,
+  EMPTY_LABEL_DICTIONARY, ingestFeed, type LabelDictionary,
 } from '@incitio/ingest';
 import { decodePixels, imaginePage, matchPage, MatchError, mediaType } from '@incitio/match';
 import { chromium } from 'playwright';
@@ -18,11 +24,11 @@ import { readFileSync } from 'node:fs';
 import { join, normalize, sep } from 'node:path';
 import { renderCataloguePdf } from '@incitio/pdf';
 import {
-  clusterPrompt, composeCluster, backdropPrompt, keyOutMotifs, composedCount, cropBoxes, cutout, decorate, fetchImages, findIslands, findVariants, generateImage, ASPECTS,
+  clusterPrompt, composeCluster, backdropPrompt, motifPrompt, keyOutMotifs, composedCount, cropBoxes, cutout, decorate, fetchImages, findIslands, findVariants, generateImage, ASPECTS,
   sharedBrowser, DEFAULT_IMAGE_MODEL, GeminiError,
 } from '@incitio/decor';
 import { findPageCells, importPublication, PublicationError } from '@incitio/publication';
-import { Section, Store } from './db.js';
+import { SaveConflict, Section, Store } from './db.js';
 
 export { Store } from './db.js';
 
@@ -92,6 +98,12 @@ export interface AppOptions {
    * same feed printed marks from the terminal and words from the editor.
    */
   labels?: LabelDictionary;
+  /**
+   * Offer designs a chain starts with before it has saved its own — read
+   * from `data/designs/<brand>-cms.json`, the CMS's own export. Passed in
+   * for the same reason as `labels`: this library owns no filesystem.
+   */
+  defaultDesigns?: Record<string, { designs: OfferDesign[]; tag: string | null; rules?: OfferRules }>;
 }
 
 /** The chain a Tjek offers file names on its rows, when it names one. */
@@ -166,7 +178,23 @@ export function createApp(store: Store, options: AppOptions = {}) {
         403,
       );
     }
-    c.set('brand', definition);
+    /*
+     * With the chain's own offer rules folded in, so every route that
+     * renders — the PDF included — draws what the studio shows.
+     */
+    const rules = store.offerRules(definition.brand.id);
+    // And its offer designs: its own, else the ones it ships with.
+    const designs = store.offerDesigns(definition.brand.id) ?? options.defaultDesigns?.[definition.brand.id] ?? null;
+    c.set('brand', {
+      ...definition,
+      brand: withOfferGrids({
+        ...definition.brand,
+        // Its own rules, else the ones its designs ship with ("uden billede → …").
+        ...(rules && rules.length > 0 ? { offerRules: rules } : options.defaultDesigns?.[definition.brand.id]?.rules?.length
+          ? { offerRules: options.defaultDesigns[definition.brand.id]!.rules! } : {}),
+        ...(designs ? { offerDesigns: designs.designs, designTag: designs.tag } : {}),
+      }),
+    });
     await next();
   });
 
@@ -224,6 +252,47 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
   });
 
+  /** The chain's offer designs — see `OfferDesign`. Saved whole, with the tag pages use by default. */
+  app.get('/api/brand/offer-designs', (c) => c.json({
+    designs: c.get('brand').brand.offerDesigns, tag: c.get('brand').brand.designTag,
+  }));
+
+  const DesignsRequest = z.object({ designs: OfferDesigns, tag: z.string().max(120).nullable().default(null) });
+  app.put('/api/brand/offer-designs', async (c) => {
+    let payload: unknown;
+    try { payload = await c.req.json(); } catch { return c.json({ error: 'body is not valid JSON' }, 400); }
+    const parsed = DesignsRequest.safeParse(payload);
+    if (!parsed.success) return c.json({ error: 'invalid designs', issues: parsed.error.issues.slice(0, 5) }, 400);
+    return c.json(store.saveOfferDesigns(c.get('brand').brand.id, parsed.data.designs, parsed.data.tag));
+  });
+
+  /** The chain's offer rules — see `OfferRule`. Saved whole: their order is their precedence. */
+  // The chain's themes, read and written whole — the list is the setting.
+  app.get('/api/brand/themes', (c) => c.json({ themes: store.themes(c.get('brand').brand.id) }));
+  app.put('/api/brand/themes', async (c) => {
+    let payload: unknown;
+    try { payload = await c.req.json(); } catch { return c.json({ error: 'body is not valid JSON' }, 400); }
+    const parsed = Themes.safeParse((payload as { themes?: unknown } | null)?.themes);
+    if (!parsed.success) return c.json({ error: 'invalid themes', issues: parsed.error.issues.slice(0, 5) }, 400);
+    return c.json({ themes: store.saveThemes(c.get('brand').brand.id, parsed.data) });
+  });
+
+  app.get('/api/brand/offer-rules', (c) => c.json({ rules: c.get('brand').brand.offerRules }));
+
+  app.put('/api/brand/offer-rules', async (c) => {
+    let payload: unknown;
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: 'body is not valid JSON' }, 400);
+    }
+    const parsed = OfferRules.safeParse((payload as { rules?: unknown } | null)?.rules);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid rules', issues: parsed.error.issues.slice(0, 5) }, 400);
+    }
+    return c.json({ rules: store.saveOfferRules(c.get('brand').brand.id, parsed.data) });
+  });
+
   app.delete('/api/brand/sections/:id', (c) =>
     (store.removeSection(c.get('brand').brand.id, c.req.param('id'))
       ? c.json({ ok: true })
@@ -240,8 +309,35 @@ export function createApp(store: Store, options: AppOptions = {}) {
     return c.json({ document });
   });
 
+  /*
+   * The name and the status, from the front page: two fields, so
+   * renaming last week's avis does not mean opening it. Saved as a
+   * version like any other change.
+   */
+  const MetaRequest = z.object({
+    name: z.string().trim().min(1).max(120).optional(),
+    status: z.enum(['kladde', 'klar', 'udgivet', 'skjult']).optional(),
+  });
+  app.patch('/api/brand/catalogs/:id', async (c) => {
+    const brandId = c.get('brand').brand.id;
+    const document = store.get(brandId, c.req.param('id'));
+    if (!document) return c.json({ error: 'not found' }, 404);
+    let payload: unknown;
+    try { payload = await c.req.json(); } catch { return c.json({ error: 'body is not valid JSON' }, 400); }
+    const parsed = MetaRequest.safeParse(payload);
+    if (!parsed.success) return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    const next = { ...document, ...parsed.data };
+    const label = parsed.data.name ? 'omdøbt' : `status ${parsed.data.status ?? ''}`.trim();
+    return c.json({ document: store.save(brandId, next, label) });
+  });
+
   app.get('/api/brand/catalogs/:id/versions', (c) =>
     c.json({ versions: store.versions(c.get('brand').brand.id, c.req.param('id')) }));
+
+  app.get('/api/brand/catalogs/:id/versions/:version', (c) => {
+    const document = store.version(c.get('brand').brand.id, c.req.param('id'), Number(c.req.param('version')));
+    return document ? c.json({ document }) : c.json({ error: 'not found' }, 404);
+  });
 
   app.put('/api/brand/catalogs/:id', async (c) => {
     const brandId = c.get('brand').brand.id;
@@ -265,9 +361,137 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
 
     try {
-      return c.json({ document: store.save(brandId, parsed.data, c.req.query('label') ?? '') });
+      const expected = c.req.query('expected');
+      return c.json({
+        document: store.save(brandId, parsed.data, c.req.query('label') ?? '', expected ? { expected } : {}),
+      });
     } catch (error) {
+      if (error instanceof SaveConflict) return c.json({ error: error.message, updatedAt: error.updatedAt }, 409);
       return c.json({ error: error instanceof Error ? error.message : 'save failed' }, 403);
+    }
+  });
+
+  /*
+   * Editing without the studio.
+   *
+   * An agent, a script or another service edits a stored catalogue the
+   * way the studio does: by sending `EditOp`s. `/outline` is what to
+   * read first — every slot, the offer in it and the ids the ops take —
+   * and `/ops` applies a list all or nothing and saves it as a version,
+   * so an agent's edit can be diffed and rolled back like anyone's.
+   */
+  /** The stored catalogue, or one of its editions when `?variant=` names one. */
+  const edition = (brand: Brand, id: string, variantId: string | undefined) => {
+    const document = store.get(brand.id, id);
+    if (!document) return { error: 'not found' as const };
+    if (!variantId) return { document, conflicts: [] as string[] };
+    if (!findVariant(document, variantId)) return { error: `no variant "${variantId}"` as const };
+    const resolved = resolveVariant(document, variantId, brand);
+    return { document: resolved.document, conflicts: resolved.conflicts };
+  };
+
+  app.get('/api/brand/catalogs/:id/variants', (c) => {
+    const { brand } = c.get('brand');
+    const document = store.get(brand.id, c.req.param('id'));
+    if (!document) return c.json({ error: 'not found' }, 404);
+    return c.json({
+      variants: (document.variants ?? []).map((variant) => ({
+        id: variant.id, name: variant.name, stores: variant.stores, ops: variant.ops.length,
+        ...variantSummary(document, variant, brand),
+      })),
+    });
+  });
+
+  app.get('/api/brand/catalogs/:id/outline', (c) => {
+    const { brand } = c.get('brand');
+    const seen = edition(brand, c.req.param('id'), c.req.query('variant'));
+    if ('error' in seen) return c.json({ error: seen.error }, 404);
+    const o = outline(seen.document, brand);
+    return c.req.query('format') === 'text' ? c.text(outlineText(o)) : c.json({ outline: o });
+  });
+
+  const OpsRequest = z.object({
+    ops: z.array(z.unknown()).min(1).max(200),
+    /** Refuse when the stored document has moved on since it was read. */
+    updatedAt: z.string().optional(),
+    label: z.string().max(80).optional(),
+  });
+
+  /*
+   * `?variant=holbaek` edits one edition: the ops are tried on that
+   * edition as it resolves now, and on success appended to its list —
+   * the base is not touched. Without it they edit the base, and so every
+   * edition at once.
+   */
+  app.post('/api/brand/catalogs/:id/ops', async (c) => {
+    const { brand } = c.get('brand');
+    const document = store.get(brand.id, c.req.param('id'));
+    if (!document) return c.json({ error: 'not found' }, 404);
+    const variantId = c.req.query('variant');
+    if (variantId && !findVariant(document, variantId)) return c.json({ error: `no variant "${variantId}"` }, 404);
+    let payload: unknown;
+    try { payload = await c.req.json(); } catch { return c.json({ error: 'body is not valid JSON' }, 400); }
+    const parsed = OpsRequest.safeParse(payload);
+    if (!parsed.success) return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    if (parsed.data.updatedAt && parsed.data.updatedAt !== document.updatedAt) {
+      return c.json({ error: 'the catalogue changed since it was read', updatedAt: document.updatedAt }, 409);
+    }
+    try {
+      if (variantId) {
+        const shown = resolveVariant(document, variantId, brand).document;
+        const { applied } = applyOps(shown, parsed.data.ops, brand);
+        const variants = (document.variants ?? []).map((v) => (v.id === variantId
+          ? { ...v, ops: [...v.ops, ...(parsed.data.ops as typeof v.ops)] }
+          : v));
+        const saved = store.save(brand.id, { ...document, variants, updatedAt: new Date().toISOString() }, parsed.data.label ?? `ops ${variantId}`);
+        return c.json({ document: saved, applied });
+      }
+      const { document: edited, applied } = applyOps(document, parsed.data.ops, brand);
+      const saved = store.save(brand.id, { ...edited, updatedAt: new Date().toISOString() }, parsed.data.label ?? 'ops');
+      return c.json({ document: saved, applied });
+    } catch (error) {
+      if (error instanceof EditError) return c.json({ error: error.message, index: error.index }, 422);
+      throw error;
+    }
+  });
+
+  /*
+   * A sentence to ops. The document comes in the body, not from the
+   * store: the studio asks about the page on screen, saved or not. It
+   * returns a PROPOSAL — nothing is applied or saved here.
+   */
+  const InstructRequest = z.object({
+    document: CatalogDocument,
+    instruction: z.string().min(1).max(1000),
+    selection: z.object({
+      offerId: z.string().nullable().optional(),
+      pageId: z.string().nullable().optional(),
+    }).optional(),
+  });
+
+  app.post('/api/brand/instruct', async (c) => {
+    const { brand } = c.get('brand');
+    if (!process.env['ANTHROPIC_API_KEY']) return c.json({ error: 'ANTHROPIC_API_KEY mangler i .env' }, 503);
+    let payload: unknown;
+    try { payload = await c.req.json(); } catch { return c.json({ error: 'body is not valid JSON' }, 400); }
+    const parsed = InstructRequest.safeParse(payload);
+    if (!parsed.success) return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
+    if (parsed.data.document.brandId !== brand.id) return c.json({ error: 'not found' }, 404);
+    try {
+      const result = await instruct(parsed.data.document, brand, parsed.data.instruction, {
+        ...(parsed.data.selection ? { selection: parsed.data.selection } : {}),
+      });
+      // Tried here so the proposal that reaches the page is one that applies.
+      let applied: string[] = [];
+      let error: string | null = null;
+      try {
+        applied = applyOps(parsed.data.document, result.ops, brand).applied;
+      } catch (failure) {
+        error = failure instanceof Error ? failure.message : String(failure);
+      }
+      return c.json({ ...result, applied, error });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : 'instruct failed' }, 502);
     }
   });
 
@@ -446,6 +670,8 @@ export function createApp(store: Store, options: AppOptions = {}) {
         ...(parsed.data.seed ? { seed: parsed.data.seed } : {}),
         ...(parsed.data.week ? { week: parsed.data.week } : {}),
         skipCuration: !wantsCuration,
+        ...(definition.brand.offerDesigns.length > 0
+          ? { designs: { designs: definition.brand.offerDesigns, tag: definition.brand.designTag } } : {}),
       });
 
       return c.json({
@@ -699,9 +925,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
 
     try {
-      const { feed } = source.format === 'csv'
-        ? ingestCsv(parsed.data.feed, source.mapping, labels)
-        : ingestJson(parsed.data.feed, source.mapping, labels);
+      const { feed } = ingestFeed(parsed.data.feed, source.mapping, labels);
 
       return c.json({
         source: { id: source.id, name: source.name, reason },
@@ -1337,6 +1561,8 @@ export function createApp(store: Store, options: AppOptions = {}) {
     spots: z.array(z.object({ x0: z.number(), x1: z.number(), y0: z.number(), y1: z.number() })).max(3).optional(),
     /** The sheet's width over its height. */
     ratio: z.number().min(0.2).max(5).optional(),
+    /** One motif alone, for a place the studio chose — see `motifPrompt`. */
+    isolated: z.boolean().optional(),
   });
 
   app.post('/api/brand/backdrop', async (c) => {
@@ -1371,7 +1597,9 @@ export function createApp(store: Store, options: AppOptions = {}) {
        */
       try {
         const browser = await sharedBrowser();
-        const prompt = backdropPrompt(parsed.data as Parameters<typeof backdropPrompt>[0]);
+        const prompt = parsed.data.isolated
+          ? motifPrompt(parsed.data)
+          : backdropPrompt(parsed.data as Parameters<typeof backdropPrompt>[0]);
         const image = await generateImage(prompt, { apiKey, aspectRatio: parsed.data.aspect })
           .catch((error: unknown) => {
             if (error instanceof Error && /400|imageConfig|aspect/i.test(error.message)
@@ -1380,7 +1608,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
             }
             throw error;
           });
-        const keyed = await keyOutMotifs(image, { browser, max: 2 });
+        const keyed = await keyOutMotifs(image, { browser, max: parsed.data.isolated ? 1 : 2 });
         if (keyed.length === 0) throw new Error('billedet havde intet motiv at tage ud — prøv igen');
         const motifs = keyed.map((motif) => {
           const { ref } = uploads.put(motif.png, 'png');
@@ -1688,8 +1916,11 @@ export function createApp(store: Store, options: AppOptions = {}) {
   /** Print a stored catalogue. Chromium renders the same components. */
   app.get('/api/brand/catalogs/:id/pdf', async (c) => {
     const definition = c.get('brand');
-    const document = store.get(definition.brand.id, c.req.param('id'));
-    if (!document) return c.json({ error: 'not found' }, 404);
+    // `?variant=holbaek` prints that store's edition, worked out from the base as it stands.
+    const seen = edition(definition.brand, c.req.param('id'), c.req.query('variant'));
+    if ('error' in seen) return c.json({ error: seen.error }, 404);
+    const document = seen.document;
+    const suffix = c.req.query('variant') ? `-${c.req.query('variant')}` : '';
 
     /*
      * `?tryk=1` is the file that goes to the printer: 3 mm bleed, crop
@@ -1704,7 +1935,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     });
     return c.body(new Uint8Array(pdf), 200, {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="${document.id}${forPrint ? '-tryk' : ''}.pdf"`,
+      'content-disposition': `inline; filename="${document.id}${suffix}${forPrint ? '-tryk' : ''}.pdf"`,
     });
   });
 

@@ -3,6 +3,7 @@ import { DEPARTMENT_NAMES } from '@incitio/compose';
 import type { Offer } from '@incitio/schema';
 import { formatPrice } from '@incitio/renderer';
 import { departmentOfPage, useStudio } from './state.js';
+import { instructEdit, type InstructReply } from './api.js';
 
 /**
  * ⌘K — everything in the studio, one keystroke away.
@@ -17,7 +18,7 @@ import { departmentOfPage, useStudio } from './state.js';
 
 interface Item {
   id: string;
-  group: 'Handlinger' | 'Varer på siderne' | 'Ikke placeret' | 'Sider';
+  group: 'Handlinger' | 'Varer på siderne' | 'Ikke placeret' | 'Sider' | 'AI';
   label: string;
   hint?: string;
   keys?: string;
@@ -33,10 +34,25 @@ function matches(text: string, query: string): boolean {
     .every((part) => words.some((word) => word.startsWith(part)) || fold(text).includes(part));
 }
 
+/*
+ * "Spørg AI" — the same box, when what was typed is a request rather
+ * than a search: "byt pizzaen og kyllingen", "gør osten større".
+ *
+ * One model call, only on Enter or a click, never while typing. The
+ * answer is a proposal: the ops in plain Danish, and nothing on the page
+ * changes until "Anvend" — which lands as one step, so one ⌘Z takes it
+ * back.
+ */
+type Ask =
+  | { state: 'asking'; question: string }
+  | { state: 'ready'; question: string; reply: InstructReply }
+  | { state: 'failed'; question: string; error: string };
+
 export function Palette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [at, setAt] = useState(0);
+  const [ask, setAsk] = useState<Ask | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const s = useStudio();
 
@@ -48,9 +64,10 @@ export function Palette() {
         setOpen((was) => !was);
         setQuery('');
         setAt(0);
+        setAsk(null);
       }
     };
-    const onAsk = () => { setOpen(true); setQuery(''); setAt(0); };
+    const onAsk = () => { setOpen(true); setQuery(''); setAt(0); setAsk(null); };
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('incitio:palette', onAsk);
     return () => {
@@ -70,6 +87,8 @@ export function Palette() {
         { id: 'print', group: 'Handlinger' as const, label: 'Hent tryk-PDF', hint: '3 mm beskæring og skæremærker', run: () => { close(); void s.downloadPdf(true); } },
         { id: 'save', group: 'Handlinger' as const, label: 'Gem avisen', keys: '⌘S', run: () => { close(); void s.save(); } },
         { id: 'checks', group: 'Handlinger' as const, label: 'Hvad mangler før tryk?', hint: `${s.findings.length} punkter`, run: () => { close(); s.setFindingsOpen(true); } },
+        { id: 'rules', group: 'Handlinger' as const, label: 'Regler for varer', hint: 'hvilket design en vare får', run: () => { close(); s.setRulesOpen(true); } },
+        { id: 'designs', group: 'Handlinger' as const, label: 'Varedesigns', hint: 'kædens designs — hvor billede, pris og tekst står', run: () => { close(); s.setDesignsOpen(true); } },
         { id: 'sections', group: 'Handlinger' as const, label: 'Sektioner', hint: 'kædens gemte sidedesigns', run: () => { close(); s.openPage(null); s.setSectionsOpen(true); } },
         { id: 'book', group: 'Handlinger' as const, label: 'Tilbage til avisen', keys: 'Esc', run: () => { close(); s.openPage(null); } },
       ] : []),
@@ -135,6 +154,23 @@ export function Palette() {
     }
 
     const q = query.trim();
+    const brandId = s.brandId;
+    const question: Item[] = q.length >= 3 && brandId ? [{
+      id: 'ask',
+      group: 'AI',
+      label: `Spørg AI: “${q}”`,
+      hint: 'foreslår ændringen — du godkender den',
+      run: () => {
+        setAsk({ state: 'asking', question: q });
+        instructEdit(brandId, {
+          document,
+          instruction: q,
+          selection: { offerId: s.selectedOfferId, pageId: s.openPageId ?? s.activePageId },
+        })
+          .then((reply) => setAsk({ state: 'ready', question: q, reply }))
+          .catch((error: unknown) => setAsk({ state: 'failed', question: q, error: error instanceof Error ? error.message : String(error) }));
+      },
+    }] : [];
     const page = /^(?:s(?:ide)?\.?\s*)?(\d{1,3})$/i.exec(q);
     const pageHits = page
       ? pages.filter((item) => item.label === `Side ${page[1]}`)
@@ -144,11 +180,60 @@ export function Palette() {
       ...pageHits.slice(0, 6),
       ...onPages.slice(0, 8),
       ...reserve.slice(0, 5),
+      ...question,
     ];
   }, [open, query, s]);
 
   if (!open) return null;
   const current = Math.min(at, Math.max(0, items.length - 1));
+
+  if (ask) {
+    const reply = ask.state === 'ready' ? ask.reply : null;
+    const usable = reply !== null && reply.ops.length > 0 && reply.error === null;
+    const apply = () => {
+      if (!reply) return;
+      const why = s.applyEdits(reply.ops);
+      if (why) setAsk({ state: 'failed', question: ask.question, error: why });
+      else setOpen(false);
+    };
+    return (
+      <div className="palette" role="dialog" aria-label="Spørg AI">
+        <div className="palette__away" onPointerDown={() => setOpen(false)} />
+        <div
+          className="palette__box ask"
+          tabIndex={-1}
+          ref={(node) => node?.focus()}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') { event.preventDefault(); setAsk(null); }
+            if (event.key === 'Enter' && usable) { event.preventDefault(); apply(); }
+          }}
+        >
+          <p className="palette__group">AI</p>
+          <p className="ask__question">“{ask.question}”</p>
+          {ask.state === 'asking' && <p className="ask__wait">Tænker…</p>}
+          {ask.state === 'failed' && <p className="ask__error">{ask.error}</p>}
+          {reply && (
+            <>
+              {reply.explanation && <p className="ask__explanation">{reply.explanation}</p>}
+              {reply.unclear && <p className="ask__error">{reply.unclear}</p>}
+              {reply.error && <p className="ask__error">Kan ikke lægges på: {reply.error}</p>}
+              {reply.applied.length > 0 && (
+                <ul className="ask__ops">{reply.applied.map((line, index) => <li key={index}>{line}</li>)}</ul>
+              )}
+              {reply.rejected.length > 0 && (
+                <p className="ask__hint">{reply.rejected.length} forslag blev sorteret fra — de passede ikke til avisen.</p>
+              )}
+            </>
+          )}
+          <div className="ask__actions">
+            <button className="primary" disabled={!usable} onClick={apply}>Anvend</button>
+            <button onClick={() => setAsk(null)}>Tilbage</button>
+          </div>
+          <p className="palette__foot"><kbd>↵</kbd> anvend · <kbd>esc</kbd> tilbage · <kbd>⌘Z</kbd> fortryder bagefter</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="palette" role="dialog" aria-label="Søg">
@@ -246,7 +331,7 @@ export function Keys() {
 export function SearchButton() {
   return (
     <button className="find" onClick={() => window.dispatchEvent(new Event('incitio:palette'))} title="Søg efter en vare, en side eller en handling">
-      <span aria-hidden="true">⌕</span> Søg <kbd>⌘K</kbd>
+      <span aria-hidden="true">⌕</span> <span className="find__word">Søg</span> <kbd>⌘K</kbd>
     </button>
   );
 }

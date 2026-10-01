@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import { OfferDesigns } from './offer-designs.js';
 import { PageTemplate } from './template.js';
+import { OfferRules } from './rules.js';
 
 const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
@@ -92,6 +94,20 @@ export const Brand = z.object({
   templates: z.array(PageTemplate).min(1),
   /** Language the curator writes headlines in. */
   language: z.string().min(1).default('Danish'),
+  /**
+   * How the chain wants its offers to look — "a member price stands to
+   * the right, larger, and pulls towards the big cells". Written by the
+   * chain in the studio and stored per chain; see `OfferRule`.
+   */
+  offerRules: OfferRules.default([]),
+  /**
+   * The chain's offer designs, in the CMS's own format — see
+   * `OfferDesign`. When a chain has them, every offer is drawn in one:
+   * the rules and the page pick which, the design places everything.
+   */
+  offerDesigns: OfferDesigns.default([]),
+  /** The tag a page uses when neither it nor a rule names one. */
+  designTag: z.string().nullable().default(null),
 });
 export type Brand = z.infer<typeof Brand>;
 

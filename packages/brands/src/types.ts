@@ -15,7 +15,7 @@ export interface FeedSource {
   id: string;
   /** What to call it when telling someone which reader ran. */
   name: string;
-  format: 'csv' | 'json';
+  format: 'csv' | 'json' | 'xml';
   /**
    * Field names that identify this format. All must be present;
    * `nested` distinguishes a payload whose records sit under

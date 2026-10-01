@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
+import { DEPARTMENT_NAMES, departmentOf } from '@incitio/compose';
 import {
   PAGE_PARTS, PAGE_PART_NAMES, TILE_PARTS, TILE_PART_NAMES,
   packLimits, packOverride, packTouched,
   pageGround, pageTextLimits, pageTextOverride, pageTextTouched,
-  partLimits, partOverride, partTouched,
+  partLimits, partOverride, partTouched, resolveLook,
 } from '@incitio/schema';
 import type { CatalogPage, Offer, PagePart, PlacementOverrides, TilePart } from '@incitio/schema';
 import { PLACE_PROMPTS, placePrompt } from '@incitio/curator/place-prompt';
 import { useStudio } from './state.js';
+import { ruleFromOffer } from './OfferRules.js';
 import { incitoSlotOf, pageBlocks, type IncitoBlock } from '@incitio/renderer';
 import { priceOf, saidPrice } from './price.js';
 
@@ -542,7 +544,7 @@ function NoteInspector({ noteId }: { noteId: string }) {
         <h2>Tekst på siden</h2>
         <button className="inspector__close" onClick={() => selectNote(null)} aria-label="Luk">×</button>
       </header>
-      <p className="inspector__meta">Træk den rundt på siden · piletaster flytter den</p>
+      <p className="inspector__meta">Træk den rundt på siden · piletaster flytter den · ⌫ tager den af siden</p>
 
       <label className="inspector__field">
         <span>Tekst</span>
@@ -550,7 +552,9 @@ function NoteInspector({ noteId }: { noteId: string }) {
           className="notepanel__text"
           value={note.text}
           rows={3}
-          autoFocus
+          /* Only a text just added takes the cursor: on one picked off the
+             page the keys stay the page's, so ⌫ takes it off like the rest. */
+          autoFocus={note.text === 'Skriv din tekst'}
           onFocus={(event) => { if (event.target.value === 'Skriv din tekst') event.target.select(); }}
           onChange={(event) => set({ text: event.target.value }, `note-text:${note.id}`)}
           onBlur={endGesture}
@@ -788,6 +792,69 @@ function cellOffer(page: CatalogPage, viewId: string | null, offers: Offer[]): O
 }
 
 /** The product in the cell and its price, which the page's mark is set from. */
+/**
+ * The price, corrected by hand — the week's most common last-minute fix.
+ *
+ * Typed in kroner with a comma, as the page prints it. What the feed said
+ * stays beside it for as long as they differ, with one click back to it,
+ * and the checks before print list every price corrected this way.
+ */
+function TilePrice({ offer }: { offer: Offer }) {
+  const correct = useStudio((s) => s.correctPrice);
+  const uncorrect = useStudio((s) => s.uncorrectPrice);
+  const endGesture = useStudio((s) => s.endGesture);
+  const said = (value: number | null) => (value === null ? '' : value.toFixed(2).replace('.', ','));
+  const [price, setPrice] = useState(said(offer.price));
+  const [pre, setPre] = useState(said(offer.prePrice));
+  const read = (text: string) => Number(text.replace(/\s/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.'));
+  const was = offer.corrected;
+
+  return (
+    <>
+      <h3 className="inspector__group">Pris</h3>
+      <div className="tileprice">
+        <label className="inspector__field">
+          <span>Pris, kr.{offer.priceFrom ? ' — laveste, der står "fra"' : ''}</span>
+          <input
+            inputMode="decimal"
+            value={price}
+            onChange={(event) => {
+              setPrice(event.target.value);
+              const value = read(event.target.value);
+              if (event.target.value.trim() && Number.isFinite(value)) correct(offer.id, { price: Math.round(value * 100) / 100 });
+            }}
+            onBlur={endGesture}
+          />
+        </label>
+        <label className="inspector__field">
+          <span>Førpris, kr.</span>
+          <input
+            inputMode="decimal"
+            value={pre}
+            placeholder="ingen"
+            onChange={(event) => {
+              setPre(event.target.value);
+              const value = read(event.target.value);
+              if (!event.target.value.trim()) correct(offer.id, { prePrice: null });
+              else if (Number.isFinite(value)) correct(offer.id, { prePrice: Math.round(value * 100) / 100 });
+            }}
+            onBlur={endGesture}
+          />
+        </label>
+      </div>
+      {was && (
+        <p className="tileprice__was">
+          Rettet i hånden — feedet siger {said(was.price)}{was.prePrice !== null ? ` (før ${said(was.prePrice)})` : ''}.{' '}
+          <button
+            className="inspector__link"
+            onClick={() => { uncorrect(offer.id); setPrice(said(was.price)); setPre(said(was.prePrice)); }}
+          >Brug feedets pris</button>
+        </p>
+      )}
+    </>
+  );
+}
+
 function OfferPrice({ offer, onPrice, onDone }: { offer: Offer; onPrice: (price: number) => void; onDone: () => void }) {
   const [typed, setTyped] = useState(offer.price.toFixed(2).replace('.', ','));
   return (
@@ -947,9 +1014,11 @@ export function Inspector() {
       <p className="inspector__meta" title={`Varenr. ${offer.id}`}>
         {[
           `${offer.priceFrom ? 'fra ' : ''}${offer.price.toFixed(2).replace('.', ',')} kr.`,
-          offer.category,
+          // The studio's own department — the word the shelf, Varer and the sections use — not the feed's category.
+          DEPARTMENT_NAMES[departmentOf(offer)],
         ].filter(Boolean).join(' · ')}
       </p>
+      <RulesSay offer={offer} />
       <div className="inspector__tabs" role="tablist">
         {INSPECTOR_TABS.map(([id, name]) => (
           <button
@@ -1128,6 +1197,8 @@ export function Inspector() {
 
       {tab === 'indhold' && (
       <>
+      <TilePrice key={offer.id} offer={offer} />
+
       <h3 className="inspector__group">Tekst</h3>
 
       <label className="inspector__field">
@@ -1757,5 +1828,32 @@ export function Inspector() {
         )}
       </ul>
     </aside>
+  );
+}
+
+/**
+ * Which of the chain's rules this offer answers to, in one line — so a
+ * price that moved to the right is never a mystery. A click opens them.
+ */
+function RulesSay({ offer }: { offer: Offer }) {
+  const brand = useStudio((s) => s.brand);
+  const open = useStudio((s) => s.setRulesOpen);
+  const setRules = useStudio((s) => s.setOfferRules);
+  if (!brand) return null;
+  const look = resolveLook(offer, brand.offerRules);
+  const names = [...new Set(Object.values(look.because))];
+  return (
+    <p className="inspector__rules">
+      {names.length > 0 && (
+        <button onClick={() => open(true)} title="Åbn reglerne for varer">Regel: {names.join(', ')}</button>
+      )}
+      {/* Made from this product: what it IS becomes the condition. */}
+      <button
+        onClick={() => { setRules([ruleFromOffer(offer), ...brand.offerRules]); open(true); }}
+        title="Lav en regel, der rammer denne vare og dem, der ligner den"
+      >
+        + Regel for varer som denne
+      </button>
+    </p>
   );
 }

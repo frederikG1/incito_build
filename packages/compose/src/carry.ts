@@ -1,8 +1,8 @@
 import {
   PlacementOverrides, isImagePage, rememberPrinted, slotAssignmentOrder, weekName,
-  type CatalogDocument, type CatalogPage, type CatalogWeek, type Offer, type PageTemplate,
+  type CatalogDocument, type CatalogPage, type CatalogWeek, type Offer, type OfferRule, type PageTemplate,
 } from '@incitio/schema';
-import { compareByImportance } from './importance.js';
+import { byImportance } from './importance.js';
 import { departmentOf, familyOf, pageDepartment, type Department } from './department.js';
 
 /**
@@ -29,6 +29,8 @@ export interface CarryOptions {
   brandName: string;
   id: string;
   now?: string;
+  /** The chain's offer rules — "fokus på siden" moves an offer up the deal. */
+  rules?: readonly OfferRule[];
 }
 
 export interface CarriedPage {
@@ -38,6 +40,8 @@ export interface CarriedPage {
   filled: number;
   /** Filled from a neighbouring department because its own ran out. */
   borrowed: number;
+  /** Pinned tiles whose product is in the new week too, kept in their cell. */
+  kept: number;
 }
 
 export interface CarryReport {
@@ -45,6 +49,10 @@ export interface CarryReport {
   cells: number;
   filled: number;
   borrowed: number;
+  /** Pinned tiles kept in their cell, corrections and all. */
+  kept: number;
+  /** Pinned tiles whose product is not in the new week — their cell was dealt as usual. */
+  pinnedGone: { pageId: string; slotId: string; name: string }[];
   /** Offers in the feed that no page took — the reserve. */
   reserve: number;
   /** Notes that name a date or a weekday, and are therefore last week's. */
@@ -76,6 +84,34 @@ export function priceTheme(offers: Pick<Offer, 'price'>[]): Set<number> | null {
   return prices;
 }
 
+/**
+ * The same product in another week's feed.
+ *
+ * By id when the feed keeps its ids; Coop's do not — Thise
+ * vesterhavsost is 1073780 in week 36 and another number in week 38 —
+ * so otherwise by what is printed: the name, and the brand when there is
+ * one. Case and spacing do not make a product different.
+ */
+export function sameProduct(a: Pick<Offer, 'id' | 'name' | 'brand'>, b: Pick<Offer, 'id' | 'name' | 'brand'>): boolean {
+  if (a.id === b.id) return true;
+  const key = (offer: Pick<Offer, 'name' | 'brand'>) => `${offer.brand}|${offer.name}`.toLowerCase().replace(/\s+/g, ' ').trim();
+  return key(a) === key(b);
+}
+
+/**
+ * What a cell keeps when a new product comes into it: where its boxes
+ * stand — the price moved clear of the picture, the headline set larger.
+ * That is the cell's design. What belongs to the old product goes: its
+ * wording, a box hidden because it had nothing to say, the framing of
+ * its photograph, the positions of its packs.
+ */
+function cellDesign(overrides: PlacementOverrides): PlacementOverrides {
+  const parts = Object.fromEntries(Object.entries(overrides.parts)
+    .filter(([, part]) => part.offsetX !== 0 || part.offsetY !== 0 || part.scale !== 1)
+    .map(([key, part]) => [key, { ...part, hidden: false, text: null }]));
+  return PlacementOverrides.parse({ parts });
+}
+
 /** Cells of a page, strongest first: hero, feature, standard, compact. */
 function cellsOf(page: CatalogPage, templateFor: CarryOptions['templateFor']): string[] {
   const template = templateFor(page.templateId);
@@ -91,13 +127,14 @@ export function carryForward(
 ): { document: CatalogDocument; report: CarryReport } {
   const now = options.now ?? new Date().toISOString();
   const byId = new Map(previous.offers.map((offer) => [offer.id, offer]));
+  const strongest = byImportance(options.rules);
 
   // One offer per id, and a picture before no picture: a product with no
   // photograph cannot stand in a cell in print.
   const seen = new Set<string>();
   const pool = feed
     .filter((offer) => (seen.has(offer.id) ? false : (seen.add(offer.id), true)))
-    .sort((a, b) => Number(Boolean(b.imageUrl)) - Number(Boolean(a.imageUrl)) || compareByImportance(a, b));
+    .sort((a, b) => Number(Boolean(b.imageUrl)) - Number(Boolean(a.imageUrl)) || strongest(a, b));
   const department = new Map(pool.map((offer) => [offer.id, departmentOf(offer)]));
   const taken = new Set<string>();
 
@@ -123,6 +160,8 @@ export function carryForward(
     cells: string[];
     dealt: Map<string, string>;
     borrowed: number;
+    /** Cells held by a pinned tile, with the corrections it keeps. */
+    kept: Map<string, PlacementOverrides>;
   }
 
   const work: Work[] = previous.pages.map((page) => {
@@ -141,8 +180,33 @@ export function carryForward(
       cells: isImagePage(page) ? [] : cellsOf(page, options.templateFor),
       dealt: new Map(),
       borrowed: 0,
+      kept: new Map(),
     };
   });
+
+  /*
+   * Pinned first — "Lås varen på pladsen" means exactly this. A pinned
+   * tile whose product is in the new week takes its own cell before any
+   * dealing starts, with every correction on it. One whose product is
+   * gone cannot be kept; its cell is dealt as usual and the report
+   * names it, so nobody believes it was.
+   */
+  const pinnedGone: CarryReport['pinnedGone'] = [];
+  for (const item of work) {
+    for (const placement of item.page.placements) {
+      if (!placement.overrides.pinned || !item.cells.includes(placement.slotId)) continue;
+      const was = byId.get(placement.offerId);
+      const now = was ? pool.find((offer) => !taken.has(offer.id) && sameProduct(offer, was)) : undefined;
+      if (!now) {
+        pinnedGone.push({ pageId: item.page.id, slotId: placement.slotId, name: was?.name ?? placement.offerId });
+        continue;
+      }
+      taken.add(now.id);
+      item.dealt.set(placement.slotId, now.id);
+      item.kept.set(placement.slotId, placement.overrides);
+    }
+  }
+  const free = (item: Work) => item.cells.filter((cell) => !item.dealt.has(cell));
 
   /*
    * Three passes, in order of how sure the answer is — after the front
@@ -172,7 +236,7 @@ export function carryForward(
 
   if (front) {
     front.department = null;
-    for (const cell of front.cells) {
+    for (const cell of free(front)) {
       // The cover sells food first; what it carried last week is a hint, not a rule.
       const offer = take(food, () => true);
       if (offer) front.dealt.set(cell, offer.id);
@@ -181,14 +245,14 @@ export function carryForward(
   for (const item of work) {
     if (!item.department) continue;
     const own = (offer: Offer) => department.get(offer.id) === item.department;
-    for (const cell of item.cells) {
+    for (const cell of free(item)) {
       const offer = take((offer) => own(offer) && priced(item)(offer), own);
       if (offer) item.dealt.set(cell, offer.id);
     }
   }
   for (const item of work) {
     if (item.department || item.cells.length === 0 || item === front) continue;
-    for (const cell of item.cells) {
+    for (const cell of free(item)) {
       const offer = take(...mixed(item));
       if (offer) item.dealt.set(cell, offer.id);
     }
@@ -219,7 +283,11 @@ export function carryForward(
       // Cells in the order the grid declares them, so the page reads as before.
       placements: item.cells
         .filter((cell) => item.dealt.has(cell))
-        .map((cell) => ({ offerId: item.dealt.get(cell)!, slotId: cell, overrides: PlacementOverrides.parse({}) })),
+        .map((cell) => {
+          const last = page.placements.find((placement) => placement.slotId === cell);
+          const overrides = item.kept.get(cell) ?? (last ? cellDesign(last.overrides) : PlacementOverrides.parse({}));
+          return { offerId: item.dealt.get(cell)!, slotId: cell, overrides };
+        }),
       // Artwork tied to last week's product no longer has one.
       decorations: page.decorations.map((decoration) => (
         decoration.offerId && !taken.has(decoration.offerId) ? { ...decoration, offerId: null } : decoration
@@ -235,10 +303,13 @@ export function carryForward(
       cells: item.cells.length,
       filled: item.dealt.size,
       borrowed: item.borrowed,
+      kept: item.kept.size,
     })),
     cells: work.reduce((sum, item) => sum + item.cells.length, 0),
     filled: work.reduce((sum, item) => sum + item.dealt.size, 0),
     borrowed: work.reduce((sum, item) => sum + item.borrowed, 0),
+    kept: work.reduce((sum, item) => sum + item.kept.size, 0),
+    pinnedGone,
     reserve: pool.length - taken.size,
     datedNotes,
   };

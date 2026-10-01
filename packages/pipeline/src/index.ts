@@ -1,7 +1,7 @@
 import {
-  Brand, coversWeek, weekName, type CatalogDocument, type CatalogWeek, type PageTemplate,
+  Brand, OFFER_GRID_PREFIX, withOfferGrids, type OfferDesign, coversWeek, weekName, type CatalogDocument, type CatalogWeek, type PageTemplate,
 } from '@incitio/schema';
-import { ingestCsv, ingestJson, type IngestIssue, type LabelDictionary } from '@incitio/ingest';
+import { ingestFeed, type IngestIssue, type LabelDictionary } from '@incitio/ingest';
 import {
   findSource, getBrand, resolveSource,
   type BrandDefinition, type FeedSource,
@@ -70,6 +70,13 @@ export interface BuildOptions {
    * trusting.
    */
   week?: CatalogWeek;
+  /**
+   * The chain's offer designs, when it has them — the pages are then laid
+   * out in offer-grid cells and drawn in the designs. Passed in because
+   * the designs are the chain's data (stored, or shipped in data/designs),
+   * not code.
+   */
+  designs?: { designs: OfferDesign[]; tag: string | null };
 }
 
 export interface BuildResult extends ComposeResult {
@@ -129,12 +136,15 @@ export async function buildCatalogue(
    * widens the vocabulary rather than replacing it. Re-parsed through
    * `Brand` so a caller cannot smuggle in anything the schema rejects.
    */
-  const brand = options.extraTemplates?.length
+  const withExtra = options.extraTemplates?.length
     ? Brand.parse({
       ...definition.brand,
       templates: [...options.extraTemplates, ...definition.brand.templates],
     })
     : definition.brand;
+  const brand = options.designs && options.designs.designs.length > 0
+    ? Brand.parse(withOfferGrids({ ...withExtra, offerDesigns: options.designs.designs, designTag: options.designs.tag }))
+    : withExtra;
 
   /*
    * Which reader runs. Naming one skips detection — useful when a
@@ -162,9 +172,7 @@ export async function buildCatalogue(
     reason = match.reason;
   }
 
-  const { feed, issues } = source.format === 'csv'
-    ? ingestCsv(feedText, source.mapping, options.labels)
-    : ingestJson(feedText, source.mapping, options.labels);
+  const { feed, issues } = ingestFeed(feedText, source.mapping, options.labels);
 
   const maxPages = Math.max(1, options.maxPages ?? DEFAULT_MAX_PAGES);
 
@@ -236,7 +244,16 @@ export async function buildCatalogue(
     // The week travels with the document, not only with this reply:
     // the paper is week 39's from here on, including after it has been
     // saved, reopened on another machine and printed.
-    document: { ...composed.document, week: options.week ?? null },
+    document: {
+      ...composed.document,
+      week: options.week ?? null,
+      // Offer-grid layouts travel with the document, so it renders wherever it is opened.
+      templates: [
+        ...composed.document.templates,
+        ...brand.templates.filter((t) => t.id.startsWith(OFFER_GRID_PREFIX)
+          && composed.document.pages.some((page) => page.templateId === t.id)),
+      ],
+    },
     issues,
     outsideWeek,
     inWeek: options.week ? inWeek.length : null,

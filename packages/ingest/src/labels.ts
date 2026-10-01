@@ -264,7 +264,14 @@ export function matchLabel(
   for (const entry of dictionary.entries) {
     if (entry.pattern.test(text)) return entry;
   }
-  return null;
+  /*
+   * A mark's own title names it too. "Bedre dyrevelfærd 3" resolves to
+   * the mark titled "dyrevelfærd 03", and an offer written back out —
+   * Tjek's transformed offers carry marks by name — says "dyrevelfærd 03".
+   * Without this the mark came back as the plain word.
+   */
+  const lower = text.toLowerCase();
+  return dictionary.entries.find((entry) => entry.title.toLowerCase() === lower) ?? null;
 }
 
 /**

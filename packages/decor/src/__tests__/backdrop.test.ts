@@ -23,8 +23,11 @@ describe('the background brief for a page', () => {
       offer: 'Verdenskøkkener',
       products: ['Tortiglioni', 'Fusilli', 'Farfalle', 'Tomatsauce', 'Linguine', 'Penne', 'Pesto', 'Lasagne', 'Ravioli'],
     });
-    expect(prompt).toContain('5:4, filling the whole page');
-    expect(prompt).toContain('exactly #ffae4a');
+    expect(prompt).toContain('page of a Danish supermarket leaflet, 5:4');
+    // Painted on the key colour, not the page's own — see `KEY_COLOUR`.
+    expect(prompt).toContain('exactly #ff00ff');
+    expect(prompt).not.toContain('#ffae4a');
+    expect(prompt).toContain('No shadows at all');
     expect(prompt).toContain('in these regions — from 10 to 62 percent of the width and from 5 to 71 percent of the height; from 55 to 95');
     expect(prompt).toContain('printed top right, bottom left and bottom right');
     expect(prompt).toContain('page "Verdenskøkkener" (Tortiglioni, Fusilli, Farfalle, Tomatsauce, Linguine, Penne, Pesto, Lasagne, …)');

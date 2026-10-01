@@ -11,7 +11,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
-import { CatalogDocument } from '@incitio/schema';
+import { CatalogDocument, OfferRules, readDesignExport, withOfferGrids } from '@incitio/schema';
 import { getBrand } from '@incitio/brands';
 import { renderCatalogueHtml, renderCataloguePdf, renderCataloguePngs } from '@incitio/pdf';
 
@@ -27,7 +27,21 @@ if (!path) {
 
 const file = resolve(process.cwd(), path);
 const document = CatalogDocument.parse(JSON.parse(readFileSync(file, 'utf8')));
-const { brand } = getBrand(document.brandId);
+// Drawn in the chain's own offer designs when it ships them, as the studio draws it.
+const brand = (() => {
+  const base = getBrand(document.brandId).brand;
+  try {
+    const shipped = readDesignExport(readFileSync(fileURLToPath(new URL(`data/designs/${base.id}-cms.json`, ROOT)), 'utf8'));
+    return withOfferGrids({
+      ...base,
+      offerDesigns: shipped.designs,
+      designTag: shipped.tag,
+      ...(shipped.rules.length > 0 && base.offerRules.length === 0 ? { offerRules: OfferRules.parse(shipped.rules) } : {}),
+    });
+  } catch {
+    return base;
+  }
+})();
 
 const assetDir = fileURLToPath(new URL('data', ROOT));
 const stem = file.replace(/\.json$/, '');

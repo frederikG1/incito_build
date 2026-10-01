@@ -28,7 +28,7 @@ import type { OfferDesign } from '@incitio/schema';
 
 type View = Record<string, unknown> & { child_views?: View[] };
 
-export type SeenKind = 'image' | 'text' | 'price' | 'label' | 'logos';
+export type SeenKind = 'image' | 'bg' | 'text' | 'price' | 'label' | 'logos';
 
 /** Left, top, right, bottom as fractions of the offer cell. */
 export type Box = [number, number, number, number];
@@ -165,9 +165,14 @@ export function readTiles(root: View): SeenTile[] {
       const lh = num(layer['layout_height']);
       if (lw === null || lh === null) continue;
       const scale = num(layer['transform_scale']) ?? 1;
+      const box: Box = [left / w, top / h, (left + lw * scale) / w, (top + lh * scale) / h];
       layers.push({
-        kind,
-        box: [left / w, top / h, (left + lw * scale) / w, (top + lh * scale) / h],
+        /*
+         * A picture over the whole cell is the design's background (a
+         * lifestyle shot behind the packshot), not the offer's image.
+         */
+        kind: kind === 'image' && box[0] <= 0.01 && box[1] <= 0.02 && box[2] >= 0.99 && box[3] >= 0.98 ? 'bg' : kind,
+        box,
         fitted: Math.abs(scale - 1) > 1e-6,
         nested: kind === 'price' && texts(layer).some((t) => SAVING.test(t.text)),
         texts: texts(layer),
@@ -258,6 +263,7 @@ export function rebuildDesigns(tiles: readonly SeenTile[]): RebuiltDesign[] {
 /** Which CMS layer types a seen layer can be. */
 const TYPES: Record<SeenKind, RegExp> = {
   image: /^offer_image$/,
+  bg: /^offer_bg_image$/,
   text: /^offer_text$/,
   price: /^offer_(price|membership_price|membership_relative_savings|relative_savings)$/,
   label: /^offer_(custom|comment)_label_\d$/,
@@ -293,7 +299,10 @@ function scoreAgainst(design: RebuiltDesign, truth: OfferDesign): { score: numbe
   const layers: LayerScore[] = design.layers.map((layer) => {
     let best: { l: (typeof top)[number]; v: number } | null = null;
     for (const l of top) {
-      if (used.has(l.id) || !l.type || !TYPES[layer.kind].test(l.type)) continue;
+      if (used.has(l.id)) continue;
+      // A layer with no type is the design's own decoration — a backdrop, a frame.
+      const fits = l.type ? TYPES[layer.kind].test(l.type) : layer.kind === 'bg';
+      if (!fits) continue;
       const v = iou(layer.box, [l.x1, l.y1, l.x2, l.y2]);
       if (!best || v > best.v) best = { l, v };
     }
