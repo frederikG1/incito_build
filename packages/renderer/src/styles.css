@@ -90,6 +90,42 @@
 }
 
 /*
+ * Logical (Bold Monday) — Løvbjerg's own face, and Omnes (Darden Studio)
+ * with Roboto — Wolt's. Supplied, not matched: each is the file the
+ * chain's Tjek CMS config links as its h1 and body font. Logical comes
+ * in the two weights Løvbjerg uses, so the ranges partition the scale
+ * the way COOP's do; Wolt sets its headings in Omnes Bold and its text
+ * in Roboto. Licensed, not open — see `fonts/README.md`.
+ */
+@font-face {
+  font-family: 'Logical';
+  src: url(./fonts/logical-400.woff2) format('woff2');
+  font-weight: 400 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Logical';
+  src: url(./fonts/logical-800.woff2) format('woff2');
+  font-weight: 700 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Omnes';
+  src: url(./fonts/omnes-700.woff2) format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url(./fonts/roboto-400.woff2) format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+}
+
+/*
  * COOP the way a Tjek publication declares it — see `.tile--framed`.
  *
  * The publication registers its headline face as ONE file, the 700

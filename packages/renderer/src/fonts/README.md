@@ -67,3 +67,14 @@ repository. Two things follow:
 
 Latin-1 covers æ, ø and å, so Danish needs no extended subset from any
 of these.
+
+## Løvbjerg and Wolt — supplied from the CMS
+
+| File | Family | Chain | Source |
+| --- | --- | --- | --- |
+| `logical-400.woff2`, `logical-800.woff2` | Logical (Bold Monday) | Løvbjerg | The body and h1 fonts its Tjek CMS incito config links — Regular and Heavy. The Regular arrived as OTF and is converted to woff2 here. |
+| `omnes-700.woff2` | Omnes (Darden Studio) | Wolt Market | The h1 font its Tjek CMS config links (Omnes Bold, OTF → woff2). |
+| `roboto-400.woff2` | Roboto (Google, Apache 2.0) | Wolt Market | The body font its Tjek CMS config links (OTF → woff2). |
+
+Logical and Omnes are licensed, not open: like COOP they are the chains'
+own faces, used here for those chains' pages only.

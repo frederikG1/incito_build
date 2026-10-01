@@ -36,7 +36,7 @@ export type LayerType = (typeof LAYER_TYPES)[number];
 
 export const OFFER_TYPES = [
   'regular_price', 'regular_price_with_savings', 'membership_price', 'membership_price_with_savings',
-  'membership_relative_savings', 'relative_savings', 'app_price', 'from_price',
+  'membership_relative_savings', 'relative_savings', 'app_price', 'from_price', 'get_x_for_y',
 ] as const;
 export type OfferType = (typeof OFFER_TYPES)[number];
 
@@ -168,6 +168,8 @@ export function offerTypesOf(offer: Offer): Set<OfferType> {
     if (relative) types.add('relative_savings');
   }
   if (offer.priceFrom) types.add('from_price');
+  // "2 for 30", "Køb 3 betal for 2" — Wolt draws these in their own design.
+  if (offer.labels.some((label) => label.kind === 'multibuy')) types.add('get_x_for_y');
   return types;
 }
 

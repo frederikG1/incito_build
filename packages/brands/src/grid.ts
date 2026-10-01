@@ -1,4 +1,4 @@
-import { PageTemplate, SlotRole, validateTemplate } from '@incitio/schema';
+import { OFFER_GRID_PREFIX, offerGridTemplates, PageTemplate, SlotRole, validateTemplate, type PageTemplateLike } from '@incitio/schema';
 
 /**
  * A slot's role, optionally with how far its artwork may overrun the
@@ -44,4 +44,21 @@ export function template(
     throw new Error(`template "${id}" is malformed: ${problems.join('; ')}`);
   }
   return built;
+}
+
+/**
+ * The CMS's offer grids as one chain's own layouts.
+ *
+ * For a chain whose pages are made in Tjek's CMS the section designs
+ * decide where offers stand, and an offer grid is the closest
+ * CSS-grid shape. Renamed into the chain's namespace — one chain's
+ * templates never appear in another's set — and the lead layouts let
+ * their A offer break out of its cell, as a "1prio" box does.
+ */
+export function cmsGridTemplates(brandId: string): PageTemplateLike[] {
+  return offerGridTemplates(1, 8).map((t) => ({
+    ...t,
+    id: t.id.replace(OFFER_GRID_PREFIX, `${brandId}/`),
+    slots: t.slots.map((s) => (s.role === 'hero' && t.id.includes('lead') ? { ...s, bleed: 1.06 } : s)),
+  }));
 }

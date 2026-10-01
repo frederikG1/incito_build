@@ -3,6 +3,8 @@ import { parseCsv, sniffDelimiter } from '@incitio/ingest';
 import { NETTO } from './brands/netto.js';
 import { NEMLIG } from './brands/nemlig.js';
 import { SUPERBRUGSEN } from './brands/superbrugsen.js';
+import { LOEVBJERG } from './brands/loevbjerg.js';
+import { WOLT } from './brands/wolt.js';
 import type { BrandDefinition, FeedSource } from './types.js';
 import { tjekOffers, tjekTransformed } from './tjek.js';
 
@@ -52,7 +54,7 @@ function withTjekFormats(definition: BrandDefinition): BrandDefinition {
 }
 
 const REGISTRY: Record<string, BrandDefinition> = Object.fromEntries(
-  [NETTO, SUPERBRUGSEN, NEMLIG].map((definition) => [definition.brand.id, withTjekFormats(definition)]),
+  [NETTO, SUPERBRUGSEN, NEMLIG, LOEVBJERG, WOLT].map((definition) => [definition.brand.id, withTjekFormats(definition)]),
 );
 
 export class UnknownBrandError extends Error {
