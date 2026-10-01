@@ -18,6 +18,7 @@ export * from './document.js';
 export * from './paged.js';
 export * from './cells.js';
 export * from './catalog.js';
+export * from './designs.js';
 
 import { fetchIncito, fetchPageImage, fetchSource, PublicationError } from './fetch.js';
 import { pagedPublication, type PagedCell, type PagedSource } from './paged.js';
