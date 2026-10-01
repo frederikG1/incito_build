@@ -3,3 +3,4 @@ export * from './week.js';
 export * from './template.js';
 export * from './brand.js';
 export * from './catalog.js';
+export * from './offer-designs.js';
