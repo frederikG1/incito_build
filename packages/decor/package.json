@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./prompt": "./src/prompt.ts",
     "./gemini": "./src/gemini.ts",
-    "./backdrop": "./src/backdrop.ts"
+    "./backdrop": "./src/backdrop.ts",
+    "./image-cache": "./src/image-cache.ts"
   },
   "dependencies": {
     "@incitio/schema": "0.1.0",

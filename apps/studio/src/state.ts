@@ -21,6 +21,7 @@ import { priceRuleFindings } from './pricerules.js';
 import { bookingFindings } from './inventory.js';
 import type { ApprovalRole, LiveEvent, SlotBooking } from '@incitio/schema';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
+import './image-route.js';
 import { incitoOfferBoxes, offerViewIds, sizedImage, packStyle, pageBlocks, pagedSheet } from '@incitio/renderer';
 import { freeSlots, growTemplate, grownId } from './grid.js';
 import * as api from './api.js';
@@ -3017,6 +3018,10 @@ export const useStudio = create<StudioState>((set, get) => {
    * here, quietly and a few at a time, at the sizes the overview and the
    * page editor draw them, they are in the browser's cache by the time
    * the pages want them. A newer feed stops an older warm-up.
+   *
+   * Through the API's image cache (`image-route.ts`): warmed straight
+   * from the chain's image service, every reload asked it for every
+   * picture twice, and Republica wrote to ask why.
    */
   let warming = 0;
   function warmImages(offers: Offer[]): void {

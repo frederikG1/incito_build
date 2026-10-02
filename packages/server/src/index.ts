@@ -25,7 +25,7 @@ import { join, normalize, sep } from 'node:path';
 import { renderCataloguePdf } from '@incitio/pdf';
 import {
   clusterPrompt, composeCluster, backdropPrompt, motifPrompt, keyOutMotifs, composedCount, cropBoxes, cutout, decorate, fetchImages, findIslands, findVariants, generateImage, ASPECTS,
-  sharedBrowser, DEFAULT_IMAGE_MODEL, GeminiError,
+  sharedBrowser, DEFAULT_IMAGE_MODEL, GeminiError, CACHED, cachedImage,
 } from '@incitio/decor';
 import { findPageCells, importPublication, PublicationError } from '@incitio/publication';
 import { SaveConflict, Section, Store } from './db.js';
@@ -175,6 +175,24 @@ export function createApp(store: Store, options: AppOptions = {}) {
   app.use('/api/*', cors({ origin: '*', allowHeaders: ['content-type', BRAND_HEADER, KEY_HEADER] }));
 
   app.get('/api/health', (c) => c.json({ ok: true }));
+
+  /*
+   * The chain's product photographs, through this server's disk cache —
+   * see `cachedImage`. The studio's service worker (`image-sw.js`) sends
+   * every request for the image service here, so the service is asked
+   * once per picture and size, not once per tile per reload. Only the
+   * hosts `CACHED` names; anything else is refused, not fetched.
+   */
+  app.get('/api/images', async (c) => {
+    const url = c.req.query('u') ?? '';
+    if (!CACHED.test(url)) return c.json({ error: 'not an image service this server caches' }, 400);
+    const image = await cachedImage(url);
+    if (!image) return c.body(null, 404, { 'cache-control': 'no-store' });
+    return c.body(new Uint8Array(image.bytes), 200, {
+      'content-type': image.mimeType,
+      'cache-control': 'public, max-age=31536000, immutable',
+    });
+  });
 
   /** The chains this deployment serves. The only unscoped route. */
   app.get('/api/brands', (c) => c.json({ brands: listBrands() }));
@@ -1994,6 +2012,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     const pdf = await renderCataloguePdf(document, definition.brand, {
       ...(options.assetDir ? { assetDir: options.assetDir } : {}),
       ...(forPrint ? { marks: { bleedMm: 3, slug: `${document.name} · tryk ${stamp}` } } : {}),
+      images: { matches: CACHED, get: cachedImage },
     });
     return c.body(new Uint8Array(pdf), 200, {
       'content-type': 'application/pdf',

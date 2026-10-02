@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
-import { createReadStream, statSync } from 'node:fs';
+import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize, sep } from 'node:path';
 
 const DATA = fileURLToPath(new URL('../../data', import.meta.url));
@@ -50,12 +50,34 @@ function liveData(): Plugin {
 }
 
 /**
+ * The service worker that routes the chain's product photographs through
+ * the API's cache (`image-sw.js`). Served at the root so its scope is the
+ * whole studio — `data/` is the public dir, so it cannot simply live there.
+ */
+const SW = fileURLToPath(new URL('./image-sw.js', import.meta.url));
+function imageWorker(): Plugin {
+  return {
+    name: 'incitio-image-worker',
+    configureServer(server) {
+      server.middlewares.use('/image-sw.js', (_req, res) => {
+        res.setHeader('content-type', 'text/javascript');
+        res.setHeader('cache-control', 'no-cache');
+        res.end(readFileSync(SW));
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'image-sw.js', source: readFileSync(SW, 'utf8') });
+    },
+  };
+}
+
+/**
  * `data/` is served as the static root so generated product images resolve
  * at the same `/images/...` paths the feed carries — no rewriting of URLs
  * between ingest and render.
  */
 export default defineConfig({
-  plugins: [liveData(), react()],
+  plugins: [imageWorker(), liveData(), react()],
   publicDir: DATA,
   server: {
     port: 5173,

@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import type { Browser } from 'playwright';
 import type { Brand, CatalogDocument } from '@incitio/schema';
 import { inspectCatalogue } from '@incitio/pdf';
+import { CACHED, cachedImage } from '@incitio/decor/image-cache';
 import { measureInputs, type Finding } from '@incitio/workflow';
 
 /**
@@ -56,5 +57,6 @@ export async function measuredFindings(avis: CatalogDocument, brand: Brand, opti
     ...(options.assetDir ? { assetDir: options.assetDir } : {}),
     ...(options.browser ? { browser: options.browser } : {}),
     imageTimeoutMs: options.imageTimeoutMs ?? 15_000,
+    images: { matches: CACHED, get: cachedImage },
   });
 }

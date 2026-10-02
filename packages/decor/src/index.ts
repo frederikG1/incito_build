@@ -14,6 +14,7 @@ export * from './cluster.js';
 export * from './store.js';
 export * from './split.js';
 export * from './backdrop.js';
+export * from './image-cache.js';
 
 /**
  * Step 5: decoration.

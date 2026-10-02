@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { OfferRules, readDesignExport, type OfferDesign } from '@incitio/schema';
 import { fileURLToPath } from 'node:url';
 import { parseLabelDictionary, EMPTY_LABEL_DICTIONARY } from '@incitio/ingest';
-import { sharedBrowser } from '@incitio/decor';
+import { cacheImagesIn, sharedBrowser } from '@incitio/decor';
 import type { Brand, CatalogDocument } from '@incitio/schema';
 import { measuredFindings } from './print.js';
 import { createApp, Store } from './index.js';
@@ -65,6 +65,9 @@ const defaultDesigns = (() => {
   }
   return out;
 })();
+
+// The chain's product photographs, fetched once per machine — see `cachedImage`.
+cacheImagesIn(process.env['INCITIO_IMAGE_CACHE'] ?? fileURLToPath(new URL('../../../.data/image-cache', import.meta.url)));
 
 const store = new Store(dbPath);
 const port = Number(process.env['PORT'] ?? 8787);

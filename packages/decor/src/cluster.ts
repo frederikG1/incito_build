@@ -21,6 +21,7 @@
  * shadow that makes the cutout impossible to place on a coloured page.
  */
 import { generateImage, type GeminiOptions, type GeneratedImage } from './gemini.js';
+import { CACHED, cachedImage } from './image-cache.js';
 
 /** One product going into the cluster, as the prompt needs to name it. */
 export interface ClusterProduct {
@@ -249,6 +250,7 @@ export function forgetImages(): void {
 }
 
 async function download(url: string): Promise<GeneratedImage | null> {
+  if (CACHED.test(url)) return cachedImage(url);
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_MS) });
     if (!response.ok) return null;

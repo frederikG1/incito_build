@@ -25,6 +25,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
+import { CACHED, cachedImage } from '@incitio/decor/image-cache';
 import { TILE_ARRANGEMENTS, type Offer, type SlotRole, type TileArrangement } from '@incitio/schema';
 
 /**
@@ -193,6 +194,12 @@ async function packshots(offers: Offer[]): Promise<Picture[]> {
     .slice(0, 8);
 
   const fetched = await Promise.all(urls.map(async (url): Promise<Picture | null> => {
+    if (CACHED.test(url)) {
+      const image = await cachedImage(url);
+      return image && IMAGE_TYPES.includes(image.mimeType as ImageType)
+        ? { type: 'image', source: { type: 'base64', media_type: image.mimeType as ImageType, data: image.bytes.toString('base64') } }
+        : null;
+    }
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_MS) });
       if (!response.ok) return null;

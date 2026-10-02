@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@incitio/renderer/styles.css';
 import './app.css';
+// First: every picture from the chain's image service goes through the API's cache.
+import './image-route.js';
 import { App } from './App.js';
 
 const container = document.getElementById('root');

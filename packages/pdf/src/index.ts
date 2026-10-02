@@ -30,6 +30,28 @@ export interface PrintOptions {
    * and a line saying what the sheet is. Omit for a proof.
    */
   marks?: PrintMarks;
+  /**
+   * Answer these hosts' pictures from somewhere other than the network —
+   * the server's disk cache, so a print does not fetch every photograph
+   * from the chain's image service again. Requests that `matches` does
+   * not match load as usual.
+   */
+  images?: PrintImages;
+}
+
+export interface PrintImages {
+  matches: RegExp;
+  get(url: string): Promise<{ bytes: Buffer; mimeType: string } | null>;
+}
+
+async function routeImages(page: import('playwright').Page, images: PrintImages | undefined): Promise<void> {
+  if (!images) return;
+  await page.route(images.matches, async (route) => {
+    const image = await images.get(route.request().url());
+    await (image
+      ? route.fulfill({ status: 200, contentType: image.mimeType, body: image.bytes })
+      : route.fulfill({ status: 404, body: '' }));
+  });
 }
 
 export interface PrintMarks {
@@ -165,6 +187,7 @@ export async function renderCataloguePdf(
   writeFileSync(scratch, html);
 
   try {
+    await routeImages(page, options.images);
     await page.goto(pathToFileURL(scratch).href, { waitUntil: 'load' });
     await settleType(page);
     await settleImages(page, options.imageTimeoutMs ?? 20_000);
@@ -220,6 +243,7 @@ export async function renderCataloguePngs(
   writeFileSync(scratch, html);
 
   try {
+    await routeImages(page, options.images);
     await page.goto(pathToFileURL(scratch).href, { waitUntil: 'load' });
     await settleType(page);
     // Extra rules for a partial proof — the ground alone, say.
@@ -261,6 +285,7 @@ export async function inspectCatalogue<T>(
   const scratch = join(options.assetDir ?? tmpdir(), `.incitio-check-${randomUUID()}.html`);
   writeFileSync(scratch, html);
   try {
+    await routeImages(page, options.images);
     await page.goto(pathToFileURL(scratch).href, { waitUntil: 'load' });
     await settleType(page);
     await settleImages(page, options.imageTimeoutMs ?? 20_000);
