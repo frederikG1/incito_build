@@ -5,6 +5,7 @@ import {
 } from '@incitio/schema';
 import { DesignTile, ImageSize, PageView } from '@incitio/renderer';
 import { THUMB_PX, useStudio } from './state.js';
+import { usePopover } from './popover.js';
 
 /**
  * The chain's own rules for which layout an offer gets.
@@ -76,6 +77,7 @@ function designStarters(tags: string[]): { label: string; rule: Omit<OfferRuleIn
 export function OfferRulesPanel() {
   const open = useStudio((s) => s.rulesOpen);
   const setOpen = useStudio((s) => s.setRulesOpen);
+  usePopover(open, () => setOpen(false));
   const brand = useStudio((s) => s.brand);
   const saving = useStudio((s) => s.rulesSaving);
   const setRules = useStudio((s) => s.setOfferRules);

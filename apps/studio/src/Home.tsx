@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
-import { nextWeek, weekOf, weekRange, type CatalogWeek } from '@incitio/schema';
+import { APPROVAL_ROLE_NAMES, nextWeek, weekOf, weekRange, type CatalogWeek } from '@incitio/schema';
 import type { CatalogStatus, CatalogSummary } from './api.js';
 import { useStudio } from './state.js';
 import { usePopover } from './popover.js';
+import { Cover } from './Cover.js';
+import { avisTitle } from './names.js';
 
 /**
  * Forsiden — where a week's work starts.
@@ -66,13 +68,15 @@ export function Home() {
 
   const listed = others.filter((c) => all || c.status !== 'skjult');
   const shortList = all ? listed : listed.slice(0, SHORT_LIST);
-  const current = s.brands.find((brand) => brand.id === s.brandId);
+  const color = s.brand?.tokens.brand ?? 'var(--ink)';
+  const chain = (s.brands.find((brand) => brand.id === s.brandId)?.name ?? s.brand?.name ?? '').split(' — ')[0];
 
   return (
     <main className="book home">
-      <header className="home__head">
+      <header className="home__head" style={{ ['--chain' as string]: color }}>
+        <span className="home__chain"><i style={{ background: color }} />{chain}</span>
         <h2>Uge {today.week}</h2>
-        <span>{weekRange(today)}</span>
+        <span className="home__dates">{weekRange(today)}</span>
       </header>
 
       <div className="home__weeks">
@@ -82,32 +86,82 @@ export function Home() {
 
       {listed.length > 0 && (
         <section className="home__archive">
-          <h3>Andre aviser</h3>
-          <div className="home__rows">
-            {shortList.map((c) => <Row key={c.id} item={c} openId={openId} />)}
+          <div className="home__archhead">
+            <h3>Andre aviser</h3>
+            {others.length > SHORT_LIST && (
+              <button className="linkish home__toggle" onClick={() => setAll(!all)}>
+                {all ? 'Vis færre' : `Vis alle ${others.length}`}
+              </button>
+            )}
           </div>
-          {others.length > SHORT_LIST && (
-            <button className="linkish home__toggle" onClick={() => setAll(!all)}>
-              {all ? 'Vis færre' : `Vis alle ${others.length}`}
-            </button>
-          )}
+          <div className="home__grid">
+            {shortList.map((c) => <Tile key={c.id} item={c} openId={openId} />)}
+          </div>
         </section>
       )}
 
-      {s.brands.length > 1 && (
-        <footer className="home__foot">
-          <label>
-            <span>Kæde</span>
-            <select value={s.brandId ?? ''} disabled={Boolean(s.busy)} onChange={(event) => void s.signInAs(event.target.value)}>
-              {s.brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
-            </select>
-          </label>
-          {current && <span className="home__muted">Du arbejder i {current.name}</span>}
-        </footer>
-      )}
+      <Chain />
 
       {making && <NewAvis week={making} from={latest(making)} onClose={() => setMaking(null)} />}
     </main>
+  );
+}
+
+/**
+ * What belongs to the chain rather than to one week: its designs, the
+ * rules that pick them, its themes and its saved sections.
+ *
+ * They were reachable only through ⌘K, and only if you knew the word.
+ * Here they are on the chain's own page, each saying how many it holds
+ * and what it is for.
+ */
+function Chain() {
+  const s = useStudio();
+  const designs = s.brand?.offerDesigns.length ?? 0;
+  const tags = new Set((s.brand?.offerDesigns ?? []).map((design) => design.tag)).size;
+  const rules = s.brand?.offerRules.length ?? 0;
+  const items: { key: string; glyph: string; title: string; count: string; said: string; run: (() => void) | null }[] = [
+    {
+      key: 'designs', glyph: '◧', title: 'Varedesigns',
+      count: designs ? `${designs} designs · ${tags} ${tags === 1 ? 'tag' : 'tags'}` : 'ingen endnu',
+      said: 'Hvor billede, pris og tekst står på en vare',
+      run: () => s.setDesignsOpen(true),
+    },
+    {
+      key: 'rules', glyph: '⇄', title: 'Regler',
+      count: rules ? `${rules} ${rules === 1 ? 'regel' : 'regler'}` : 'ingen endnu',
+      said: 'Hvilket design en vare får, og hvornår',
+      run: () => s.setRulesOpen(true),
+    },
+    {
+      key: 'themes', glyph: '✦', title: 'Temaer',
+      count: s.themes.length ? `${s.themes.length} ${s.themes.length === 1 ? 'tema' : 'temaer'}` : 'ingen endnu',
+      said: 'Fødselsdag, jul, Halloween — avisens udklædning',
+      run: () => s.setThemesOpen(true),
+    },
+    {
+      key: 'sections', glyph: '▤', title: 'Sektioner',
+      count: s.sections.length ? `${s.sections.length} gemte sider` : 'ingen endnu',
+      said: s.document ? 'Gemte sidedesigns, fyldt med ugens varer' : 'Bruges når en avis er åben',
+      run: s.document ? () => { s.openPage(null); s.setSectionsOpen(true); } : null,
+    },
+  ];
+  return (
+    <section className="home__chainrow">
+      <div className="home__archhead"><h3>Kæden</h3><span className="home__muted">det der gælder alle uger</span></div>
+      <div className="home__tools">
+        {items.map((item) => (
+          <button key={item.key} className="home__tool" disabled={!item.run || Boolean(s.busy)} onClick={() => item.run?.()}>
+            <span className="home__glyph" aria-hidden="true">{item.glyph}</span>
+            <span className="home__toollines">
+              <b>{item.title}</b>
+              <small>{item.count}</small>
+              <span>{item.said}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -137,19 +191,72 @@ function WeekCard({ label, week, avis, away, openId, onMake }: {
     );
   }
   return (
-    <section className="home__week">
+    <section className={`home__week${open ? ' is-open' : ''}`}>
+      <button className="home__cover" onClick={() => void openAvis(s, avis, open)} title={`Åbn ${avis.name}`} disabled={Boolean(s.busy)}>
+        <Cover id={avis.id} updatedAt={avis.updatedAt} size="hero" />
+      </button>
+      <div className="home__info">
       <span className="home__label">{label} · uge {week.week}</span>
-      <b className="home__title">{avis.name}</b>
+      <b className="home__title">{avisTitle(avis.name, s.brand?.name)}</b>
       <span className="home__meta">
         {avis.pages} {avis.pages === 1 ? 'side' : 'sider'} · rettet {lately(avis.updatedAt)}
         {avis.status !== 'kladde' && <i className={`home__pill home__pill--${avis.status}`}>{STATUS_WORDS[avis.status]}</i>}
       </span>
+      <WeekProgress avis={avis} />
       <div className="home__acts">
         <OpenButton item={avis} open={open} primary />
         <RowMenu item={avis} />
       </div>
+      </div>
     </section>
   );
+}
+
+/**
+ * How far the week is, in the three things that are not the pages:
+ * who has signed, what is sold, and — once it is out — what changed.
+ * Each one opens the screen it is about.
+ */
+function WeekProgress({ avis }: { avis: CatalogSummary }) {
+  const s = useStudio();
+  // Only signatures that still hold — one with changes since is shown as such, never counted.
+  const signed = new Set(avis.approvals ?? []);
+  const stale = new Set(avis.stale ?? []);
+  const roles = Object.keys(APPROVAL_ROLE_NAMES) as (keyof typeof APPROVAL_ROLE_NAMES)[];
+  const go = async (view: 'godkend' | 'pladser' | 'live') => {
+    if ((s.variantBase ?? s.document)?.id !== avis.id) await s.openCatalogue(avis.id);
+    s.openBoard(view);
+  };
+  return (
+    <div className="home__progress">
+      <button className="home__step" disabled={Boolean(s.busy)} onClick={() => void go('godkend')} title="Godkend">
+        {roles.map((role) => (
+          <i
+            key={role}
+            className={signed.has(role) ? 'is-on' : stale.has(role) ? 'is-stale' : ''}
+            title={`${APPROVAL_ROLE_NAMES[role]}${signed.has(role) ? ' har godkendt' : stale.has(role) ? ' skal se ændringer igen' : ' mangler'}`}
+          />
+        ))}
+        <span>{signed.size} af {roles.length} godkendt</span>
+      </button>
+      {Boolean(avis.sold) && (
+        <button className="home__step" disabled={Boolean(s.busy)} onClick={() => void go('pladser')}>
+          <span>◆ {avis.sold} {avis.sold === 1 ? 'plads' : 'pladser'} solgt · kr. {(avis.soldFor ?? 0).toLocaleString('da-DK')}</span>
+        </button>
+      )}
+      {avis.status === 'udgivet' && (
+        <button className="home__step" disabled={Boolean(s.busy)} onClick={() => void go('live')}>
+          <i className="is-live" /><span>Live{avis.live ? ` · ${avis.live} ${avis.live === 1 ? 'ændring' : 'ændringer'}` : ''}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Open an avis — or, when it is already the open one, go back into it. */
+async function openAvis(s: ReturnType<typeof useStudio.getState>, item: CatalogSummary, open: boolean) {
+  if (!open) await s.openCatalogue(item.id);
+  s.openPage(null);
 }
 
 function OpenButton({ item, open, primary }: { item: CatalogSummary; open: boolean; primary?: boolean }) {
@@ -158,28 +265,34 @@ function OpenButton({ item, open, primary }: { item: CatalogSummary; open: boole
     <button
       className={primary ? 'go' : 'thin'}
       disabled={Boolean(s.busy)}
-      onClick={async () => {
-        if (!open) await s.openCatalogue(item.id);
-        s.openPage(null);
-      }}
+      onClick={() => void openAvis(s, item, open)}
     >{open ? 'Fortsæt' : 'Åbn'}</button>
   );
 }
 
-/** One saved avis in the short list: its name, when, and open. */
-function Row({ item, openId }: { item: CatalogSummary; openId: string | null }) {
+/** One saved avis on the front page: its cover, its name, when — the cover opens it. */
+function Tile({ item, openId }: { item: CatalogSummary; openId: string | null }) {
+  const s = useStudio();
   const open = item.id === openId;
+  const title = avisTitle(item.name, s.brand?.name);
   return (
-    <div className={`home__row${open ? ' is-open' : ''}${item.status === 'skjult' ? ' is-away' : ''}`}>
-      <div className="home__what">
-        <b>{item.name}</b>
-        <small>
-          {item.week ? `uge ${item.week.week} · ` : ''}rettet {lately(item.updatedAt)}
-          {item.status !== 'kladde' && ` · ${STATUS_WORDS[item.status].toLowerCase()}`}
-        </small>
+    <div className={`home__tile${open ? ' is-open' : ''}${item.status === 'skjult' ? ' is-away' : ''}`}>
+      <button className="home__cover" onClick={() => void openAvis(s, item, open)} title={`Åbn ${item.name}`} disabled={Boolean(s.busy)}>
+        <Cover id={item.id} updatedAt={item.updatedAt} />
+        {open && <span className="home__now">Åben nu</span>}
+      </button>
+      <div className="home__tileinfo">
+        <div className="home__what">
+          <b title={item.name}>{title}</b>
+          {/* The week only when the name does not already say it. */}
+          <small>
+            {item.week && !title.toLowerCase().startsWith(`uge ${item.week.week}`) ? `uge ${item.week.week} · ` : ''}
+            {item.pages} {item.pages === 1 ? 'side' : 'sider'} · {lately(item.updatedAt)}
+          </small>
+          {item.status !== 'kladde' && <i className={`home__pill home__pill--${item.status}`}>{STATUS_WORDS[item.status]}</i>}
+        </div>
+        <RowMenu item={item} />
       </div>
-      <OpenButton item={item} open={open} />
-      <RowMenu item={item} />
     </div>
   );
 }

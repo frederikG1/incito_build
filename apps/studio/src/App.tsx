@@ -24,6 +24,9 @@ import { SaveSection } from "./Weekly.js";
 import { EditionsBoard } from "./Editions.js";
 import { FillPageButton } from "./FillPage.js";
 import { GoodsBoard } from "./Goods.js";
+import { SlotsBoard } from "./Slots.js";
+import { LiveBoard } from "./Live.js";
+import { SignoffBoard } from "./Signoff.js";
 import { Home } from "./Home.js";
 import { ThemesPanel } from "./Themes.js";
 import { Keys, Palette } from "./Palette.js";
@@ -153,6 +156,97 @@ function StandUp({ pageId }: { pageId: string }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * The tools for the page in view — one bar, pinned over the column.
+ *
+ * Every sheet used to carry its own copy: twelve pages, twelve rows of
+ * the same six buttons, plus a strip of picture chips under each. The
+ * column read as toolbars with pages between them. Now the bar belongs
+ * to the page you are on (the one in view, or the one you clicked) and
+ * stays put while you scroll, saying which page it is acting on.
+ */
+function PageTools() {
+  const s = useStudio();
+  const pageId = s.activePageId ?? s.openPageId;
+  const document = s.document;
+  const index = document?.pages.findIndex((entry) => entry.id === pageId) ?? -1;
+  const page = index >= 0 ? document!.pages[index]! : null;
+  if (!page || page.kind === "image") return null;
+
+  const editing = s.layoutEditPageId === page.id;
+  const pictured = page.placements.some((placement) => {
+    const offer = document!.offers.find((entry) => entry.id === placement.offerId);
+    return Boolean(offer && (offer.imageUrl || offer.imagePack.length > 0));
+  });
+
+  return (
+    <div className="tools pagebar" role="toolbar" aria-label={`Side ${index + 1}`}>
+      {/* Which page it acts on is said once, in the header's pager — and by the dark number on the sheet. */}
+      <div className="tools__group">
+        <button
+          className={`pagebar__pics${page.background ? " is-on" : ""}`}
+          title="Billeder på siden, baggrund og kædens billedbibliotek"
+          onClick={() => { s.setActivePage(page.id); s.togglePanel("stemning"); }}
+        >
+          Billeder og baggrund
+        </button>
+        <button
+          className={`pagebar__pics${editing ? " is-editing" : ""}`}
+          title="Træk i felterne for at gøre dem større, mindre eller flytte dem (Esc er færdig)"
+          onClick={() => s.setLayoutEdit(editing ? null : page.id)}
+        >
+          {editing ? "Færdig" : "Rediger layout"}
+        </button>
+        {editing && (
+          <button
+            className="pagebar__pics"
+            title="Et nyt, tomt felt midt på siden"
+            onClick={() => s.addCell(page.id, { x: 0.3, y: 0.4, w: 0.4, h: 0.25 })}
+          >
+            + Felt
+          </button>
+        )}
+        {page.kind === "offers" && <FillPageButton pageId={page.id} />}
+        <button
+          className="pagebar__pics"
+          title="Læg en tekst på siden — flyt den med musen, skriv den i panelet til højre"
+          onClick={() => s.addNote(page.id)}
+        >
+          + Tekst
+        </button>
+      </div>
+      {pictured && <StandUp pageId={page.id} />}
+
+      {/* The page's pictures, as chips in the same bar — only when it has any. */}
+      {page.decorations.length > 0 && (
+        <div className="tools__pics">
+          {page.decorations.map((decor) => (
+            <div className={s.selectedDecorId === decor.id ? "pic is-held" : "pic"} key={decor.id}>
+              {/*
+               * Takes the picture in hand: it is painted behind the grid,
+               * so on a full page there is nothing to grab. Armed, it is
+               * lifted over the tiles and takes the pointer.
+               */}
+              <button
+                className="pic__hold"
+                title={s.selectedDecorId === decor.id
+                  ? "Slip billedet — så lægger det sig bag varerne igen"
+                  : `${decor.subject || "Eget billede"} — tag det i hånden, så kan det trækkes på siden`}
+                onClick={() => s.selectDecor(s.selectedDecorId === decor.id ? null : decor.id)}
+              >
+                <img src={decor.imageUrl} alt="" />
+              </button>
+              <button className="pic__drop" title="Tag billedet af siden" onClick={() => s.removePageImage(page.id, decor.id)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="tools__gap" />
+      <PageMore pageId={page.id} />
     </div>
   );
 }
@@ -748,6 +842,9 @@ export function App() {
       {s.view === "hjem" && s.brand && <Home />}
       {s.view === "udgaver" && s.brand && <EditionsBoard />}
       {s.view === "varer" && s.brand && <GoodsBoard />}
+      {s.view === "pladser" && s.brand && <SlotsBoard />}
+      {s.view === "live" && s.brand && <LiveBoard />}
+      {s.view === "godkend" && s.brand && <SignoffBoard />}
 
       {s.view === "side" && (
       /* Photographs at the size a page on screen shows them — see `ImageSize`. */
@@ -777,6 +874,7 @@ export function App() {
            * the same button is how a screen stops being read at all.
            * What is left is the shape of what they are about to get.
            */}
+          {s.document && <PageTools />}
           {!s.document && s.brand && (
             <div className="blank">
               <div className="blank__sheet" aria-hidden="true" />
@@ -941,140 +1039,6 @@ export function App() {
                       onChange={(event) => s.setPageSubtitle(page.id, event.target.value)}
                     />
                   </div>
-                  <div className="pagebar">
-                    {/* No layout to pick: the page's shape follows its
-                        offers, and each offer's look follows the chain's
-                        rules — see `OfferRules`. */}
-
-                    {/*
-                      * Everything that is a picture rather than a
-                      * product — the chain's library, a picture on the
-                      * page, a picture under it, the mood artwork — in
-                      * one panel addressed to this page. It was two
-                      * file pickers here plus a third button up in the
-                      * header; one clearly named door is easier.
-                      */}
-                    <button
-                      className={`pagebar__pics${page.background ? " is-on" : ""}`}
-                      title="Billeder på siden, baggrund og kædens billedbibliotek"
-                      onClick={() => {
-                        s.setActivePage(page.id);
-                        s.togglePanel("stemning");
-                      }}
-                    >
-                      Billeder og baggrund
-                    </button>
-
-                    {/*
-                      * The page's shape by hand: every cell a box to drag
-                      * and resize. Off again with Færdig or Esc.
-                      */}
-                    <button
-                      className={`pagebar__pics${s.layoutEditPageId === page.id ? " is-editing" : ""}`}
-                      title="Træk i felterne for at gøre dem større, mindre eller flytte dem"
-                      onClick={() => s.setLayoutEdit(s.layoutEditPageId === page.id ? null : page.id)}
-                    >
-                      {s.layoutEditPageId === page.id ? "Færdig" : "Rediger layout"}
-                    </button>
-                    {s.layoutEditPageId === page.id && (
-                      <button
-                        className="pagebar__pics"
-                        title="Et nyt, tomt felt midt på siden"
-                        onClick={() => s.addCell(page.id, { x: 0.3, y: 0.4, w: 0.4, h: 0.25 })}
-                      >
-                        + Felt
-                      </button>
-                    )}
-
-                    {/* The empty band under the products, used: bigger tiles or more of them. */}
-                    {page.kind === "offers" && <FillPageButton pageId={page.id} />}
-
-                    {/* Words anywhere on the page — a headline of your
-                        own, "Kun i weekenden", a price note. */}
-                    <button
-                      className="pagebar__pics"
-                      title="Læg en tekst på siden — flyt den med musen, skriv den i panelet til højre"
-                      onClick={() => s.addNote(page.id)}
-                    >
-                      + Tekst
-                    </button>
-
-
-                    {/* Every tile on the sheet in one errand — the ones put
-                        together by hand, and every packshot that shows
-                        several products. Violet, as everything a model does. */}
-                    {page.placements.some((placement) => {
-                      const offer = offers.get(placement.offerId);
-                      return Boolean(offer && (offer.imageUrl || offer.imagePack.length > 0));
-                    }) && (
-                      <StandUp pageId={page.id} />
-                    )}
-                    <PageMore pageId={page.id} />
-                  </div>
-
-                  {/*
-                   * The pictures on this page, only when there are any.
-                   *
-                   * Its own row rather than more controls in the bar
-                   * above: a page usually has none, and a permanently
-                   * empty strip on every sheet is exactly the clutter
-                   * this bar was just cleared of.
-                   */}
-                  {page.decorations.length > 0 && (
-                    <div className="sheet__images">
-                      {page.decorations.map((decor) => (
-                        <div
-                          className={
-                            s.selectedDecorId === decor.id
-                              ? "pic is-held"
-                              : "pic"
-                          }
-                          key={decor.id}
-                        >
-                          {/*
-                           * Takes the picture in hand.
-                           *
-                           * A decoration is painted behind the grid, so on
-                           * a full page the pointer lands on a tile every
-                           * time and there is nothing to grab. Arming it
-                           * here lifts it over the tiles and hands it the
-                           * pointer — the same bargain a tile makes when
-                           * you click it before dragging its parts.
-                           */}
-                          <button
-                            className="pic__hold"
-                            title={
-                              s.selectedDecorId === decor.id
-                                ? "Slip billedet — så lægger det sig bag varerne igen"
-                                : "Tag billedet i hånden, så kan det trækkes på siden"
-                            }
-                            onClick={() =>
-                              s.selectDecor(
-                                s.selectedDecorId === decor.id
-                                  ? null
-                                  : decor.id,
-                              )
-                            }
-                          >
-                            <img src={decor.imageUrl} alt="" />
-                          </button>
-                          {/* The rest — corner, size, turn, layer, mirror —
-                              is in the panel on the right once it is in
-                              hand. */}
-                          <span className="pic__name">
-                            {decor.subject || (decor.id.startsWith("decor-") ? "AI-billede" : "Eget billede")}
-                          </span>
-                          <button
-                            className="pic__drop"
-                            title="Tag billedet af siden"
-                            onClick={() => s.removePageImage(page.id, decor.id)}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                   <div className="sheet__paper">
                   <PageView
                     page={page}

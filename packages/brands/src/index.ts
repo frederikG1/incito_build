@@ -69,8 +69,9 @@ export function brandIds(): string[] {
   return Object.keys(REGISTRY);
 }
 
-export function listBrands(): { id: string; name: string }[] {
-  return Object.values(REGISTRY).map((d) => ({ id: d.brand.id, name: d.brand.name }));
+export function listBrands(): { id: string; name: string; color: string; accent: string }[] {
+  // The chain's own two colours travel with its name, so a picker can show which chain is which at a glance.
+  return Object.values(REGISTRY).map((d) => ({ id: d.brand.id, name: d.brand.name, color: d.brand.tokens.brand, accent: d.brand.tokens.accent }));
 }
 
 export function findBrand(id: string): BrandDefinition | undefined {

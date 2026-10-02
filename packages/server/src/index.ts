@@ -29,6 +29,8 @@ import {
 } from '@incitio/decor';
 import { findPageCells, importPublication, PublicationError } from '@incitio/publication';
 import { SaveConflict, Section, Store } from './db.js';
+import { keepWorkflow, standInPrices, type PriceSource } from '@incitio/workflow';
+import { makeCommit, Refused, refusal, workflowRoutes } from './workflow.js';
 
 export { Store } from './db.js';
 
@@ -104,6 +106,12 @@ export interface AppOptions {
    * for the same reason as `labels`: this library owns no filesystem.
    */
   defaultDesigns?: Record<string, { designs: OfferDesign[]; tag: string | null; rules?: OfferRules }>;
+  /**
+   * The 30-day price history "før"-prices are judged by when publishing
+   * and on a published avis. Defaults to the stand-in the studio shows
+   * (`standInPrices`) — a chain's price file replaces it here.
+   */
+  prices?: PriceSource;
 }
 
 /** The chain a Tjek offers file names on its rows, when it names one. */
@@ -124,6 +132,8 @@ function feedDealer(text: string): string | null {
 export function createApp(store: Store, options: AppOptions = {}) {
   const app = new Hono<Scope>();
   const labels = options.labels ?? EMPTY_LABEL_DICTIONARY;
+  const prices = options.prices ?? standInPrices;
+  const commit = makeCommit(store, prices);
   /*
    * A store per chain, made where the chain is known.
    *
@@ -310,6 +320,24 @@ export function createApp(store: Store, options: AppOptions = {}) {
   });
 
   /*
+   * An avis's front page and what stands on it, for the front page's
+   * covers: a page, its offers and its layout — enough to draw it with
+   * the renderer, a hundredth of the document.
+   */
+  app.get('/api/brand/catalogs/:id/cover', (c) => {
+    const document = store.get(c.get('brand').brand.id, c.req.param('id'));
+    if (!document) return c.json({ error: 'not found' }, 404);
+    const page = document.pages[0] ?? null;
+    if (!page) return c.json({ page: null, offers: [], templates: [] });
+    const on = new Set(page.placements.map((p) => p.offerId));
+    return c.json({
+      page,
+      offers: document.offers.filter((o) => on.has(o.id)),
+      templates: document.templates.filter((t) => t.id === page.templateId),
+    });
+  });
+
+  /*
    * The name and the status, from the front page: two fields, so
    * renaming last week's avis does not mean opening it. Saved as a
    * version like any other change.
@@ -319,16 +347,24 @@ export function createApp(store: Store, options: AppOptions = {}) {
     status: z.enum(['kladde', 'klar', 'udgivet', 'skjult']).optional(),
   });
   app.patch('/api/brand/catalogs/:id', async (c) => {
-    const brandId = c.get('brand').brand.id;
-    const document = store.get(brandId, c.req.param('id'));
-    if (!document) return c.json({ error: 'not found' }, 404);
+    const { brand } = c.get('brand');
     let payload: unknown;
     try { payload = await c.req.json(); } catch { return c.json({ error: 'body is not valid JSON' }, 400); }
     const parsed = MetaRequest.safeParse(payload);
     if (!parsed.success) return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
-    const next = { ...document, ...parsed.data };
-    const label = parsed.data.name ? 'omdøbt' : `status ${parsed.data.status ?? ''}`.trim();
-    return c.json({ document: store.save(brandId, next, label) });
+    const patch = parsed.data;
+    try {
+      const { document } = commit(brand, c.req.param('id'), undefined, (stored) => {
+        if (patch.status && patch.status !== stored.status && (patch.status === 'udgivet' || stored.status === 'udgivet')) {
+          throw new Refused(422, { error: 'udgivelse går gennem /publish og /unpublish' });
+        }
+        const label = patch.name ? 'omdøbt' : `status ${patch.status ?? ''}`.trim();
+        return { document: { ...stored, ...patch }, label };
+      });
+      return c.json({ document });
+    } catch (error) {
+      return refusal(c, error);
+    }
   });
 
   app.get('/api/brand/catalogs/:id/versions', (c) =>
@@ -360,12 +396,29 @@ export function createApp(store: Store, options: AppOptions = {}) {
       return c.json({ error: `document id ${parsed.data.id} does not match path ${id}` }, 400);
     }
 
+    /*
+     * A whole document replaces what is stored, so it must say which
+     * stored document it replaces (`expected`) — or say out loud that it
+     * means to overwrite (`force=1`, the studio's "keep mine"). Without
+     * either, a stale tab would silently undo a colleague's hour.
+     */
+    const brand = c.get('brand').brand;
+    const label = c.req.query('label') ?? '';
+    const expected = c.req.query('expected');
+    const force = c.req.query('force') === '1';
     try {
-      const expected = c.req.query('expected');
-      return c.json({
-        document: store.save(brandId, parsed.data, c.req.query('label') ?? '', expected ? { expected } : {}),
-      });
+      if (!store.get(brandId, id)) {
+        // New: it starts unsigned, unsold, unpublished — whatever it says.
+        const { document, kept } = keepWorkflow(null, parsed.data);
+        return c.json({ document: store.save(brandId, document, label), kept });
+      }
+      if (!expected && !force) {
+        return c.json({ error: 'expected is required: the updatedAt of the version this save replaces (or force=1)' }, 428);
+      }
+      const done = commit(brand, id, force ? undefined : expected, () => ({ document: parsed.data, label }));
+      return c.json(done);
     } catch (error) {
+      if (error instanceof Refused) return refusal(c, error);
       if (error instanceof SaveConflict) return c.json({ error: error.message, updatedAt: error.updatedAt }, 409);
       return c.json({ error: error instanceof Error ? error.message : 'save failed' }, 403);
     }
@@ -425,35 +478,37 @@ export function createApp(store: Store, options: AppOptions = {}) {
    */
   app.post('/api/brand/catalogs/:id/ops', async (c) => {
     const { brand } = c.get('brand');
-    const document = store.get(brand.id, c.req.param('id'));
-    if (!document) return c.json({ error: 'not found' }, 404);
     const variantId = c.req.query('variant');
-    if (variantId && !findVariant(document, variantId)) return c.json({ error: `no variant "${variantId}"` }, 404);
+    // The body first: nothing is awaited between reading the stored catalogue and saving it.
     let payload: unknown;
     try { payload = await c.req.json(); } catch { return c.json({ error: 'body is not valid JSON' }, 400); }
     const parsed = OpsRequest.safeParse(payload);
     if (!parsed.success) return c.json({ error: 'invalid request', issues: parsed.error.issues.slice(0, 5) }, 400);
-    if (parsed.data.updatedAt && parsed.data.updatedAt !== document.updatedAt) {
-      return c.json({ error: 'the catalogue changed since it was read', updatedAt: document.updatedAt }, 409);
-    }
+    let applied: string[] = [];
     try {
-      if (variantId) {
-        const shown = resolveVariant(document, variantId, brand).document;
-        const { applied } = applyOps(shown, parsed.data.ops, brand);
-        const variants = (document.variants ?? []).map((v) => (v.id === variantId
-          ? { ...v, ops: [...v.ops, ...(parsed.data.ops as typeof v.ops)] }
-          : v));
-        const saved = store.save(brand.id, { ...document, variants, updatedAt: new Date().toISOString() }, parsed.data.label ?? `ops ${variantId}`);
-        return c.json({ document: saved, applied });
-      }
-      const { document: edited, applied } = applyOps(document, parsed.data.ops, brand);
-      const saved = store.save(brand.id, { ...edited, updatedAt: new Date().toISOString() }, parsed.data.label ?? 'ops');
-      return c.json({ document: saved, applied });
+      // Ops are deltas: without `updatedAt` they apply to the catalogue as it is now, and lose nothing.
+      const { document } = commit(brand, c.req.param('id'), parsed.data.updatedAt, (stored) => {
+        if (variantId) {
+          if (!findVariant(stored, variantId)) throw new Refused(404, { error: `no variant "${variantId}"` });
+          const shown = resolveVariant(stored, variantId, brand).document;
+          applied = applyOps(shown, parsed.data.ops, brand).applied;
+          const variants = (stored.variants ?? []).map((v) => (v.id === variantId
+            ? { ...v, ops: [...v.ops, ...(parsed.data.ops as typeof v.ops)] }
+            : v));
+          return { document: { ...stored, variants }, label: parsed.data.label ?? `ops ${variantId}` };
+        }
+        const edited = applyOps(stored, parsed.data.ops, brand);
+        applied = edited.applied;
+        return { document: edited.document, label: parsed.data.label ?? 'ops' };
+      });
+      return c.json({ document, applied });
     } catch (error) {
       if (error instanceof EditError) return c.json({ error: error.message, index: error.index }, 422);
-      throw error;
+      return refusal(c, error);
     }
   });
+
+  workflowRoutes(app, store, commit, prices);
 
   /*
    * A sentence to ops. The document comes in the body, not from the

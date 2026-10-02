@@ -1,6 +1,6 @@
 import { Brand, CatalogDocument, CatalogPage, CatalogWeek, Offer, OfferRules, PageTemplate, Themes, type Theme } from '@incitio/schema';
 import type { EditOp } from '@incitio/edit/core';
-import type { OfferDesign } from '@incitio/schema';
+import type { ApprovalRole, LiveEvent, OfferDesign, SlotBooking } from '@incitio/schema';
 
 const BASE = '/api';
 
@@ -93,7 +93,7 @@ async function fail(response: Response): Promise<never> {
     : said);
 }
 
-export interface BrandSummary { id: string; name: string }
+export interface BrandSummary { id: string; name: string; color?: string; accent?: string }
 
 export async function fetchBrands(): Promise<BrandSummary[]> {
   const response = await fetch(`${BASE}/brands`);
@@ -274,6 +274,13 @@ export interface CatalogSummary {
   pages: number;
   offers: number;
   status: CatalogStatus;
+  /** Roles whose signature still holds. Absent from a server older than sign-off. */
+  approvals?: string[];
+  /** Roles that signed, then something they answer for changed. */
+  stale?: string[];
+  sold?: number;
+  soldFor?: number;
+  live?: number;
 }
 
 /** Rename an avis, or change where it is in its week, without opening it. */
@@ -305,6 +312,15 @@ export async function fetchCatalogues(brandId: string): Promise<CatalogSummary[]
   return ((await response.json()) as { catalogs: CatalogSummary[] }).catalogs;
 }
 
+/** An avis's front page and the offers on it — what a cover on the front page is drawn from. */
+export interface CatalogCover { page: CatalogPage | null; offers: Offer[]; templates: PageTemplate[] }
+
+export async function fetchCover(brandId: string, id: string): Promise<CatalogCover> {
+  const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}/cover`, { headers: headers(brandId) });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as CatalogCover;
+}
+
 /** The catalogue was saved by somebody else after this studio last read or saved it. */
 export class SaveConflict extends Error {
   constructor(readonly updatedAt: string) {
@@ -312,20 +328,33 @@ export class SaveConflict extends Error {
   }
 }
 
+/** The server refused the save: it would break a sold place, or set a price the rules stop. Said in its words. */
+export class SaveRefused extends Error {}
+
+/** What the server keeps for itself on a save — signatures, sold places, the live log, publishing. */
+export type Workflow = Pick<CatalogDocument, 'approvals' | 'bookings' | 'live' | 'status'>;
+
 /**
  * Save, and say what the server now holds: its `updatedAt` is what the
  * next save sends as `expected`, so a save that would overwrite a
  * colleague's is refused with `SaveConflict` instead of winning quietly.
+ * `force` overwrites on purpose ("gem min alligevel").
+ *
+ * The workflow fields are the server's: whatever this document says
+ * about them, the saved one says what is stored, and `workflow` hands
+ * that back so the screen can follow.
  */
 export async function saveCatalogue(
   brandId: string,
   document: CatalogDocument,
   label = '',
   expected?: string,
-): Promise<{ updatedAt: string }> {
+  force = false,
+): Promise<{ updatedAt: string; workflow: Workflow; kept: string[] }> {
   const query = new URLSearchParams({
     ...(label ? { label } : {}),
     ...(expected ? { expected } : {}),
+    ...(force ? { force: '1' } : {}),
   }).toString();
   const response = await fetch(
     `${BASE}/brand/catalogs/${encodeURIComponent(document.id)}${query ? `?${query}` : ''}`,
@@ -339,10 +368,60 @@ export async function saveCatalogue(
     const body = (await response.json().catch(() => ({}))) as { updatedAt?: string };
     throw new SaveConflict(body.updatedAt ?? '');
   }
+  if (response.status === 422) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new SaveRefused(body.error ?? 'Serveren afviste ændringen');
+  }
   if (!response.ok) await fail(response);
-  const body = (await response.json()) as { document: { updatedAt: string } };
-  return { updatedAt: body.document.updatedAt };
+  const body = (await response.json()) as { document: CatalogDocument; kept?: string[] };
+  const { approvals, bookings, live, status } = body.document;
+  return { updatedAt: body.document.updatedAt, workflow: { approvals, bookings, live, status }, kept: body.kept ?? [] };
 }
+
+/*
+ * The workflow, one act per call. Each says which version of the avis
+ * it is about (`updatedAt`) and answers with the avis as now stored —
+ * the server signs, sells, publishes and logs; the studio shows it.
+ */
+async function act(brandId: string, id: string, path: string, method: 'POST' | 'DELETE', body?: object): Promise<CatalogDocument> {
+  const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}/${path}`, {
+    method,
+    headers: headers(brandId, body ? { 'content-type': 'application/json' } : {}),
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (response.status === 409) {
+    const reply = (await response.json().catch(() => ({}))) as { updatedAt?: string; error?: string };
+    // A place sold twice is a conflict too, but one with a sentence; the rest is "changed meanwhile".
+    if (!reply.updatedAt && reply.error) throw new SaveRefused(reply.error);
+    throw new SaveConflict(reply.updatedAt ?? '');
+  }
+  if (response.status === 422) {
+    const reply = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new SaveRefused(reply.error ?? 'Serveren afviste det');
+  }
+  if (!response.ok) await fail(response);
+  return CatalogDocument.parse(((await response.json()) as { document: unknown }).document);
+}
+
+const stamp = (updatedAt: string) => `?updatedAt=${encodeURIComponent(updatedAt)}`;
+
+export const approveCatalogue = (brandId: string, id: string, request: { role: ApprovalRole; who: string; updatedAt: string }) =>
+  act(brandId, id, 'approvals', 'POST', request);
+export const unapproveCatalogue = (brandId: string, id: string, role: ApprovalRole, updatedAt: string) =>
+  act(brandId, id, `approvals/${role}${stamp(updatedAt)}`, 'DELETE');
+export const bookPlace = (brandId: string, id: string, request: Omit<SlotBooking, 'id' | 'at'> & { updatedAt: string }) =>
+  act(brandId, id, 'bookings', 'POST', request);
+export const releasePlace = (brandId: string, id: string, bookingId: string, updatedAt: string) =>
+  act(brandId, id, `bookings/${encodeURIComponent(bookingId)}${stamp(updatedAt)}`, 'DELETE');
+export const publishCatalogue = (brandId: string, id: string, request: { who: string; updatedAt: string }) =>
+  act(brandId, id, 'publish', 'POST', request);
+export const unpublishCatalogue = (brandId: string, id: string, request: { who: string; updatedAt: string }) =>
+  act(brandId, id, 'unpublish', 'POST', request);
+export const sendLiveChange = (
+  brandId: string,
+  id: string,
+  request: Pick<LiveEvent, 'kind' | 'offerId' | 'substituteId' | 'after'> & { who: string; updatedAt: string },
+) => act(brandId, id, 'live', 'POST', request);
 
 export interface CatalogueVersion { version: number; label: string; createdAt: string }
 

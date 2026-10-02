@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { CatalogDocument, CatalogPage, Offer, OfferRules, PageTemplate, OfferDesigns, Themes, type OfferDesign } from '@incitio/schema';
 import { z } from 'zod';
+import { lanesOf } from '@incitio/workflow';
 
 /**
  * Storage for the studio.
@@ -135,6 +136,18 @@ export interface CatalogSummary {
   pages: number;
   offers: number;
   status: 'kladde' | 'klar' | 'udgivet' | 'skjult';
+  /**
+   * The roles whose signature still holds — signed, and nothing they
+   * answer for changed since. A signature that has gone stale is in
+   * `stale` instead, so the front page never counts one.
+   */
+  approvals: string[];
+  stale: string[];
+  /** Places sold, and what they were sold for. */
+  sold: number;
+  soldFor: number;
+  /** Changes made after it went out. */
+  live: number;
 }
 
 /** One picture in a chain's own library. */
@@ -304,8 +317,14 @@ export class Store {
       .all(brandId) as Record<string, string>[];
 
     return rows.map((row) => {
-      let read: { week?: { year: number; week: number }; pages?: unknown[]; offers?: unknown[]; status?: CatalogSummary['status'] } = {};
+      let read: {
+        week?: { year: number; week: number }; pages?: unknown[]; offers?: unknown[]; status?: CatalogSummary['status'];
+        approvals?: { role: string }[]; bookings?: { price: number }[]; live?: unknown[];
+      } = {};
       try { read = JSON.parse(row['document'] as string); } catch { /* listed by name alone */ }
+      // Only an avis with signatures is worth the full read; the rest list from the raw JSON.
+      const parsed = read.approvals?.length ? CatalogDocument.safeParse(read) : null;
+      const lanes = parsed?.success ? lanesOf(parsed.data) : [];
       return {
         id: row['id'] as string,
         brandId: row['brand_id'] as string,
@@ -316,6 +335,11 @@ export class Store {
         pages: read.pages?.length ?? 0,
         offers: read.offers?.length ?? 0,
         status: read.status ?? 'kladde',
+        approvals: lanes.filter((lane) => lane.state === 'godkendt').map((lane) => lane.role),
+        stale: lanes.filter((lane) => lane.state === 'forældet').map((lane) => lane.role),
+        sold: read.bookings?.length ?? 0,
+        soldFor: (read.bookings ?? []).reduce((sum, b) => sum + (b.price ?? 0), 0),
+        live: read.live?.length ?? 0,
       };
     });
   }
@@ -361,22 +385,25 @@ export class Store {
       throw new Error(`document belongs to ${document.brandId}, not ${brandId}`);
     }
 
-    const existing = this.db
-      .prepare('SELECT brand_id, updated_at FROM catalogs WHERE id = ?')
-      .get(document.id) as { brand_id: string; updated_at: string } | undefined;
-    if (existing && existing.brand_id !== brandId) {
-      throw new Error(`catalogue ${document.id} belongs to another chain`);
-    }
-    if (existing && options.expected && existing.updated_at !== options.expected) {
-      throw new SaveConflict(existing.updated_at);
-    }
-
     const now = new Date().toISOString();
     const next = { ...document, updatedAt: now };
     const json = JSON.stringify(next);
 
-    this.db.exec('BEGIN');
+    /*
+     * IMMEDIATE: the write lock is taken before the check, so the check
+     * and the write are one step even with a second process on the file.
+     */
+    this.db.exec('BEGIN IMMEDIATE');
     try {
+      const existing = this.db
+        .prepare('SELECT brand_id, updated_at FROM catalogs WHERE id = ?')
+        .get(document.id) as { brand_id: string; updated_at: string } | undefined;
+      if (existing && existing.brand_id !== brandId) {
+        throw new Error(`catalogue ${document.id} belongs to another chain`);
+      }
+      if (existing && options.expected && existing.updated_at !== options.expected) {
+        throw new SaveConflict(existing.updated_at);
+      }
       this.db
         .prepare(
           `INSERT INTO catalogs (id, brand_id, name, document, created_at, updated_at)
@@ -432,6 +459,19 @@ export class Store {
     if (Number(info.changes) === 0) return false;
     this.db.prepare('DELETE FROM catalog_versions WHERE catalog_id = ?').run(id);
     return true;
+  }
+
+  /**
+   * The number the next named save of this catalogue will be stored as.
+   * Named saves are never folded, so this is exact as long as nothing
+   * is awaited between asking and saving — which is how a signature
+   * names the version it is.
+   */
+  nextVersion(id: string): number {
+    const last = this.db
+      .prepare('SELECT MAX(version) AS version FROM catalog_versions WHERE catalog_id = ?')
+      .get(id) as { version: number | null } | undefined;
+    return Number(last?.version ?? 0) + 1;
   }
 
   versions(brandId: string, id: string): { version: number; label: string; createdAt: string }[] {

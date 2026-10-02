@@ -5,6 +5,9 @@ import {
 } from '@incitio/schema';
 import { DesignTile, ImageSize } from '@incitio/renderer';
 import { THUMB_PX, EDITOR_PX, useStudio } from './state.js';
+import { usePopover } from './popover.js';
+import { PxFields } from './Measure.js';
+import type { Box } from './box.js';
 
 /**
  * Varedesigns — the chain's offer designs, the way the CMS keeps them.
@@ -51,13 +54,13 @@ function useExamples(): Offer[] {
 }
 
 /** One design, drawn with one offer, in a square cell on the chain's ground. */
-function Preview({ design, offer, px = THUMB_PX }: { design: OfferDesign; offer: Offer | null; px?: number }) {
+function Preview({ design, offer, px = THUMB_PX, aspect = 1 }: { design: OfferDesign; offer: Offer | null; px?: number; aspect?: number }) {
   const brand = useStudio((s) => s.brand);
   if (!brand) return null;
   return (
-    <div className="dpreview" style={brandCssVars(brand) as React.CSSProperties}>
+    <div className="dpreview" style={{ ...brandCssVars(brand), aspectRatio: String(aspect) } as React.CSSProperties}>
       <ImageSize.Provider value={px}>
-        {offer ? <DesignTile design={design} offer={offer} aspect={1} /> : <span className="dpreview__none">Ingen vare at vise med</span>}
+        {offer ? <DesignTile design={design} offer={offer} aspect={aspect} /> : <span className="dpreview__none">Ingen vare at vise med</span>}
       </ImageSize.Provider>
     </div>
   );
@@ -73,6 +76,8 @@ export function DesignsPanel() {
   const examples = useExamples();
   const [exampleId, setExampleId] = useState<string | null>(null);
   const brand = s.brand;
+  // Esc closes it, and so does opening another menu — the chain switcher above it, say.
+  usePopover(s.designsOpen, () => s.setDesignsOpen(false));
   if (!s.designsOpen || !brand) return null;
 
   const designs = brand.offerDesigns;
@@ -197,6 +202,41 @@ export function DesignsPanel() {
 
 /* ------------------------------------------------------------ editor */
 
+/**
+ * The size a design is measured at, in the publication's pixels.
+ *
+ * A design's fields are shares of the offer's cell — the same design is
+ * drawn in a big cell and a small one — so a pixel is only a pixel at a
+ * stated cell size. This is that size: the cell the designer has in
+ * mind, kept per chain on this machine. It changes what the numbers
+ * say, never the design, so what is copied to the CMS stays the CMS's.
+ */
+const CELL_DEFAULT = { w: 300, h: 300 };
+function useCellSize(brandId: string | null): [{ w: number; h: number }, (cell: { w: number; h: number }) => void] {
+  const key = `incitio.designCell.${brandId ?? ''}`;
+  const [cell, setCell] = useState<{ w: number; h: number }>(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(key) ?? 'null') as { w?: number; h?: number } | null;
+      if (stored && stored.w && stored.h && stored.w > 0 && stored.h > 0) return { w: stored.w, h: stored.h };
+    } catch { /* private window */ }
+    return CELL_DEFAULT;
+  });
+  const remember = (next: { w: number; h: number }) => {
+    setCell(next);
+    try { window.localStorage.setItem(key, JSON.stringify(next)); } catch { /* private window */ }
+  };
+  return [cell, remember];
+}
+
+/** A field's box in the cell's pixels, and back. */
+const layerBox = (l: DesignLayer, cell: { w: number; h: number }): Box => ({
+  x: l.x1 * cell.w, y: l.y1 * cell.h, w: (l.x2 - l.x1) * cell.w, h: (l.y2 - l.y1) * cell.h,
+});
+const boxLayer = (box: Box, cell: { w: number; h: number }): Pick<DesignLayer, 'x1' | 'x2' | 'y1' | 'y2'> => ({
+  x1: round(box.x / cell.w), x2: round((box.x + box.w) / cell.w),
+  y1: round(box.y / cell.h), y2: round((box.y + box.h) / cell.h),
+});
+
 type Drag = { layerId: string; mode: 'move' | 'resize'; x: number; y: number; start: DesignLayer };
 
 function DesignEditor({
@@ -206,6 +246,8 @@ function DesignEditor({
   onExample: (id: string) => void; onChange: (design: OfferDesign) => void; onBack: () => void;
 }) {
   const [picked, setPicked] = useState<string | null>(null);
+  const [cell, setCell] = useCellSize(useStudio((s) => s.brandId));
+  const [cellDraft, setCellDraft] = useState<{ w?: string; h?: string }>({});
   const stage = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const layer = design.layers.find((l) => String(l.id) === picked) ?? null;
@@ -224,22 +266,34 @@ function DesignEditor({
     event.stopPropagation();
     setPicked(String(target.id));
     drag.current = { layerId: String(target.id), mode, x: event.clientX, y: event.clientY, start: target };
+    stage.current?.focus();
     (event.target as Element).setPointerCapture(event.pointerId);
   };
   const move = (event: ReactPointerEvent) => {
     const d = drag.current;
     const box = stage.current?.getBoundingClientRect();
     if (!d || !box) return;
-    const dx = (event.clientX - d.x) / box.width;
-    const dy = (event.clientY - d.y) / box.height;
+    // In whole pixels of the cell, so a drag lands where the numbers can say.
+    const dx = Math.round(((event.clientX - d.x) / box.width) * cell.w) / cell.w;
+    const dy = Math.round(((event.clientY - d.y) / box.height) * cell.h) / cell.h;
     const s = d.start;
     if (d.mode === 'move') {
       setLayer(d.layerId, { x1: round(s.x1 + dx), x2: round(s.x2 + dx), y1: round(s.y1 + dy), y2: round(s.y2 + dy) });
     } else {
-      setLayer(d.layerId, { x2: round(Math.max(s.x1 + 0.03, s.x2 + dx)), y2: round(Math.max(s.y1 + 0.03, s.y2 + dy)) });
+      setLayer(d.layerId, { x2: round(Math.max(s.x1 + 1 / cell.w, s.x2 + dx)), y2: round(Math.max(s.y1 + 1 / cell.h, s.y2 + dy)) });
     }
   };
   const up = () => { drag.current = null; };
+  // Arrow keys move the field in hand a pixel (shift: ten), as on the page.
+  const nudge = (event: React.KeyboardEvent) => {
+    if (!layer) return;
+    const step = event.shiftKey ? 10 : 1;
+    const by = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
+    if (!by) return;
+    event.preventDefault();
+    const box = layerBox(layer, cell);
+    setLayer(String(layer.id), boxLayer({ ...box, x: Math.round(box.x) + by[0]!, y: Math.round(box.y) + by[1]! }, cell));
+  };
 
   return (
     <div className="deditor">
@@ -253,8 +307,11 @@ function DesignEditor({
             </select>
           </label>
         </div>
-        <div className="deditor__stage" ref={stage} onPointerMove={move} onPointerUp={up} onPointerDown={() => setPicked(null)}>
-          <Preview design={design} offer={example} px={EDITOR_PX} />
+        <div
+          className="deditor__stage" ref={stage} tabIndex={0}
+          onPointerMove={move} onPointerUp={up} onPointerDown={() => { setPicked(null); stage.current?.focus(); }} onKeyDown={nudge}
+        >
+          <Preview design={design} offer={example} px={EDITOR_PX} aspect={cell.w / cell.h} />
           <div className="deditor__boxes">
             {[...design.layers].reverse().map((l) => (
               <div
@@ -270,7 +327,29 @@ function DesignEditor({
             ))}
           </div>
         </div>
-        <p className="deditor__hint">Klik et felt og træk det. Hjørnet ændrer størrelsen. Varen fylder kun felterne — flyttes billedfeltet, flytter billedet med.</p>
+        <p className="deditor__hint">Klik et felt og træk det. Hjørnet ændrer størrelsen. Piletaster flytter 1 px (shift: 10). Varen fylder kun felterne — flyttes billedfeltet, flytter billedet med.</p>
+        <div className="deditor__cell">
+          <span>Feltet måles som</span>
+          {(['w', 'h'] as const).map((side, index) => (
+            <span key={side} className="deditor__cellside">
+              {index > 0 && <b>×</b>}
+              <input
+                inputMode="numeric"
+                aria-label={side === 'w' ? 'Feltets bredde' : 'Feltets højde'}
+                value={cellDraft[side] ?? String(cell[side])}
+                onChange={(e) => setCellDraft((d) => ({ ...d, [side]: e.target.value }))}
+                onBlur={(e) => {
+                  const value = Math.round(Number(e.target.value));
+                  if (value >= 20 && value <= 2000) setCell({ ...cell, [side]: value });
+                  setCellDraft((d) => ({ ...d, [side]: undefined }));
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              />
+            </span>
+          ))}
+          <span>px</span>
+          <small>den størrelse varen får på siden — fx 300 × 300 for to pr. række på en side der er 600 bred</small>
+        </div>
       </div>
 
       <div className="deditor__right">
@@ -310,18 +389,15 @@ function DesignEditor({
         {layer && (
           <section className="deditor__props">
             <h3>{layerWord(layer)}</h3>
-            <div className="deditor__row deditor__row--nums">
-              {(['x1', 'y1', 'x2', 'y2'] as const).map((key) => (
-                <label key={key} className="deditor__field">
-                  <span>{{ x1: 'Venstre', y1: 'Top', x2: 'Højre', y2: 'Bund' }[key]} %</span>
-                  <input
-                    type="number" step={0.5}
-                    value={Math.round(layer[key] * 1000) / 10}
-                    onChange={(e) => setLayer(String(layer.id), { [key]: round(Number(e.target.value) / 100) })}
-                  />
-                </label>
-              ))}
-            </div>
+            <PxFields
+              key={String(layer.id)}
+              box={layerBox(layer, cell)}
+              frame={cell}
+              frameSaid="feltet"
+              free
+              unlocked
+              onBox={(box) => setLayer(String(layer.id), boxLayer(box, cell))}
+            />
             <div className="deditor__row">
               <label className="deditor__field">
                 <span>Baggrund</span>

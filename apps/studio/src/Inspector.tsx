@@ -12,6 +12,8 @@ import { useStudio } from './state.js';
 import { ruleFromOffer } from './OfferRules.js';
 import { incitoSlotOf, pageBlocks, type IncitoBlock } from '@incitio/renderer';
 import { priceOf, saidPrice } from './price.js';
+import { Measure } from './Measure.js';
+import { decorToBox, noteToBox } from './box.js';
 
 /**
  * The page's own two lines: the heading, and the theme line under it.
@@ -131,13 +133,16 @@ function PageTexts({ page }: { page: CatalogPage }) {
               />
             </label>
 
-            <ul className="inspector__keys">
+            <details className="inspector__keysbox">
+              <summary>Genveje</summary>
+              <ul className="inspector__keys">
               <li><b>Piletaster</b> flytter linjen — med shift længere</li>
               <li><b>+</b> / <b>−</b> ændrer størrelsen, <b>0</b> nulstiller</li>
               <li><b>⌫</b> tager linjen af siden</li>
               <li><b>Dobbeltklik</b> retter teksten direkte på siden</li>
               <li><b>Esc</b> slipper linjen</li>
             </ul>
+            </details>
           </>
         );
       })()}
@@ -434,7 +439,7 @@ function DecorInspector({ decorId }: { decorId: string }) {
   const page = document?.pages.find((entry) => entry.decorations.some((d) => d.id === decorId));
   const decor = page?.decorations.find((d) => d.id === decorId);
   if (!page || !decor) return null;
-  const set = (patch: Parameters<typeof updatePageImage>[2]) => updatePageImage(page.id, decor.id, patch);
+  const set = (patch: Parameters<typeof updatePageImage>[2], gesture?: string) => updatePageImage(page.id, decor.id, patch, gesture);
   const moved = decor.offsetX !== 0 || decor.offsetY !== 0;
 
   return (
@@ -447,6 +452,22 @@ function DecorInspector({ decorId }: { decorId: string }) {
         {decor.id.startsWith('decor-') ? 'Tegnet af AI' : 'Dit eget billede'} · træk det rundt på siden
       </p>
       <div className="decorpanel__shot"><img src={decor.imageUrl} alt="" /></div>
+
+      <Measure target={{
+        key: `decor:${decor.id}`,
+        pageId: page.id,
+        selectors: [`img[data-decor-id="${CSS.escape(decor.id)}"]`],
+        rotated: decor.rotate !== 0,
+        free: true,
+        exact: true,
+        model: (size) => (decor.rect ? {
+          x: (decor.rect.x + decor.offsetX / 100) * size.w,
+          y: (decor.rect.y + decor.offsetY / 100) * size.h,
+          w: decor.rect.w * size.w,
+          h: decor.rect.h * size.h,
+        } : null),
+        write: (to, _from, size, gesture) => set({ ...decorToBox(to, size) }, gesture),
+      }} />
 
       <div className="inspector__field">
         <span>Hjørne</span>
@@ -510,13 +531,16 @@ function DecorInspector({ decorId }: { decorId: string }) {
         Tag af siden
       </button>
 
-      <ul className="inspector__keys">
+      <details className="inspector__keysbox">
+        <summary>Genveje</summary>
+        <ul className="inspector__keys">
         <li><b>Træk</b> billedet på siden for at flytte det</li>
         <li><b>Piletaster</b> flytter det — med shift længere</li>
         <li><b>+ / −</b> ændrer størrelsen, <b>[ ]</b> drejer, <b>0</b> retter det op</li>
         <li><b>⌫</b> tager det af siden</li>
         <li><b>Esc</b> slipper det, så det lægger sig på plads</li>
       </ul>
+      </details>
     </aside>
   );
 }
@@ -545,6 +569,23 @@ function NoteInspector({ noteId }: { noteId: string }) {
         <button className="inspector__close" onClick={() => selectNote(null)} aria-label="Luk">×</button>
       </header>
       <p className="inspector__meta">Træk den rundt på siden · piletaster flytter den · ⌫ tager den af siden</p>
+
+      <Measure target={{
+        key: `note:${note.id}`,
+        pageId: page.id,
+        selectors: [`[data-note-id="${CSS.escape(note.id)}"]`],
+        rotated: note.rotate !== 0,
+        free: true,
+        fixedHeight: !(note.h !== null && (note.background !== null || note.image !== null)),
+        exact: true,
+        model: (size) => ({
+          x: note.x * size.w,
+          y: note.y * size.h,
+          w: note.w * size.w,
+          ...(note.h !== null && (note.background !== null || note.image !== null) ? { h: note.h * size.h } : {}),
+        }),
+        write: (to, _from, size, gesture) => set(noteToBox(note, to, size), gesture),
+      }} />
 
       <label className="inspector__field">
         <span>Tekst</span>
@@ -739,6 +780,20 @@ function IncitoInspector() {
         )}
       </div>
 
+      <Measure target={{
+        key: `incito:${page.id}:${block.path}`,
+        pageId: page.id,
+        selectors: [`[data-incito-block="${CSS.escape(block.path)}"]`],
+        write: (to, from, _size, gesture) => {
+          // The sheet's points are the pixels here, so a pixel moved is a point moved.
+          if (to.x !== from.x || to.y !== from.y) move(page.id, block.path, { dx: to.x - from.x, dy: to.y - from.y }, gesture);
+          if (Math.abs(to.w - from.w) > 0.01 && from.w > 0) {
+            const was = useStudio.getState().document?.pages.find((p) => p.id === page.id)?.incitoEdits?.[block.path]?.scale ?? 1;
+            move(page.id, block.path, { scaleBy: was * (to.w / from.w) - was }, gesture);
+          }
+        },
+      }} />
+
       <section className="incito__place">
         <h4>Placering</h4>
         <label className="incito__line">
@@ -910,6 +965,46 @@ function HiddenIncito() {
   );
 }
 
+/**
+ * The box in hand on a tile, in pixels. A box moves in page percent and
+ * the artwork pans in its frame's own units; both are written as a
+ * nudge from where the box is, then measured and corrected.
+ */
+function PartMeasure({ pageId, slotId, offerId, part }: { pageId: string; slotId: string; offerId: string; part: TilePart }) {
+  const updatePart = useStudio((s) => s.updatePart);
+  const slot = `[data-slot-id="${CSS.escape(slotId)}"]`;
+  const media = part === 'media';
+  return (
+    <Measure target={{
+      key: `part:${offerId}:${part}`,
+      pageId,
+      selectors: media
+        ? [`${slot} [data-part="media"] img`, `${slot} .tile__media > img`, `${slot} [data-part="media"]`]
+        : [`${slot} [data-part="${part}"]`],
+      write: (to, from, size, gesture, read) => {
+        const placement = useStudio.getState().document?.pages.find((p) => p.id === pageId)?.placements.find((p) => p.slotId === slotId);
+        if (!placement) return;
+        const now = partOverride(placement.overrides, part);
+        const { reach, minScale, maxScale } = partLimits(part);
+        const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+        let perX = 100 / size.w;
+        let perY = 100 / size.h;
+        if (media) {
+          // ±1 is a fifth of the artwork's frame either way — see `offsetPerPixel` in the tile editor.
+          const frame = read(`${slot} [data-part="media"]`) ?? read(`${slot} .tile__media`) ?? from;
+          perX = frame.w > 0 ? 1 / (frame.w * 0.2) : 0;
+          perY = frame.h > 0 ? 1 / (frame.h * 0.2) : 0;
+        }
+        updatePart(offerId, part, {
+          offsetX: clamp(now.offsetX + (to.x - from.x) * perX, -reach, reach),
+          offsetY: clamp(now.offsetY + (to.y - from.y) * perY, -reach, reach),
+          ...(from.w > 0 && Math.abs(to.w - from.w) > 0.01 ? { scale: clamp(now.scale * (to.w / from.w), minScale, maxScale) } : {}),
+        }, gesture);
+      },
+    }} />
+  );
+}
+
 export function Inspector() {
   // Shut by default: the prompt is three hundred words, and most
   // sessions never open it.
@@ -950,12 +1045,12 @@ export function Inspector() {
             is the state a freshly rebuilt page opens in. */}
         {/* What to do first, then what can be set for the page as a whole. */}
         <div className="inspector__startbox">
-          <p className="inspector__start">Klik på en vare på siden for at rette den.</p>
-          <ul className="inspector__keys">
-            <li><b>Træk</b> en vare fra listen til venstre over på en vare på siden for at bytte</li>
-            <li><b>Dobbeltklik</b> på en tekst for at rette den</li>
-            <li><b>⌘Z</b> fortryder alt</li>
-          </ul>
+          <p className="inspector__start">Vælg en vare på siden for at rette den</p>
+          <p className="inspector__chips">
+            <span><kbd>Træk</kbd> fra listen for at bytte</span>
+            <span><kbd>Dobbeltklik</kbd> retter tekst</span>
+            <span><kbd>⌘Z</kbd> fortryder</span>
+          </p>
         </div>
         <HiddenIncito />
         <PageGround />
@@ -1337,6 +1432,7 @@ export function Inspector() {
           );
         })}
       </ul>
+      {onPage && <PartMeasure pageId={onPage.id} slotId={placement.slotId} offerId={offer.id} part={held} />}
       </>
       )}
 
@@ -1817,7 +1913,9 @@ export function Inspector() {
 
       {/* Written out because the tile is where the work happens, and a
           shortcut nobody is told about is a shortcut nobody uses. */}
-      <ul className="inspector__keys">
+      <details className="inspector__keysbox">
+        <summary>Genveje</summary>
+        <ul className="inspector__keys">
         <li><b>Piletaster</b> flytter <b>{TILE_PART_NAMES[held]}</b> — med shift længere</li>
         <li><b>+</b> / <b>−</b> ændrer størrelsen, <b>0</b> nulstiller</li>
         <li><b>⌫</b> tager elementet af siden</li>
@@ -1827,6 +1925,7 @@ export function Inspector() {
           <li><b>G</b> stiller varerne pænt op igen</li>
         )}
       </ul>
+      </details>
     </aside>
   );
 }

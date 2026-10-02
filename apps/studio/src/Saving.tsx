@@ -47,7 +47,7 @@ export function SaveStatus() {
         title="Avisen gemmes af sig selv. Klik for historikken — ⌘S gemmer et navngivet punkt nu."
       >
         <span className="saving__dot" aria-hidden="true" />
-        {said}
+        <span className="saving__said">{said}</span>
       </button>
       {s.historyOpen && <History />}
     </div>

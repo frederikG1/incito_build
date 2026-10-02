@@ -79,6 +79,27 @@
         "$ref": "#/$defs/PublicationVariant"
       }
     },
+    "approvals": {
+      "description": "Who signed this avis off, and what they saw — see `Approval`. One per role.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Approval"
+      }
+    },
+    "bookings": {
+      "description": "Places on the pages a supplier has paid for — see `SlotBooking`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SlotBooking"
+      }
+    },
+    "live": {
+      "description": "What changed after the avis went out, in order — see `LiveEvent`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LiveEvent"
+      }
+    },
     "createdAt": {
       "type": "string"
     },
@@ -2371,6 +2392,281 @@
             "offerId"
           ]
         }
+      ]
+    },
+    "Approval": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "enum": [
+            "marketing",
+            "indkob",
+            "pris"
+          ]
+        },
+        "who": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "at": {
+          "type": "string"
+        },
+        "seen": {
+          "$ref": "#/$defs/ApprovalSeen"
+        },
+        "version": {
+          "description": "The stored version the signature was saved as — the avis exactly as\nsigned, fetchable from the history. Set by the server, which is the\nonly place a signature is made; absent on older ones.",
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "role",
+        "who",
+        "at",
+        "seen"
+      ]
+    },
+    "ApprovalSeen": {
+      "type": "object",
+      "properties": {
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "templateId": {
+                "type": "string"
+              },
+              "slots": {
+                "description": "[slotId, offerId] in the page's own order.",
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "templateId",
+              "slots"
+            ]
+          }
+        },
+        "offers": {
+          "description": "offerId → [name, price, prePrice, memberPrice, savings?].\n`savings` is the \"spar\" the avis states; absent on signatures made before it was kept.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "editions": {
+          "description": "editionId → [name, number of edits, fingerprint?].\nThe fingerprint is of the edition's edits and local offers, so a swapped\nedit is a change even when the count stays; absent on older signatures.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "default": {}
+        },
+        "bookings": {
+          "description": "bookingId → \"pageId/slotId/offerId/supplier\".",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        }
+      },
+      "required": [
+        "pages",
+        "offers",
+        "editions",
+        "bookings"
+      ]
+    },
+    "SlotBooking": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "slotId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supplier": {
+          "description": "Who paid: \"Carlsberg Danmark\", as the deal names them.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "offerId": {
+          "description": "The product the deal is for; null when the supplier may fill it as they like.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "price": {
+          "description": "What the place was sold for, in the avis's currency.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "note": {
+          "description": "The deal's own reference, or a word for the person reading.",
+          "type": "string",
+          "maxLength": 200,
+          "default": ""
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "pageId",
+        "slotId",
+        "supplier",
+        "offerId",
+        "price",
+        "note",
+        "at"
+      ]
+    },
+    "LiveEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "udsolgt",
+            "pris",
+            "tilbage"
+          ]
+        },
+        "offerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "substituteId": {
+          "description": "The product standing in for a sold-out one, when there is one.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "before": {
+          "description": "The price before and after, on a price change.",
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "after": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "who": {
+          "type": "string",
+          "maxLength": 80,
+          "default": ""
+        }
+      },
+      "required": [
+        "id",
+        "at",
+        "kind",
+        "offerId",
+        "substituteId",
+        "before",
+        "after",
+        "who"
       ]
     }
   }

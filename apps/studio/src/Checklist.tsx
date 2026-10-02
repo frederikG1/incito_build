@@ -30,6 +30,8 @@ const MARKS: Record<FindingKind, string> = {
   skabelon: '⚠',
   regler: '§',
   skalmed: '★',
+  førpris: '%',
+  solgt: '◆',
 };
 
 function Line({ finding }: { finding: Finding }) {
@@ -151,11 +153,10 @@ export function ReadyPill() {
       title="Det der skal tjekkes før tryk — tomme pladser, tekst der er skåret af, manglende pant m.m."
     >
       <span className="ready__dot" aria-hidden="true">{tone === 'ok' ? '✓' : ''}</span>
+      {/* The number stays when the header is narrow; the words give way. */}
       {tone === 'ok'
-        ? 'Klar til tryk'
-        : stop > 0
-          ? `${stop} skal rettes`
-          : `${look} værd at se`}
+        ? <span className="ready__said">Klar til tryk</span>
+        : <><b className="ready__n">{stop > 0 ? stop : look}</b><span className="ready__said">{stop > 0 ? ' skal rettes' : ' værd at se'}</span></>}
     </button>
   );
 }

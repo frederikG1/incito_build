@@ -231,7 +231,7 @@ export function Tray() {
           Vis også varer der er på en side
         </label>
       </div>
-      <p className="shelf__hint"><b>Træk</b> en vare over på en vare på siden for at bytte — eller <b>klik</b> på flere for at samle dem i én plads.</p>
+      <p className="shelf__hint"><b>Træk</b> hen på siden · <b>klik</b> flere for at samle dem</p>
 
       {/* As many to a row as the width holds — two at the narrowest. */}
       <div className="shelf__grid">

@@ -92,8 +92,9 @@ export function EmptyCells({ page, template }: { page: CatalogPage; template: Pa
             else addOffersToPage(page.id, offers);
           }}
         >
+          {/* One line: the page has many of these, and the list they come from is in plain sight. */}
+          <span className="empties__plus" aria-hidden="true">+</span>
           <b>Slip en vare her</b>
-          <span>træk den fra listen til venstre</span>
         </div>
       ))}
     </div>

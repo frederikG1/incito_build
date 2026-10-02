@@ -6,6 +6,7 @@ import { PageDesign } from './designs.js';
 import { CatalogWeek } from './week.js';
 import { TILE_ARRANGEMENTS, TILE_PARTS, type TilePart } from './tile.js';
 import { EditOp } from './edit-ops.js';
+import { Approval, LiveEvent, SlotBooking } from './workflow.js';
 
 /** Where on the page a decoration is pinned. */
 export const DECOR_ANCHORS = [
@@ -1096,6 +1097,12 @@ export const CatalogDocument = z.object({
   theme: AppliedTheme.optional(),
   /** Local editions of this publication — see `PublicationVariant`. */
   variants: z.array(PublicationVariant).optional(),
+  /** Who signed this avis off, and what they saw — see `Approval`. One per role. */
+  approvals: z.array(Approval).optional(),
+  /** Places on the pages a supplier has paid for — see `SlotBooking`. */
+  bookings: z.array(SlotBooking).optional(),
+  /** What changed after the avis went out, in order — see `LiveEvent`. */
+  live: z.array(LiveEvent).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

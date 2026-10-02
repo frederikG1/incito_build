@@ -42,8 +42,9 @@ describe('saving as you work', () => {
     expect(mine.status).toBe(409);
     expect(store.get('superbrugsen', 'u40')!.name).toBe('kollegaens');
 
-    // Without the check — "gem min alligevel" — it goes through.
-    expect((await put({ ...document, name: 'min' }, '?label=manuel')).status).toBe(200);
+    // Saying nothing about what it replaces is refused; "gem min alligevel" says so out loud.
+    expect((await put({ ...document, name: 'min' }, '?label=manuel')).status).toBe(428);
+    expect((await put({ ...document, name: 'min' }, '?label=manuel&force=1')).status).toBe(200);
   });
 
   it('serves an old version, and not another chain\'s', async () => {

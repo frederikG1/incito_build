@@ -556,6 +556,7 @@ export function PageView({
       alt=""
       aria-hidden="true"
       data-decor-subject={decor.subject}
+      data-decor-id={decor.id}
       draggable={false}
       {...(onMoveDecor && selectedDecorId === decor.id ? {
         onPointerDown: (event: ReactPointerEvent<HTMLImageElement>) => {

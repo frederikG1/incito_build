@@ -141,7 +141,10 @@ export function GoodsBoard() {
     <main className="book goods">
       <div className="book__head">
         <h2>Varer</h2>
-        <span className="book__said">hele ugens varer — hvor de står, og hvad der mangler</span>
+        <span className="book__said" title="Hele ugens varer — hvor de står, og hvad der mangler">
+          {counts.alle} varer · {counts.placeret} på en side
+          {counts['skalmed-mangler'] > 0 && <> · <b className="book__open book__open--stop">{counts['skalmed-mangler']} skal med, mangler</b></>}
+        </span>
         <div className="book__gap" />
         {/* The week's file: new products, or Wednesday's corrections — the avis asks which. */}
         <label className="thin goods__file" title="Ugens varefil — nye varer eller rettelser til denne uge">

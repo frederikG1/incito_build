@@ -13,9 +13,12 @@ import {
   packLimits, packOverride, packPatch,
   partLimits, partOverride, partPatch, slotAssignmentOrder, slotCells, STARTER_RULES, offerFacts,
 } from '@incitio/schema';
-import { groupOffers, healLabelPrices, notOnePhotograph, readPackSize, rememberPrinted } from '@incitio/schema';
+import { APPROVAL_ROLE_NAMES, groupOffers, healLabelPrices, notOnePhotograph, readPackSize, rememberPrinted } from '@incitio/schema';
 import { nextWeek, weekName, weekOf, OfferFeed, withTheme, type Theme } from '@incitio/schema';
 import { bySeverity, coveredByText, measureFindings, readFindings, type Finding } from './findings.js';
+import { priceRuleFindings } from './pricerules.js';
+import { bookingFindings } from './inventory.js';
+import type { ApprovalRole, LiveEvent, SlotBooking } from '@incitio/schema';
 import { resolveTemplate, templatesForCount } from '@incitio/brands';
 import { incitoOfferBoxes, offerViewIds, sizedImage, packStyle, pageBlocks, pagedSheet } from '@incitio/renderer';
 import { freeSlots, growTemplate, grownId } from './grid.js';
@@ -259,7 +262,7 @@ export type PanelKey = 'trin' | 'stemning' | 'sider';
  * sheets: to see whether the book worked you scrolled, and to compare
  * page three with page four you could not.
  */
-export type StudioView = 'hjem' | 'bog' | 'side' | 'udgaver' | 'varer';
+export type StudioView = 'hjem' | 'bog' | 'side' | 'udgaver' | 'varer' | 'pladser' | 'live' | 'godkend';
 
 /** Spreads, the way it prints — or one page at a time. */
 export type BookView = 'opslag' | 'sider';
@@ -405,6 +408,35 @@ export interface StudioState {
   setMustInclude: (offerIds: string[], on: boolean) => void;
   /** The front page: this week, next week, and everything before. */
   openHome: () => void;
+  /** Pladser, Live or Godkend — the avis read as inventory, as a live feed, as a sign-off. */
+  openBoard: (view: 'pladser' | 'live' | 'godkend') => void;
+  /** Sign the avis off for one role, on what it is now. Saved as a named version. */
+  approve: (role: ApprovalRole, who: string) => Promise<void>;
+  /** Take a signature back. */
+  unapprove: (role: ApprovalRole) => Promise<void>;
+  /** Sell a place: recorded on the avis, and the tile in it locked so nothing automatic moves it. */
+  bookSlot: (booking: Omit<SlotBooking, 'id' | 'at'>) => Promise<void>;
+  /** Free a sold place. The tile stays where it is. */
+  releaseSlot: (bookingId: string) => Promise<void>;
+  /**
+   * A change to an avis that is out: a product sold out (and what stands
+   * in for it), a price changed, a product back. Applied to the pages and
+   * logged, then saved as a named version so the published avis follows.
+   */
+  liveChange: (event: Omit<LiveEvent, 'id' | 'at'>) => Promise<void>;
+  /** Publish — the server refuses unless every role has signed what is there and nothing stops it. */
+  publish: (who?: string) => Promise<void>;
+  /** Take a published avis back to "klar". Publishing again passes the same gate. */
+  unpublish: (who?: string) => Promise<void>;
+  /**
+   * Run one workflow act on the server (sign, sell, publish, a live
+   * change) and take the avis it answers with. The acts above are this.
+   */
+  workflowAct: (
+    run: (brandId: string, id: string, updatedAt: string) => Promise<CatalogDocument>,
+    note: string | null,
+    forgetUndo?: boolean,
+  ) => Promise<void>;
   /** Rename an avis or change its status — the open one by editing it, any other on the server. */
   setCatalogueMeta: (id: string, patch: { name?: string; status?: api.CatalogStatus }) => Promise<void>;
   /**
@@ -3976,7 +4008,12 @@ export const useStudio = create<StudioState>((set, get) => {
       const measured = document
         ? measureFindings(window.document, document.pages.map((page) => page.id), untouched, crowding)
         : [];
-      set({ findings: [...read, ...measured, ...changeFindings(), ...mustFindings()].sort(bySeverity) });
+      set({
+        findings: [
+          ...read, ...measured, ...changeFindings(), ...mustFindings(),
+          ...priceRuleFindings(document), ...bookingFindings(document),
+        ].sort(bySeverity),
+      });
     },
 
     /**
@@ -4082,6 +4119,11 @@ export const useStudio = create<StudioState>((set, get) => {
     async signInAs(brandId: string) {
       set({
         busy: 'Skifter kæde…',
+        // The previous chain's designs, rules and themes are not this chain's.
+        designsOpen: false,
+        rulesOpen: false,
+        themesOpen: false,
+        sectionsOpen: false,
         error: null,
         note: null,
         document: null,
@@ -4132,9 +4174,6 @@ export const useStudio = create<StudioState>((set, get) => {
           api.fetchDecorStatus(brandId),
           sample?.path ? api.fetchFeed(sample.path) : Promise.resolve(null),
         ]);
-        void get().refreshCatalogues();
-        void get().refreshUploads();
-        void get().refreshSections();
         void api.fetchThemes(brandId).then((themes) => { if (get().brandId === brandId) set({ themes }); }).catch(() => undefined);
         const parked = parkedWork(brandId);
         // Read before the restore below: putting the parked avis on screen marks it as changed.
@@ -4188,6 +4227,16 @@ export const useStudio = create<StudioState>((set, get) => {
           // Back where you were, without saying so: the pages on screen say it.
           busy: null,
         });
+        /*
+         * The chain's lists, now that it IS the chain: asked for before
+         * `brandId` was set they came back as the previous chain's —
+         * its avisers on this chain's front page, its sections and uploads.
+         */
+        void get().refreshCatalogues();
+        void get().refreshUploads();
+        void get().refreshSections();
+        // Nothing to come back to: the chain's front page, not an empty book.
+        if (!get().document) set({ view: 'hjem', openPageId: null });
         /*
          * Parked but already saved: the server's copy is the same work or
          * newer — a colleague may have saved since. Open that, rather than
@@ -4363,9 +4412,22 @@ export const useStudio = create<StudioState>((set, get) => {
       saving = new Promise<void>((resolve) => { done = resolve; });
       try {
         const expected = force ? undefined : get().serverStamps[stored.id];
-        const { updatedAt } = await api.saveCatalogue(brandId, stored, label, expected);
-        clean = snapshot;
+        const { updatedAt, workflow, kept } = await api.saveCatalogue(brandId, stored, label, expected, force);
         const moved = get().document !== snapshot.document || get().variantBase !== snapshot.base;
+        clean = snapshot;
+        /*
+         * The server kept its own signatures, sold places, log or status
+         * over the ones this screen held (an old tab, an undo, a restored
+         * version): the screen takes the server's, quietly — they are
+         * changed in the Godkend, Pladser and Live screens, not by saving.
+         */
+        if (kept.length) {
+          const own = (doc: CatalogDocument | null) => (doc && doc.id === stored.id ? { ...doc, ...workflow } : doc);
+          // What was saved and what is on screen both take them; an edit made while saving stays unsaved.
+          clean = snapshot.base ? { document: snapshot.document, base: own(snapshot.base) } : { document: own(snapshot.document), base: null };
+          if (get().variantBase) set({ variantBase: moved ? own(get().variantBase) : clean.base });
+          else set({ document: moved ? own(get().document) : clean.document });
+        }
         rememberStamp(stored.id, updatedAt);
         set({
           serverStamps: { ...get().serverStamps, [stored.id]: updatedAt },
@@ -4379,6 +4441,11 @@ export const useStudio = create<StudioState>((set, get) => {
       } catch (error) {
         if (error instanceof api.SaveConflict) {
           set({ saveState: 'conflict' });
+          return false;
+        }
+        // Refused for a reason — a sold place, a price — that trying again will not change.
+        if (error instanceof api.SaveRefused) {
+          set({ saveState: 'failed', error: `Ikke gemt: ${error.message}. Fortryd ændringen (⌘Z) eller ret den.` });
           return false;
         }
         // Offline or the server restarting: said quietly, and tried again.
@@ -4433,7 +4500,9 @@ export const useStudio = create<StudioState>((set, get) => {
       const { brandId } = get();
       if (!brandId) return;
       try {
-        set({ catalogues: await api.fetchCatalogues(brandId) });
+        const catalogues = await api.fetchCatalogues(brandId);
+        // An answer for a chain somebody has since switched away from is not this chain's list.
+        if (get().brandId === brandId) set({ catalogues });
       } catch {
         // A list that cannot be read is not worth interrupting anyone
         // over; the editor works without it and the next save retries.
@@ -5955,7 +6024,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const { brandId } = get();
       if (!brandId) return;
       try {
-        set({ sections: await api.fetchSections(brandId) });
+        { const sections = await api.fetchSections(brandId); if (get().brandId === brandId) set({ sections }); }
       } catch {
         // The gallery is a convenience; the book works without it.
       }
@@ -6222,7 +6291,7 @@ export const useStudio = create<StudioState>((set, get) => {
       });
       // Published pages keep their cells' layouts for the new products.
       // "Skal med" is the chain's list for ONE week; the new week starts without one.
-      const next = { ...rememberCells(document, carried), mustInclude: [] };
+      const next = { ...rememberCells(document, carried), mustInclude: [], approvals: [], bookings: [], live: [] };
 
       if (week) {
         try {
@@ -6382,7 +6451,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const { brandId } = get();
       if (!brandId) return;
       try {
-        set({ uploads: await api.fetchUploads(brandId) });
+        { const uploads = await api.fetchUploads(brandId); if (get().brandId === brandId) set({ uploads }); }
       } catch {
         // A drawer that cannot be listed is not worth interrupting
         // anyone over; the next upload refreshes it.
@@ -7396,6 +7465,108 @@ export const useStudio = create<StudioState>((set, get) => {
       // The list is of the base and its editions, so no edition is open behind it.
       get().openVariant(null);
       set({ view: 'udgaver', openPageId: null, addPagesOpen: false });
+    },
+
+    openBoard(view) {
+      get().openVariant(null);
+      set({ view, openPageId: null, addPagesOpen: false });
+      get().refreshFindings();
+    },
+
+    async approve(role, who) {
+      await get().workflowAct(
+        (brandId, id, updatedAt) => api.approveCatalogue(brandId, id, { role, who: who.trim(), updatedAt }),
+        `${APPROVAL_ROLE_NAMES[role]} har godkendt avisen`,
+      );
+    },
+
+    async unapprove(role) {
+      await get().workflowAct(
+        (brandId, id, updatedAt) => api.unapproveCatalogue(brandId, id, role, updatedAt),
+        `${APPROVAL_ROLE_NAMES[role]}s godkendelse er trukket tilbage`,
+      );
+    },
+
+    async bookSlot(booking) {
+      await get().workflowAct(
+        (brandId, id, updatedAt) => api.bookPlace(brandId, id, { ...booking, updatedAt }),
+        `Pladsen er solgt til ${booking.supplier} og låst`,
+      );
+    },
+
+    async releaseSlot(bookingId) {
+      await get().workflowAct(
+        (brandId, id, updatedAt) => api.releasePlace(brandId, id, bookingId, updatedAt),
+        'Pladsen er frigivet',
+      );
+    },
+
+    async liveChange(event) {
+      await get().workflowAct(
+        (brandId, id, updatedAt) => api.sendLiveChange(brandId, id, {
+          kind: event.kind, offerId: event.offerId, substituteId: event.substituteId, after: event.after, who: event.who, updatedAt,
+        }),
+        null,
+        // A live change is logged on the server; undoing the pages here would leave the log saying otherwise.
+        true,
+      );
+    },
+
+    async publish(who = '') {
+      await get().workflowAct(
+        (brandId, id, updatedAt) => api.publishCatalogue(brandId, id, { who, updatedAt }),
+        'Avisen er udgivet. Ændringer herfra er live-ændringer.',
+      );
+    },
+
+    async unpublish(who = '') {
+      await get().workflowAct(
+        (brandId, id, updatedAt) => api.unpublishCatalogue(brandId, id, { who, updatedAt }),
+        'Avisen er trukket tilbage. Den skal udgives igen for at blive vist.',
+      );
+    },
+
+    /*
+     * One workflow act: what is on screen saved first, so the act is
+     * about the avis as seen; the act done by the server, which checks
+     * it; and the avis it answers with taken as the one on screen.
+     */
+    async workflowAct(run, note, forgetUndo = false) {
+      get().openVariant(null);
+      const { brandId } = get();
+      const open = get().document;
+      if (!brandId || !open) return;
+      gesture = null;
+      window.clearTimeout(autosaveTimer);
+      if (clean.document !== open && !(await get().persist('auto'))) {
+        set({ error: 'Avisen kunne ikke gemmes først — prøv igen' });
+        return;
+      }
+      const stamp = get().serverStamps[open.id];
+      if (!stamp) { set({ error: 'Avisen er ikke gemt endnu' }); return; }
+      set({ busy: 'Gemmer…', error: null });
+      try {
+        const saved = await run(brandId, open.id, stamp);
+        const own = (doc: CatalogDocument): CatalogDocument => (doc.id !== saved.id ? doc : {
+          ...doc, approvals: saved.approvals, bookings: saved.bookings, live: saved.live, status: saved.status,
+        });
+        clean = { document: saved, base: null };
+        set({
+          busy: null,
+          document: saved,
+          past: forgetUndo ? [] : get().past.map(own),
+          future: forgetUndo ? [] : get().future.map(own),
+          serverStamps: rememberStamp(saved.id, saved.updatedAt),
+          savedAt: saved.updatedAt,
+          saveState: 'saved',
+          ...(note ? { note } : {}),
+        });
+        get().refreshFindings();
+        void get().refreshCatalogues();
+      } catch (error) {
+        if (error instanceof api.SaveConflict) set({ busy: null, saveState: 'conflict' });
+        else set({ busy: null, error: message(error) });
+      }
     },
 
     openHome() {

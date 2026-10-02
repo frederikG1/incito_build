@@ -190,7 +190,10 @@ export function EditionsBoard() {
     <main className="book editions">
       <div className="book__head">
         <h2>Udgaver</h2>
-        <span className="book__said">hver butik og region — og om den passer med sit eget feed</span>
+        <span className="book__said" title="Hver butik og region — og om den passer med sit eget feed">
+          {counts.alle} {counts.alle === 1 ? 'udgave' : 'udgaver'}
+          {counts.fejl > 0 && <> · <b className="book__open book__open--stop">{counts.fejl} med fejl</b></>}
+        </span>
         <div className="book__gap" />
         <input ref={merged} type="file" accept=".json" hidden onChange={async (event) => {
           const file = event.target.files?.[0];
@@ -285,7 +288,8 @@ function EditionRow({ check, open, onToggle, numberOf }: {
     >
       <button className="editions__row" role="row" onClick={onToggle} aria-expanded={open}>
         <span><b>{check.name}</b></span>
-        <span className="editions__muted">{id ? (check.stores.length ? `${check.stores.length} · ${check.stores.slice(0, 3).join(', ')}${check.stores.length > 3 ? ' …' : ''}` : 'ingen valgt') : 'resten'}</span>
+        {/* How many, in words; the platform's ids are for the tooltip, not for reading. */}
+        <span className="editions__muted" title={check.stores.join(', ')}>{id ? (check.stores.length ? `${check.stores.length} ${check.stores.length === 1 ? 'butik' : 'butikker'}` : 'ingen valgt') : 'resten'}</span>
         <span>{check.onPages} varer</span>
         <span className="editions__muted">{check.feed ? `${check.feed.name} · ${check.feed.offers}` : '—'}</span>
         <span>{status}{check.unplaced.length > 0 && <span className="editions__muted"> · {check.unplaced.length} ikke med</span>}</span>

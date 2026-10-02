@@ -61,6 +61,7 @@ export default defineConfig({
     port: 5173,
     // The API runs as a separate process; proxying keeps the browser on a
     // single origin so no CORS handling leaks into the client.
-    proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: true } },
+    // INCITIO_API points a second studio at a second API (e.g. one on a copy of the database).
+    proxy: { '/api': { target: process.env['INCITIO_API'] ?? 'http://localhost:8787', changeOrigin: true } },
   },
 });

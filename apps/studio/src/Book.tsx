@@ -124,10 +124,13 @@ function Card({ page, index }: { page: CatalogPage; index: number }) {
         aria-label={`Slet side ${index + 1}`}
         onClick={(event) => { event.stopPropagation(); removePage(page.id); }}
       >×</button>
+      {/* A marker, not a banner: what is wrong is said under the page, in words. */}
       {verdict && (
-        <span className={`card__pill${verdict.weight === 'stop' ? '' : ' card__pill--warn'}`}>
-          {verdict.weight === 'stop' ? 'se på den' : 'værd at se'}
-        </span>
+        <span
+          className={`card__flag${verdict.weight === 'stop' ? '' : ' card__flag--warn'}`}
+          title={verdict.weight === 'stop' ? 'Skal rettes' : 'Værd at se på'}
+          aria-label={verdict.weight === 'stop' ? 'Skal rettes' : 'Værd at se på'}
+        />
       )}
     </div>
   );
@@ -166,10 +169,38 @@ function Caption({ page, index }: { page: CatalogPage; index: number }) {
           ? 'Billedside'
           : department ? DEPARTMENT_NAMES[department] : 'Blandet')}
       </b>
-      <span className={verdict?.weight === 'stop' ? 'is-stop' : verdict ? 'is-warn' : ''}>
-        {said.length > 40 ? `${said.slice(0, 38)}…` : said}
+      {/* One line, cut by the width it has; the whole sentence on hover. */}
+      <span className={verdict?.weight === 'stop' ? 'is-stop' : verdict ? 'is-warn' : ''} title={said}>
+        {said}
       </span>
     </div>
+  );
+}
+
+/**
+ * The avis in three numbers, beside its name: how many pages, how many
+ * products, how many cells still waiting. The old line here said how
+ * to drag a page — once read, it was the same sentence every visit.
+ */
+function BookSums() {
+  const document = useStudio((s) => s.document);
+  const brand = useStudio((s) => s.brand);
+  if (!document || document.pages.length === 0) return null;
+  let offers = 0;
+  let open = 0;
+  for (const page of document.pages) {
+    offers += page.placements.length;
+    const template = brand
+      ? resolveTemplate(brand, page.templateId) ?? document.templates.find((entry) => entry.id === page.templateId)
+      : undefined;
+    if (template && !isImagePage(page)) open += freeSlots(page, template).length;
+  }
+  const n = document.pages.length;
+  return (
+    <span className="book__said" title="Træk en side for at flytte den">
+      {n} {n === 1 ? 'side' : 'sider'} · {offers} {offers === 1 ? 'vare' : 'varer'}
+      {open > 0 && <> · <b className="book__open">{open} {open === 1 ? 'tom plads' : 'tomme pladser'}</b></>}
+    </span>
   );
 }
 
@@ -354,6 +385,7 @@ export function Book() {
   const sectionCount = useStudio((s) => s.sections.length);
   const [lifted, setLifted] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
+  const aspect = useStudio((s) => s.brand?.pageAspect ?? 0.707);
 
   const pages = document?.pages ?? [];
 
@@ -375,10 +407,11 @@ export function Book() {
   }
 
   return (
-    <main className="book">
+    // The chain's own page shape: an A4 chain's cards are A4, Wolt's and Løvbjerg's are 0.6.
+    <main className="book" style={{ ['--aspect' as string]: String(aspect) }}>
       <div className="book__head">
         <h2>Avisen</h2>
-        <span className="book__said">som den bliver trykt · træk en side for at flytte den</span>
+        <BookSums />
         <div className="book__gap" />
         <ThemeButton />
         <button className="thin" onClick={() => setSectionsOpen(true)} title="Kædens gemte sidedesigns">

@@ -58,6 +58,7 @@ export interface Finding {
 
 export const FINDING_KINDS = [
   'billede', 'plads', 'tekst', 'pris', 'klynge', 'ark', 'uge', 'skabelon', 'regler', 'skalmed',
+  'førpris', 'solgt',
 ] as const;
 export type FindingKind = (typeof FINDING_KINDS)[number];
 
