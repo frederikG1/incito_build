@@ -30,7 +30,7 @@ import {
 import { findPageCells, importPublication, PublicationError } from '@incitio/publication';
 import { SaveConflict, Section, Store } from './db.js';
 import { keepWorkflow, standInPrices, type PriceSource } from '@incitio/workflow';
-import { makeCommit, Refused, refusal, workflowRoutes } from './workflow.js';
+import { makeCommit, Refused, refusal, workflowRoutes, type Measure } from './workflow.js';
 
 export { Store } from './db.js';
 
@@ -112,6 +112,13 @@ export interface AppOptions {
    * (`standInPrices`) — a chain's price file replaces it here.
    */
   prices?: PriceSource;
+  /**
+   * Draw and measure an avis before it is published — the print checks
+   * that need the page drawn (clipped words, a price on a name). `main.ts`
+   * passes the Chromium one (`measuredFindings`); tests leave it out, and
+   * then only the checks the document can answer gate publishing.
+   */
+  measure?: Measure;
 }
 
 /** The chain a Tjek offers file names on its rows, when it names one. */
@@ -508,7 +515,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
     }
   });
 
-  workflowRoutes(app, store, commit, prices);
+  workflowRoutes(app, store, commit, prices, options.measure);
 
   /*
    * A sentence to ops. The document comes in the body, not from the

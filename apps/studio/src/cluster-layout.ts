@@ -1,3 +1,5 @@
+import { OUT_OF_PROPORTION } from '@incitio/workflow';
+
 /**
  * Turning a picture of a composition into moves for the real cutouts.
  *
@@ -223,7 +225,7 @@ export function snapToBaseline(wants: Want[], within = BASELINE_WITHIN): void {
  * and past that it is a mistake. Used for height and, at the same
  * height, for width — see `reviewCluster`.
  */
-export const OUT_OF_PROPORTION = 2.2;
+export { OUT_OF_PROPORTION };
 
 /**
  * How close two heights have to be to count as "the same height".

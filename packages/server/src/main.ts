@@ -3,6 +3,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { OfferRules, readDesignExport, type OfferDesign } from '@incitio/schema';
 import { fileURLToPath } from 'node:url';
 import { parseLabelDictionary, EMPTY_LABEL_DICTIONARY } from '@incitio/ingest';
+import { sharedBrowser } from '@incitio/decor';
+import type { Brand, CatalogDocument } from '@incitio/schema';
+import { measuredFindings } from './print.js';
 import { createApp, Store } from './index.js';
 
 // Deliberately NOT under data/: Vite serves that directory as its static
@@ -66,7 +69,14 @@ const defaultDesigns = (() => {
 const store = new Store(dbPath);
 const port = Number(process.env['PORT'] ?? 8787);
 
-serve({ fetch: createApp(store, { assetDir, labels, defaultDesigns }).fetch, port }, (info) => {
+/*
+ * The print checks that need the page drawn, run in the same Chromium
+ * the PDFs and cutouts use — one browser for the process.
+ */
+const measure = async (document: CatalogDocument, brand: Brand) =>
+  measuredFindings(document, brand, { assetDir, browser: await sharedBrowser() });
+
+serve({ fetch: createApp(store, { assetDir, labels, defaultDesigns, measure }).fetch, port }, (info) => {
   console.log(
     `incitio api på http://localhost:${info.port} (db: ${dbPath}, `
     + `${labels.entries.length} mærker)`,

@@ -6,3 +6,7 @@ export * from './prices.js';
 export * from './stand-in.js';
 export * from './stop.js';
 export { seeded } from './hash.js';
+export * from './print.js';
+export * from './measured.js';
+export * from './slots.js';
+export * from './sort.js';

@@ -7,6 +7,7 @@ import { EditionNote, EditionPicker, SectionUpdates } from './Editions.js';
 import { ConflictNote, SaveStatus } from './Saving.js';
 import { usePopover } from './popover.js';
 import { avisTitle } from './names.js';
+import { Chevron } from './Chevron.js';
 import { lanesOf } from './approvals.js';
 
 /** How many signatures are missing or out of date — on the Godkend tab. */
@@ -133,7 +134,7 @@ function PdfButton() {
   return (
     <div className="pdfwrap">
       <button className="go go--split" onClick={() => void s.downloadPdf()} disabled={off}>Hent PDF</button>
-      <button className="go go--caret" onClick={() => setOpen(!open)} disabled={off} aria-expanded={open} title="Flere PDF'er">▾</button>
+      <button className="go go--caret" onClick={() => setOpen(!open)} disabled={off} aria-expanded={open} title="Flere PDF'er" aria-label="Flere PDF'er"><Chevron /></button>
       {open && (
         <>
           <div className="sheetaway" onPointerDown={() => setOpen(false)} />
@@ -187,7 +188,7 @@ function ChainSwitch() {
       >
         <i className="chain__dot" style={{ background: color }} aria-hidden="true" />
         <span className="chain__name">{label.name}</span>
-        <span className="chain__caret" aria-hidden="true">▾</span>
+        <Chevron />
       </button>
       {open && (
         <>
@@ -238,11 +239,9 @@ export function Top() {
           <span className="mark__glyph" aria-hidden="true" />
           <span className="mark__word">Incitio</span>
         </button>
-        <span className="crumb" aria-hidden="true">/</span>
         <ChainSwitch />
         {document && s.view !== 'hjem' && (
           <>
-            <span className="crumb" aria-hidden="true">/</span>
             <Document />
             <EditionPicker />
           </>
@@ -292,3 +291,4 @@ export function Top() {
     </>
   );
 }
+

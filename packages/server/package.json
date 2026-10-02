@@ -25,6 +25,7 @@
     "@incitio/publication": "0.1.0",
     "@incitio/curator": "0.1.0",
     "@incitio/edit": "0.1.0",
-    "@incitio/workflow": "0.1.0"
+    "@incitio/workflow": "0.1.0",
+    "esbuild": "^0.25.12"
   }
 }

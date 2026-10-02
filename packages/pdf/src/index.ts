@@ -240,6 +240,40 @@ export async function renderCataloguePngs(
 }
 
 /**
+ * Open a catalogue as it renders and hand the page to `run`.
+ *
+ * The same load path as the proofs — the file written next to the
+ * assets, type and images settled — for callers that want to read the
+ * rendered pages rather than print them: the checks before publishing
+ * measure clipped words and covered prices on exactly this.
+ */
+export async function inspectCatalogue<T>(
+  document: CatalogDocument,
+  brand: Brand,
+  run: (page: import('playwright').Page) => Promise<T>,
+  options: PrintOptions & { widthPx?: number } = {},
+): Promise<T> {
+  const widthPx = options.widthPx ?? 900;
+  const html = renderCatalogueHtml(document, brand,
+    options.assetDir ? { assetBase: pathToFileURL(`${options.assetDir}/`).href } : {});
+  const browser = options.browser ?? (await chromium.launch());
+  const page = await browser.newPage({ viewport: { width: widthPx + 80, height: Math.round(widthPx / brand.pageAspect) } });
+  const scratch = join(options.assetDir ?? tmpdir(), `.incitio-check-${randomUUID()}.html`);
+  writeFileSync(scratch, html);
+  try {
+    await page.goto(pathToFileURL(scratch).href, { waitUntil: 'load' });
+    await settleType(page);
+    await settleImages(page, options.imageTimeoutMs ?? 20_000);
+    await settleBackgrounds(page, options.imageTimeoutMs ?? 20_000);
+    return await run(page);
+  } finally {
+    await page.close();
+    rmSync(scratch, { force: true });
+    if (!options.browser) await browser.close();
+  }
+}
+
+/**
  * Wait for every `<img>` to load or fail.
  *
  * `waitUntil: 'networkidle'` is not enough on its own — lazy-loaded

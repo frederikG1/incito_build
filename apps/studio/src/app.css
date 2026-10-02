@@ -5972,7 +5972,7 @@ button, input, select, textarea { font-family: inherit; }
 .livemark__mine { font: 700 14px/1.1 var(--ui-font); background: #fff; color: var(--hot); border: 2px solid var(--hot); padding: 3px 7px; border-radius: 999px; }
 
 .liveboard__side { display: flex; flex-direction: column; gap: 14px; max-width: 640px; }
-.liveboard__change, .liveboard__log, .liveboard__channels { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.liveboard__change, .liveboard__log { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .liveboard__search { flex: none; width: 100%; }
 .liveboard__hits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .liveboard__hits button { width: 100%; display: flex; justify-content: space-between; gap: 10px; text-align: left; font: inherit; font-size: 13px; padding: 7px 9px; border: none; border-radius: var(--r-sm); background: none; cursor: pointer; }
@@ -5987,10 +5987,6 @@ button, input, select, textarea { font-family: inherit; }
 .liveboard__pill .linkish { color: #a5b4fc; font-size: 11.5px; }
 .liveboard__log b { font-weight: 600; }
 .liveboard__log small { color: var(--muted); }
-.liveboard__channels ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.liveboard__channels li { display: flex; flex-direction: column; gap: 1px; padding: 9px 11px; border-radius: var(--r); background: var(--paper); font-size: 12.5px; }
-.liveboard__channels li span { color: var(--muted); font-size: 11.5px; }
-.liveboard__channels li b::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #12b76a; margin-right: 7px; vertical-align: 2px; }
 
 @media (max-width: 1180px) {
   .signoff__buckets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -6088,3 +6084,21 @@ button, input, select, textarea { font-family: inherit; }
   padding: 5px 7px; border: 1px solid var(--line-field); border-radius: 6px; background: var(--surface);
 }
 .deditor__cell small { flex-basis: 100%; font-size: 11px; color: var(--muted); }
+
+/* ---------------------------------------------------- header, tidied
+ * The words for the checks and for saving are what the header is for;
+ * they stay down to a laptop's 1280. Search gives way first, to its icon.
+ */
+.chevron { flex: 0 0 auto; color: var(--muted); }
+.go--caret .chevron { color: currentColor; }
+.find { display: inline-flex; align-items: center; gap: 6px; }
+.find__icon { flex: 0 0 auto; color: var(--muted); }
+@media (min-width: 1280px) and (max-width: 1679px) {
+  .top .ready__said, .top .saving__said { display: inline; }
+  .top .ready, .top .saving__state { padding-left: 10px; padding-right: 11px; }
+}
+.saving__said { font-variant-numeric: tabular-nums; }
+/* The sum of the free places is the long number; it gets the room. */
+.slotpanel__stats { grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.6fr); }
+.editions__table--nofeed .editions__row { grid-template-columns: minmax(140px, 1.2fr) minmax(120px, 1.4fr) 100px minmax(130px, 1fr); }
+@media (max-width: 760px) { .editions__table--nofeed .editions__row { grid-template-columns: 1fr 1fr; } }

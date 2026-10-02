@@ -174,6 +174,7 @@ export function Tray() {
     ?? selectedSlot ?? emptySlot ?? slots[0]?.slotId ?? '';
   const busy = Boolean(s.busy);
 
+  const idle = unplaced.length === 0 && !showPlaced && !s.librarySearch.trim();
   return (
     <aside className="shelf" style={{ flexBasis: width }}>
       <div
@@ -194,7 +195,7 @@ export function Tray() {
       />
       <div className="shelf__head">
         <b>Ugens varer</b>
-        <span className="shelf__count">{waiting.length === unplaced.length ? `${unplaced.length} ikke placeret` : `${waiting.length} vist · ${unplaced.length} ikke placeret`}</span>
+        <span className="shelf__count">{unplaced.length === 0 ? 'alle har en plads' : waiting.length === unplaced.length ? `${unplaced.length} ikke placeret` : `${waiting.length} vist · ${unplaced.length} ikke placeret`}</span>
         <div className="shelf__gap" />
         <button
           className="shelf__widen"
@@ -203,6 +204,8 @@ export function Tray() {
         >{width > (NARROW + WIDE) / 2 ? '‹ Smal' : 'Bred ›'}</button>
       </div>
       <div className="shelf__tools">
+        {/* Nothing waiting and nothing asked for: search and sorting have nothing to work on. */}
+        {(!idle) && <>
         <input
           className="shelf__find"
           value={s.librarySearch}
@@ -226,12 +229,13 @@ export function Tray() {
             <option value="pris">Laveste pris først</option>
           </select>
         </div>
+        </>}
         <label className="shelf__check">
           <input type="checkbox" checked={showPlaced} onChange={(event) => setShowPlaced(event.target.checked)} />
           Vis også varer der er på en side
         </label>
       </div>
-      <p className="shelf__hint"><b>Træk</b> hen på siden · <b>klik</b> flere for at samle dem</p>
+      {!idle && <p className="shelf__hint"><b>Træk</b> hen på siden · <b>klik</b> flere for at samle dem</p>}
 
       {/* As many to a row as the width holds — two at the narrowest. */}
       <div className="shelf__grid">

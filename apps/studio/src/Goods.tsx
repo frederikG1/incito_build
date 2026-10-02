@@ -158,7 +158,7 @@ export function GoodsBoard() {
               if (file) await s.uploadFeed(file.name, await file.text());
             }}
           />
-          Hent varefil <i>{s.feed ? s.feed.source : 'ingen endnu'}</i>
+          Hent varefil{s.feed ? <i>{s.feed.source}</i> : null}
         </label>
       </div>
 
@@ -187,7 +187,8 @@ export function GoodsBoard() {
           </select>
         )}
         <div className="goods__chips">
-          {(Object.keys(SHOW_WORDS) as Show[]).map((key) => (
+          {/* A filter that would show nothing is not offered — except the one in use, so it can be left. */}
+          {(Object.keys(SHOW_WORDS) as Show[]).filter((key) => key === 'alle' || key === show || counts[key] > 0).map((key) => (
             <button
               key={key}
               className={`tag tag--pick${show === key ? ' is-on' : ''}${(key === 'billede' || key === 'pris' || key === 'staerke' || key === 'skalmed-mangler') && counts[key] > 0 ? ' goods__warn' : ''}`}

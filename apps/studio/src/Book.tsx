@@ -160,14 +160,16 @@ function Caption({ page, index }: { page: CatalogPage; index: number }) {
     ? (open > 0
       ? `${cells - open} af ${cells} pladser fyldt`
       : verdict.said.replace(/^Side \d+: /, ''))
-    : `${page.placements.length} ${page.placements.length === 1 ? 'vare' : 'varer'}`;
+    // A page with no products — a cover, a banner — says nothing rather than "0 varer".
+    : page.placements.length > 0 ? `${page.placements.length} ${page.placements.length === 1 ? 'vare' : 'varer'}` : '';
 
   return (
     <div className="leaf__cap">
       <b>
-        {index + 1} · {page.title || (isImagePage(page)
-          ? 'Billedside'
-          : department ? DEPARTMENT_NAMES[department] : 'Blandet')}
+        {/* Named by its headline, else its one department; a mixed page is just its number. */}
+        {page.title || isImagePage(page) || department
+          ? `${index + 1} · ${page.title || (isImagePage(page) ? 'Billedside' : DEPARTMENT_NAMES[department!])}`
+          : `Side ${index + 1}`}
       </b>
       {/* One line, cut by the width it has; the whole sentence on hover. */}
       <span className={verdict?.weight === 'stop' ? 'is-stop' : verdict ? 'is-warn' : ''} title={said}>

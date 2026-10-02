@@ -1,7 +1,8 @@
 import {
   APPROVAL_ROLE_NAMES,
-  type CatalogDocument, type LiveEvent,
+  type Brand, type CatalogDocument, type LiveEvent,
 } from '@incitio/schema';
+import { printFindings } from './print.js';
 import { lanesOf } from './approvals.js';
 import { bookingFindings } from './bookings.js';
 import { priceRuleFindings, type PriceSource } from './prices.js';
@@ -65,20 +66,23 @@ export interface WriteVerdict {
  * a place sold before it was filled is not the writer's doing.
  *
  * On a published avis it may not introduce a price that breaks the
- * price rules either, and every price it changes is logged as a live
+ * price rules, nor a print stop the document can see (an emptied place,
+ * a product with no price) — and every price it changes is logged as a live
  * change, so the log stays the whole answer to "what did the shopper
  * see" however the change arrived.
  */
 export function checkWrite(
   before: CatalogDocument,
   after: CatalogDocument,
-  options: { prices?: PriceSource; who?: string } = {},
+  options: { prices?: PriceSource; who?: string; brand?: Brand } = {},
 ): WriteVerdict {
   const prices = options.prices ?? standInPrices;
   const refused = newStops(bookingFindings(before), bookingFindings(after));
   const logged: WriteVerdict['logged'] = [];
   if (before.status === 'udgivet') {
     refused.push(...newStops(priceRuleFindings(before, prices), priceRuleFindings(after, prices)));
+    // Nor a hole in what readers already have: an emptied place, a product without a price or picture.
+    if (options.brand) refused.push(...newStops(printFindings(before, options.brand), printFindings(after, options.brand)));
     const then = new Map(before.offers.map((offer) => [offer.id, offer.price]));
     for (const offer of after.offers) {
       const was = then.get(offer.id);
@@ -95,13 +99,17 @@ export interface Blocker { id: string; said: string }
  * Why an avis may not be published yet — empty when it may.
  *
  * Every role signed, and nothing it answers for changed since; no stop
- * in the price rules or on a sold place — in the avis and in every
- * local edition, since a store's own offer is printed under the same law.
+ * in the price rules, on a sold place or in the print checks — in the
+ * avis and in every local edition, since a store's own offer is printed
+ * under the same law. The measured print checks (the drawn page) are the
+ * server's to add — see `packages/server/src/print.ts`.
  */
 export function publishBlockers(
   document: CatalogDocument,
   editions: ResolvedEdition[],
   prices: PriceSource = standInPrices,
+  /** With a brand, the print checks the document can answer count too — see `printFindings`. */
+  brand?: Brand,
 ): Blocker[] {
   const blockers: Blocker[] = [];
   for (const lane of lanesOf(document)) {
@@ -110,8 +118,9 @@ export function publishBlockers(
       blockers.push({ id: `godkend:${lane.role}`, said: `${APPROVAL_ROLE_NAMES[lane.role]} skal se ${lane.changes.length} ${lane.changes.length === 1 ? 'ændring' : 'ændringer'} igen` });
     }
   }
-  const stops = (doc: CatalogDocument) =>
-    [...priceRuleFindings(doc, prices), ...bookingFindings(doc)].filter((stop) => stop.weight === 'stop');
+  const stops = (doc: CatalogDocument) => [
+    ...priceRuleFindings(doc, prices), ...bookingFindings(doc), ...(brand ? printFindings(doc, brand) : []),
+  ].filter((stop) => stop.weight === 'stop');
   const seen = new Set<string>();
   for (const stop of stops(document)) {
     seen.add(stop.id);

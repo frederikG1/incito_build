@@ -8,7 +8,7 @@ import { BRAND_HEADER, createApp, Store } from '../index.js';
  */
 
 const offer = (id: string, name: string, price: number, extra: Partial<Offer> = {}) => Offer.parse({
-  id, name, price, validFrom: '2026-09-04', validTo: '2026-09-10', quantity: { size: null, unit: 'pcs' }, ...extra,
+  id, name, price, imageUrl: `https://example.test/${id}.png`, validFrom: '2026-09-04', validTo: '2026-09-10', quantity: { size: null, unit: 'pcs' }, ...extra,
 });
 
 const base = CatalogDocument.parse({
@@ -200,6 +200,36 @@ describe('publishing', () => {
     expect(store.versions('superbrugsen', 'u36').map((v) => v.label)).toContain('trukket tilbage · Mette');
     // Nothing changed, so the signatures still hold and it may go out again.
     expect((await act('/publish', { who: 'Mette' })).status).toBe(200);
+  });
+});
+
+describe('the print checks gate publishing', () => {
+  it('a hole the document can see stops it — an emptied place', async () => {
+    await signAll();
+    await put({ ...stored(), pages: [{ ...stored().pages[0]!, placements: [{ slotId: 'a', offerId: 'ost' }] }] } as CatalogDocument);
+    await signAll();
+    const refused = await act('/publish', { who: 'Mette' });
+    expect(refused.status).toBe(422);
+    expect(refused.body.error).toContain('plads er tom');
+  });
+
+  it('so does what only the drawn page shows', async () => {
+    app = createApp(store, {
+      measure: async () => [{ id: 'p1:ost:tekst-klippet', kind: 'tekst', said: 'Side 1: teksten er klippet af på Klovborg (6px)', pageId: 'p1', pageNumber: 1, offerId: 'ost', weight: 'stop' }],
+    });
+    await signAll();
+    const refused = await act('/publish', { who: 'Mette' });
+    expect(refused.status).toBe(422);
+    expect(refused.body.error).toBe('Side 1: teksten er klippet af på Klovborg (6px)');
+    expect(stored().status).not.toBe('udgivet');
+  });
+
+  it('and a page that cannot be drawn is not published unmeasured', async () => {
+    app = createApp(store, { measure: async () => { throw new Error('Chromium mangler'); } });
+    await signAll();
+    const refused = await act('/publish', { who: 'Mette' });
+    expect(refused.status).toBe(422);
+    expect(refused.body.error).toContain('Chromium mangler');
   });
 });
 

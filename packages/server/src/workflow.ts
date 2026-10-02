@@ -7,7 +7,7 @@ import { resolveTemplate, type BrandDefinition } from '@incitio/brands';
 import { resolveVariant } from '@incitio/edit';
 import {
   applyLive, checkWrite, keepWorkflow, LiveError, publishBlockers, signed, standInPrices, unsigned,
-  type Blocker, type PriceSource, type ResolvedEdition, type Stop,
+  type Blocker, type Finding, type PriceSource, type ResolvedEdition, type Stop,
 } from '@incitio/workflow';
 import { SaveConflict, type Store } from './db.js';
 
@@ -92,7 +92,7 @@ export function makeCommit(store: Store, prices: PriceSource) {
 
     if (!result.owner || result.check) {
       const refused: Stop[] = [];
-      const verdict = checkWrite(stored, next, { prices, who: 'redigering' });
+      const verdict = checkWrite(stored, next, { prices, who: 'redigering', brand });
       refused.push(...verdict.refused);
       /*
        * Each edition as its shoppers see it: a store's edit may not break
@@ -104,7 +104,7 @@ export function makeCommit(store: Store, prices: PriceSource) {
       for (const edition of guarded ? editionsOf(next, brand) : []) {
         const then = before.get(edition.id);
         if (!then) continue;
-        for (const stop of checkWrite(then.document, edition.document, { prices }).refused) {
+        for (const stop of checkWrite(then.document, edition.document, { prices, brand }).refused) {
           if (!refused.some((r) => r.id === stop.id)) refused.push({ ...stop, said: `${edition.name}: ${stop.said}` });
         }
       }
@@ -159,7 +159,12 @@ const LiveRequest = Stamp.extend({
   after: z.number().nullable().default(null),
 });
 
-export function workflowRoutes(app: Hono<Scope>, store: Store, commit: Commit, prices: PriceSource = standInPrices) {
+/** Draw an avis and measure it — the print checks that need the page drawn. Absent: those are not run. */
+export type Measure = (document: CatalogDocument, brand: Brand) => Promise<Finding[]>;
+
+export function workflowRoutes(
+  app: Hono<Scope>, store: Store, commit: Commit, prices: PriceSource = standInPrices, measure?: Measure,
+) {
   const body = async <T extends z.ZodTypeAny>(c: Context, schema: T): Promise<z.infer<T>> => {
     let payload: unknown;
     try { payload = await c.req.json(); } catch { throw new Refused(422, { error: 'body is not valid JSON' }); }
@@ -265,10 +270,42 @@ export function workflowRoutes(app: Hono<Scope>, store: Store, commit: Commit, p
   app.post('/api/brand/catalogs/:id/publish', (c) => answer(c, async () => {
     const { brand } = c.get('brand');
     const request = await body(c, Stamp);
-    return commit(brand, c.req.param('id'), request.updatedAt, (stored) => {
+    const id = c.req.param('id');
+    const gate = (stored: CatalogDocument): Blocker[] => {
       if (stored.status === 'udgivet') throw new Refused(422, { error: 'avisen er allerede udgivet' });
-      const blockers: Blocker[] = publishBlockers(stored, editionsOf(stored, brand), prices);
-      if (blockers.length) throw new Refused(422, { error: blockers.map((b) => b.said).join(' · '), blockers });
+      return publishBlockers(stored, editionsOf(stored, brand), prices, brand);
+    };
+    const refuse = (blockers: Blocker[]) => new Refused(422, { error: blockers.map((b) => b.said).join(' · '), blockers });
+
+    // What the document can answer, first: it is instant, and a missing signature needs no browser.
+    const seen = store.get(brand.id, id);
+    if (!seen) throw new Refused(404, { error: 'not found' });
+    if (seen.updatedAt !== request.updatedAt) {
+      throw new Refused(409, { error: 'the catalogue changed since it was read', updatedAt: seen.updatedAt });
+    }
+    const read = gate(seen);
+    if (read.length) throw refuse(read);
+
+    /*
+     * Then the drawn pages, which take seconds. Measured on the avis as
+     * stored at `updatedAt`; the commit below refuses if anything was
+     * saved in the meantime, so what was measured is what goes out.
+     */
+    if (measure) {
+      let drawn: Blocker[];
+      try {
+        drawn = (await measure(seen, brand)).filter((f) => f.weight === 'stop').map((f) => ({ id: f.id, said: f.said }));
+      } catch (error) {
+        throw new Refused(422, {
+          error: `siderne kunne ikke tegnes og måles før udgivelse (${error instanceof Error ? error.message : 'ukendt fejl'})`,
+        });
+      }
+      if (drawn.length) throw refuse(drawn);
+    }
+
+    return commit(brand, id, request.updatedAt, (stored) => {
+      const blockers = gate(stored);
+      if (blockers.length) throw refuse(blockers);
       return { document: { ...stored, status: 'udgivet' }, label: `udgivet · ${request.who || 'ukendt'}`, owner: true };
     });
   }));

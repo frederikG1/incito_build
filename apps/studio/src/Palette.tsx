@@ -330,8 +330,12 @@ export function Keys() {
 /** The way in for somebody who does not know ⌘K yet. */
 export function SearchButton() {
   return (
-    <button className="find" onClick={() => window.dispatchEvent(new Event('incitio:palette'))} title="Søg efter en vare, en side eller en handling">
-      <span aria-hidden="true">⌕</span> <span className="find__word">Søg</span> <kbd>⌘K</kbd>
+    <button className="find" onClick={() => window.dispatchEvent(new Event('incitio:palette'))} title="Søg efter en vare, en side eller en handling (⌘K)" aria-label="Søg">
+      <svg className="find__icon" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.75" fill="none" stroke="currentColor" strokeWidth="1.6" />
+        <path d="m10.6 10.6 3.4 3.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+      <span className="find__word">Søg</span> <kbd>⌘K</kbd>
     </button>
   );
 }

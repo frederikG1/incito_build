@@ -16,6 +16,7 @@ import {
 import { APPROVAL_ROLE_NAMES, groupOffers, healLabelPrices, notOnePhotograph, readPackSize, rememberPrinted } from '@incitio/schema';
 import { nextWeek, weekName, weekOf, OfferFeed, withTheme, type Theme } from '@incitio/schema';
 import { bySeverity, coveredByText, measureFindings, readFindings, type Finding } from './findings.js';
+import { measureInputs } from '@incitio/workflow';
 import { priceRuleFindings } from './pricerules.js';
 import { bookingFindings } from './inventory.js';
 import type { ApprovalRole, LiveEvent, SlotBooking } from '@incitio/schema';
@@ -3992,19 +3993,7 @@ export const useStudio = create<StudioState>((set, get) => {
        * photograph, which is the one case worth complaining about.
        * See `measureFindings`.
        */
-      const untouched = new Set(
-        (document?.pages ?? [])
-          .flatMap((page) => page.placements)
-          .filter((placement) => Object.keys(placement.overrides.pack ?? {}).length === 0)
-          .map((placement) => placement.offerId),
-      );
-      const byId = new Map((document?.offers ?? []).map((offer) => [offer.id, offer]));
-      const crowding = new Map((document?.pages ?? [])
-        .flatMap((page) => page.placements)
-        .filter((placement) => !placement.overrides.crowdOk)
-        .map((placement) => byId.get(placement.offerId))
-        .filter((offer): offer is Offer => Boolean(offer))
-        .map((offer) => [offer.id, { products: Math.max(offer.imagePack.length, offer.members.length, 1), name: offer.name }] as const));
+      const { untouched, crowding } = measureInputs(document);
       const measured = document
         ? measureFindings(window.document, document.pages.map((page) => page.id), untouched, crowding)
         : [];

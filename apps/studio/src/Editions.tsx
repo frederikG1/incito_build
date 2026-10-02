@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { sectionsBehind, variantSummary } from '@incitio/edit/core';
 import { checkEditions, DIFF_FIELD_NAMES, type EditionCheck } from '@incitio/compose';
 import { useStudio } from './state.js';
+import { Chevron } from './Chevron.js';
 import { usePopover } from './popover.js';
 
 /**
@@ -50,7 +51,7 @@ export function EditionPicker() {
       >
         <span className="edition__label">Udgave</span>
         <strong>{current?.name ?? 'Alle butikker'}</strong>
-        <span className="doc__caret" aria-hidden="true">▾</span>
+        <Chevron />
       </button>
 
       {open && (
@@ -183,6 +184,7 @@ export function EditionsBoard() {
     fejl: checks.filter((c) => c.problems > 0).length,
     uden: checks.filter((c) => c.variantId && !c.feed).length,
   };
+  const feeds = checks.some((c) => Boolean(c.feed));
   const shown = checks.filter((c) => (filter === 'fejl' ? c.problems > 0 : filter === 'uden' ? Boolean(c.variantId && !c.feed) : true))
     .filter((c) => !needle || c.name.toLowerCase().includes(needle) || c.stores.some((id) => id.toLowerCase().includes(needle)));
 
@@ -207,7 +209,9 @@ export function EditionsBoard() {
       <div className="editions__bar">
         <input className="editions__search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Søg by, region eller butik" />
         <div className="seg" role="group" aria-label="Vis">
-          {([['alle', 'Alle'], ['fejl', 'Med fejl'], ['uden', 'Uden eget feed']] as const).map(([key, label]) => (
+          {([['alle', 'Alle'], ['fejl', 'Med fejl'], ['uden', 'Uden eget feed']] as const)
+            .filter(([key]) => key === 'alle' || key === filter || counts[key] > 0)
+            .map(([key, label]) => (
             <button key={key} className={filter === key ? 'is-on' : ''} onClick={() => setFilter(key)}>
               {label} · {counts[key]}
             </button>
@@ -215,9 +219,10 @@ export function EditionsBoard() {
         </div>
       </div>
 
-      <div className="editions__table" role="table">
+      {/* No store has a feed of its own yet: a column of dashes says nothing. */}
+      <div className={`editions__table${feeds ? '' : ' editions__table--nofeed'}`} role="table">
         <div className="editions__row editions__row--head" role="row">
-          <span>Udgave</span><span>Butikker</span><span>På siderne</span><span>Feed</span><span>Status</span>
+          <span>Udgave</span><span>Butikker</span><span>På siderne</span>{feeds && <span>Feed</span>}<span>Status</span>
         </div>
         {shown.map((check) => (
           <EditionRow
@@ -226,6 +231,7 @@ export function EditionsBoard() {
             open={openId === (check.variantId ?? '*')}
             onToggle={() => setOpenId(openId === (check.variantId ?? '*') ? null : check.variantId ?? '*')}
             numberOf={numberOf}
+            feeds={feeds}
           />
         ))}
         {shown.length === 0 && <p className="editions__empty">Ingen udgaver passer på søgningen.</p>}
@@ -255,11 +261,13 @@ export function EditionsBoard() {
   );
 }
 
-function EditionRow({ check, open, onToggle, numberOf }: {
+function EditionRow({ check, open, onToggle, numberOf, feeds }: {
   check: EditionCheck;
   open: boolean;
   onToggle: () => void;
   numberOf: Map<string, number>;
+  /** Whether any edition has a feed — the column is left out when none does. */
+  feeds: boolean;
 }) {
   const s = useStudio();
   const file = useRef<HTMLInputElement>(null);
@@ -291,7 +299,7 @@ function EditionRow({ check, open, onToggle, numberOf }: {
         {/* How many, in words; the platform's ids are for the tooltip, not for reading. */}
         <span className="editions__muted" title={check.stores.join(', ')}>{id ? (check.stores.length ? `${check.stores.length} ${check.stores.length === 1 ? 'butik' : 'butikker'}` : 'ingen valgt') : 'resten'}</span>
         <span>{check.onPages} varer</span>
-        <span className="editions__muted">{check.feed ? `${check.feed.name} · ${check.feed.offers}` : '—'}</span>
+        {feeds && <span className="editions__muted">{check.feed ? `${check.feed.name} · ${check.feed.offers}` : '—'}</span>}
         <span>{status}{check.unplaced.length > 0 && <span className="editions__muted"> · {check.unplaced.length} ikke med</span>}</span>
       </button>
 

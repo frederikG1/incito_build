@@ -109,15 +109,6 @@ export function LiveBoard() {
               })}
             </ol>
           </div>
-          <div className="liveboard__channels">
-            <h3>Følger med automatisk</h3>
-            <ul>
-              <li><b>eTilbudsavis</b><span>appen og web</span></li>
-              <li><b>Kædens app</b><span>samme avis, samme ændringer</span></li>
-              <li><b>Nyhedsbrev</b><span>ugens forside og dine varer</span></li>
-              <li><b>Butiksskærme</b><span>forsiden, udsolgt fjernet</span></li>
-            </ul>
-          </div>
         </section>
       </div>
     </main>
