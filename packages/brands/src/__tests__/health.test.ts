@@ -14,7 +14,7 @@ describe('feed health', () => {
   it('warns when rows are dropped', () => {
     const health = feedHealthAnyBrand(brandIds().map(getBrand), feed('sample-offers.csv'), 'sample-offers.csv');
     expect(health.verdict).toBe('advarsel');
-    expect(health.warnings.join(' ')).toMatch(/rows dropped/);
+    expect(health.warnings.join(' ')).toMatch(/rækker tabt/);
   });
 
   it('calls a file no reader recognises unreadable, and says what was closest', () => {

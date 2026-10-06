@@ -25,7 +25,7 @@ describe('sample feeds', () => {
     expect(resolveSource(getBrand(brandId), text, source.path!).source?.id).toBe(source.id);
 
     const report = checkMapping(feedRows(text, source.mapping, sniffFormat(text, source.path)), source.mapping, labels);
-    expect(report.warnings.filter((w) => !w.includes('rows dropped'))).toEqual([]);
+    expect(report.warnings.filter((w) => !w.includes('rækker tabt'))).toEqual([]);
     expect({
       rows: report.rows,
       offers: report.offers,

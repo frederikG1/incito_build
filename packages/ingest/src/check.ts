@@ -38,6 +38,13 @@ const FIELD_ORDER: (keyof Offer)[] = [
   'imagePack', 'imageKind', 'campaign', 'labels', 'priority', 'validFrom', 'validTo',
 ];
 
+/** The words store staff use for the fields a warning names. */
+const FIELD_SAID: Partial<Record<keyof Offer, string>> = {
+  imageUrl: 'Billede',
+  description: 'Beskrivelse',
+  quantity: 'Mængde',
+};
+
 /** Fields a printed tile is thin without. Below half filled, say so. */
 const EXPECTED: (keyof Offer)[] = ['imageUrl', 'description', 'quantity'];
 
@@ -90,21 +97,21 @@ export function checkMapping(
   }));
 
   const warnings: string[] = [];
-  if (rows.length === 0) warnings.push('no rows found — check extractRows or the record tag');
+  if (rows.length === 0) warnings.push('ingen rækker fundet — tjek extractRows eller record-tagget');
   const lost = rows.length - offers.length;
   if (rows.length > 0 && lost / rows.length > 0.05) {
-    warnings.push(`${lost} of ${rows.length} rows dropped (${Math.round((lost / rows.length) * 100)}%)`);
+    warnings.push(`${lost} af ${rows.length} rækker tabt (${Math.round((lost / rows.length) * 100)} %)`);
   }
   for (const field of EXPECTED) {
     if (mapping.sparse?.[field]) continue;
     const entry = fields.find((f) => f.field === field)!;
     if (offers.length > 0 && entry.filled / offers.length < 0.5) {
-      warnings.push(`${field} is filled on only ${entry.filled} of ${offers.length} offers`);
+      warnings.push(`${FIELD_SAID[field] ?? field} findes kun på ${entry.filled} af ${offers.length} tilbud`);
     }
   }
   for (const column of columns) {
     if (!column.read && !column.unreadBecause && rows.length > 0 && column.filled / rows.length >= 0.5) {
-      warnings.push(`column "${column.key}" is filled on ${column.filled} rows and never read`);
+      warnings.push(`kolonnen "${column.key}" er udfyldt på ${column.filled} rækker, men læses aldrig`);
     }
   }
 

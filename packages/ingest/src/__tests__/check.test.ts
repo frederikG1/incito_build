@@ -15,18 +15,18 @@ describe('checkMapping', () => {
     const report = checkMapping(rows, mapping());
     expect(report).toMatchObject({ rows: 3, offers: 2 });
     expect(report.dropped).toEqual([{ reason: 'unparseable price', count: 1, offerIds: ['3'] }]);
-    expect(report.warnings).toContain('1 of 3 rows dropped (33%)');
+    expect(report.warnings).toContain('1 af 3 rækker tabt (33 %)');
   });
 
   it('reports fill per Offer field and warns on a thin one', () => {
     const report = checkMapping(rows, mapping());
     expect(report.fields.find((f) => f.field === 'name')).toMatchObject({ filled: 2, sample: 'Mælk' });
-    expect(report.warnings).toContain('imageUrl is filled on only 0 of 2 offers');
+    expect(report.warnings).toContain('Billede findes kun på 0 af 2 tilbud');
   });
 
   it('finds a well-filled column nothing reads — including through a function', () => {
     const report = checkMapping(rows, mapping());
-    expect(report.warnings).toContain('column "link" is filled on 3 rows and never read');
+    expect(report.warnings).toContain('kolonnen "link" er udfyldt på 3 rækker, men læses aldrig');
     const viaFunction = checkMapping(rows, mapping({
       fields: { ...mapping().fields, description: (row) => String(row['link']) },
     }));
