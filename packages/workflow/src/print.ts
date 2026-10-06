@@ -330,6 +330,60 @@ export function staleDates(text: string, week: CatalogWeek): string | null {
   return times.length > 1 ? `${say(low)}–${say(high)}` : say(low);
 }
 
+/**
+ * The line moved to this week: every date it names shifted by the same
+ * whole number of weeks, so "fredag d. 18. september" stays a Friday and
+ * a span stays as long. The words around the dates are not touched.
+ * Null when there is nothing to move — the line is already this week's,
+ * or names no date.
+ */
+export function retimeDates(text: string, week: CatalogWeek): string | null {
+  if (!staleDates(text, week)) return null;
+  const dates = datesIn(text, week.year).map((date) => date.getTime()).sort((a, b) => a - b);
+  const { from, to } = weekDates(week);
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  const low = dates[0]!;
+  const high = dates[dates.length - 1]!;
+  /*
+   * The shift that starts the line nearest the week's Monday. Chains
+   * start their week on a Thursday, a Friday or a Saturday as often as
+   * on the Monday, so "nearest" lands either side of it — which is why
+   * the studio shows the moved line before it is applied.
+   */
+  const base = Math.round((start - low) / (7 * DAY));
+  const shift = [base, base + 1, base - 1].find((n) => {
+    const a = low + n * 7 * DAY;
+    const b = high + n * 7 * DAY;
+    return dates.length > 1 ? a <= end && b >= start : a >= start - 3 * DAY && a <= end + 3 * DAY;
+  });
+  if (shift === undefined || shift === 0) return null;
+  const moved = (day: number, month: number) => {
+    const date = new Date(Date.UTC(week.year, month - 1, day) + shift * 7 * DAY);
+    return { day: date.getUTCDate(), month: date.getUTCMonth() + 1 };
+  };
+  const NAMES = Object.keys(MONTH_NUMBERS);
+  let out = text.replace(
+    /(\d{1,2})\.(\s*)(januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december)/giu,
+    (_whole, day: string, space: string, month: string) => {
+      const to = moved(Number(day), MONTH_NUMBERS[month.toLowerCase()]!);
+      const name = NAMES[to.month - 1]!;
+      const cased = month[0] === month[0]!.toUpperCase()
+        ? (month === month.toUpperCase() ? name.toUpperCase() : name[0]!.toUpperCase() + name.slice(1))
+        : name;
+      return `${to.day}.${space}${cased}`;
+    },
+  );
+  out = out.replace(/(?<![\d.])(\d{1,2})([./])(\d{1,2})(?![\d./])/gu, (whole, day: string, sep: string, month: string) => {
+    const d = Number(day);
+    const m = Number(month);
+    if (d < 1 || d > 31 || m < 1 || m > 12) return whole;
+    const to = moved(d, m);
+    return `${to.day}${sep}${to.month}`;
+  });
+  return out === text ? null : out;
+}
+
 function weekSpan(week: CatalogWeek): string {
   const { from, to } = weekDates(week);
   const say = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('da-DK', { day: 'numeric', month: 'short', timeZone: 'UTC' });
