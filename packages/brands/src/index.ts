@@ -121,6 +121,10 @@ export interface SourceMiss {
 export type SourceResult = SourceMatch | SourceMiss;
 
 function jsonFields(payload: unknown): { fields: string[]; nested: boolean } {
+  // A list of whole publications (each with Pages) is Coop-style too.
+  if (Array.isArray(payload) && payload.length > 0 && payload.every((p) => Array.isArray((p as { Pages?: unknown })?.Pages))) {
+    return jsonFields({ Pages: payload.flatMap((p) => (p as { Pages: unknown[] }).Pages) });
+  }
   if (Array.isArray(payload) && payload.length > 0 && typeof payload[0] === 'object') {
     return { fields: Object.keys(payload[0] as object), nested: false };
   }

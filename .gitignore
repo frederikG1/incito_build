@@ -20,3 +20,6 @@ data/uploads/
 # Captures of a chain's Tjek CMS publications (`npm run cms`) — tens of MB,
 # re-captured from the CMS; the trimmed test fixtures live with @incitio/cms.
 data/cms/
+
+# Local feed exports for trying things out — not test fixtures, not in git.
+data/local/

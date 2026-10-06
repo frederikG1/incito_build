@@ -45,6 +45,11 @@ export interface BuildOptions {
    */
   offerCount?: number;
   /**
+   * Offers already in the avis, by id: they are left out, so a build
+   * that adds pages only draws on what is not placed yet.
+   */
+  exclude?: string[];
+  /**
    * Extra layouts for this chain, on top of the ones its brand file
    * declares — see `npm run derive:templates`, which reads them off the
    * chain's own published pages.
@@ -193,8 +198,11 @@ export async function buildCatalogue(
   const inWeek = options.week
     ? feed.offers.filter((offer) => coversWeek(offer, options.week!))
     : feed.offers;
-  const offers = inWeek.length > 0 ? inWeek : feed.offers;
-  const outsideWeek = feed.offers.length - offers.length;
+  const weekOffers = inWeek.length > 0 ? inWeek : feed.offers;
+  const outsideWeek = feed.offers.length - weekOffers.length;
+  const taken = new Set(options.exclude ?? []);
+  const offers = taken.size > 0 ? weekOffers.filter((offer) => !taken.has(offer.id)) : weekOffers;
+  if (taken.size > 0 && offers.length === 0) throw new Error('alle varer i filen står allerede i avisen');
 
   /*
    * Selection runs before curation, not after.

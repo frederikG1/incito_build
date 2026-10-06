@@ -55,8 +55,10 @@ export function coopExport(retailerId: string, sourceName = 'tilbudsavis.json'):
     // Offers live in Pages[].Entries[]; the page number rides along
     // because it is the chain's own editorial grouping.
     extractRows: (payload) => {
-      const pages = (payload as { Pages?: unknown[] })?.Pages;
-      if (!Array.isArray(pages)) return [];
+      // One publication, or a list of them (several weeks in one file).
+      const pubs = Array.isArray(payload) ? payload : [payload];
+      const pages = pubs.flatMap((pub) => (pub as { Pages?: unknown[] })?.Pages ?? []);
+      if (pages.length === 0) return [];
       return pages.flatMap((page) => {
         const p = page as { PageNumber?: number; PageName?: string; Entries?: unknown[] };
         return (p.Entries ?? []).map((entry) => ({

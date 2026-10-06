@@ -597,6 +597,8 @@ export function createApp(store: Store, options: AppOptions = {}) {
     brief: z.string().max(2000).optional(),
     skipCuration: z.boolean().optional(),
     seed: z.string().max(64).optional(),
+    /** Offers already in the avis — see `BuildOptions.exclude`. */
+    exclude: z.array(z.string().max(200)).max(5000).optional(),
     /** The week the paper is for — see `BuildOptions.week`. */
     week: CatalogWeek.optional(),
   });
@@ -748,6 +750,7 @@ export function createApp(store: Store, options: AppOptions = {}) {
         ...(parsed.data.sourceId ? { sourceId: parsed.data.sourceId } : {}),
         ...(parsed.data.brief ? { brief: parsed.data.brief } : {}),
         ...(parsed.data.seed ? { seed: parsed.data.seed } : {}),
+        ...(parsed.data.exclude?.length ? { exclude: parsed.data.exclude } : {}),
         ...(parsed.data.week ? { week: parsed.data.week } : {}),
         skipCuration: !wantsCuration,
         ...(definition.brand.offerDesigns.length > 0
