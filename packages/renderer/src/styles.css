@@ -169,8 +169,23 @@
 }
 
 .page {
-  container-type: inline-size;
+  /*
+   * `size`, not `inline-size`: with only the width contained, every `cqh`
+   * on the page fell back to the VIEWPORT's height, so a page drawn in a
+   * scaled phone or a thumbnail sized its type and gaps against the
+   * window, not against itself. Every page type sets its own aspect
+   * ratio, so the height is definite.
+   */
+  container-type: size;
   position: relative;
+  /*
+   * The page's own spacing, not the app's around it. The studio sets a
+   * hair of negative tracking on its UI, which was inherited into every
+   * tile on screen — and any tracking at all switches off a face's
+   * ligatures, so COOP's price sign (",-" drawn as one mark) showed in
+   * the PDF and the thumbnails but not on the page being edited.
+   */
+  letter-spacing: normal;
   width: 100%;
   max-width: 820px;
   overflow: hidden;
@@ -2188,6 +2203,7 @@
 .dtile {
   position: absolute; inset: 0;
   container-type: size;
+  letter-spacing: normal;
   /* Not cropped: a product moved or bleeding past its cell stays whole, as on the chain's own tiles. */
   overflow: visible;
   cursor: pointer;
@@ -2201,7 +2217,12 @@
 }
 /* The artwork's frame places the products; it does not crop them when they are moved. */
 .dtile__layer--image { overflow: visible; }
-.dtile__p { overflow-wrap: break-word; white-space: normal; flex-shrink: 0; }
+/*
+ * Ligatures kept on, also under a design's own tracking: COOP draws ",-"
+ * as SuperBrugsen's price sign only as a ligature, and a browser drops
+ * ligatures the moment letters are spaced unless they are asked for.
+ */
+.dtile__p { overflow-wrap: break-word; white-space: normal; flex-shrink: 0; font-feature-settings: "liga" 1; }
 .dtile__pack { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; isolation: isolate; }
 .dtile__pack img { flex: 1 1 0; min-width: 0; max-width: 100%; max-height: 100%; object-fit: contain; }
 .dtile__pack img + img { margin-left: -8%; }

@@ -3,7 +3,7 @@ import { IncitoPage, printsExactly } from './IncitoPage.js';
 import { cellStates, pagedSheet } from './paged.js';
 import { incitoPacks, offerViewIds } from './incito.js';
 import type {
-  Brand, CatalogPage, Offer, PageNote, PagePart, PageTemplate, PageTextOverride, TileFrame, TilePart,
+  Brand, CatalogPage, Offer, OfferRule, PageNote, PagePart, PageTemplate, PageTextOverride, TileFrame, TilePart,
 } from '@incitio/schema';
 import {
   STARTER_RULES, type Variant, artworkGrowth, brandCssVars, designGroup, onPaper, pageTextOverride, pageTextsFreed, resolveLook, variantFrame,
@@ -187,6 +187,53 @@ export function fittedNoteSize(note: Pick<PageNote, 'text' | 'size' | 'w' | 'h' 
   return size;
 }
 
+/**
+ * Which of the chain's offer designs each placed offer gets, by slot.
+ *
+ * The chain's own offer designs, when it has them: the design decides
+ * where the picture, the words and the price stand, the rules and the
+ * page decide which design. Designs with the same tag take turns in
+ * the page's reading order — incito's "used evenly". Exported so the
+ * studio can say which design a tile has, and open it.
+ */
+export function designChoices(
+  page: CatalogPage,
+  template: PageTemplate,
+  brand: Brand,
+  offers: Map<string, Offer>,
+  rules: readonly OfferRule[] = brand.offerRules.length > 0 ? brand.offerRules : STARTER_RULES,
+): Map<string, DesignChoice> {
+  const slots = new Map(template.slots.map((s) => [s.id, s]));
+  const designed = new Map<string, DesignChoice>();
+  if (brand.offerDesigns.length > 0) {
+    const pageTag = page.design?.tag ?? brand.designTag ?? designTags(brand.offerDesigns)[0]!;
+    const turnsByTag = new Map<string, number>();
+    const order = new Map(slotAssignmentOrder(template).map((slot, index) => [slot.id, index]));
+    const reading = [...page.placements].sort((a, b) => (order.get(a.slotId) ?? 0) - (order.get(b.slotId) ?? 0));
+    for (const placement of reading) {
+      const slot = slots.get(placement.slotId);
+      const offer = offers.get(placement.offerId);
+      if (!slot || !offer) continue;
+      const a = slot.role === 'hero' || slot.role === 'feature';
+      const look = resolveLook(offer, rules, { hero: a });
+      const chosen = placement.overrides?.design ?? null;
+      const tag = chosen ?? look.design ?? pageTag;
+      const turn = turnsByTag.get(tag) ?? 0;
+      turnsByTag.set(tag, turn + 1);
+      const choice = chooseDesign(brand.offerDesigns, tag, offer, { a, turn })
+        ?? chooseDesign(brand.offerDesigns, pageTag, offer, { a, turn });
+      if (choice) {
+        designed.set(placement.slotId, chosen
+          ? { ...choice, because: `valgt på varen · ${choice.because}` }
+          : look.because.design
+            ? { ...choice, because: `regel «${look.because.design}» · ${choice.because}` }
+            : choice);
+      }
+    }
+  }
+  return designed;
+}
+
 export function PageView({
   page,
   template,
@@ -254,30 +301,7 @@ export function PageView({
    * page decide which design. Designs with the same tag take turns in
    * the page's reading order — incito's "used evenly".
    */
-  const designed = new Map<string, DesignChoice>();
-  if (brand.offerDesigns.length > 0) {
-    const pageTag = page.design?.tag ?? brand.designTag ?? designTags(brand.offerDesigns)[0]!;
-    const turnsByTag = new Map<string, number>();
-    const order = new Map(slotAssignmentOrder(template).map((slot, index) => [slot.id, index]));
-    const reading = [...page.placements].sort((a, b) => (order.get(a.slotId) ?? 0) - (order.get(b.slotId) ?? 0));
-    for (const placement of reading) {
-      const slot = slots.get(placement.slotId);
-      const offer = offers.get(placement.offerId);
-      if (!slot || !offer) continue;
-      const a = slot.role === 'hero' || slot.role === 'feature';
-      const look = resolveLook(offer, rules, { hero: a });
-      const tag = look.design ?? pageTag;
-      const turn = turnsByTag.get(tag) ?? 0;
-      turnsByTag.set(tag, turn + 1);
-      const choice = chooseDesign(brand.offerDesigns, tag, offer, { a, turn })
-        ?? chooseDesign(brand.offerDesigns, pageTag, offer, { a, turn });
-      if (choice) {
-        designed.set(placement.slotId, look.because.design
-          ? { ...choice, because: `regel «${look.because.design}» · ${choice.because}` }
-          : choice);
-      }
-    }
-  }
+  const designed = designChoices(page, template, brand, offers, rules);
   const slotRenderer = (aspect: number) => {
     const cells = slotCells(template, aspect);
     /*

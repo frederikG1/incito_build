@@ -1,3 +1,4 @@
+import { PriceMark, pricePieces, setsPrice } from './price-mark.js';
 import type { CSSProperties, ReactNode } from 'react';
 import { packOverride, packStack, partOverride, type DesignLayer, type DesignParagraph, type Offer, type OfferDesign, type PlacementOverrides, type TilePart } from '@incitio/schema';
 import { incitoVars, renderLiquid } from './liquid.js';
@@ -98,8 +99,13 @@ function paragraphStyle(p: DesignParagraph, layer: DesignLayer, text: string, bo
    */
   const lines = Math.max(1, p.text_max_lines ?? 1);
   let size = p.text_size ?? p.text_max_size ?? 12;
+  // A raised ",-" or øre takes less width than it would as text: count it at its own size.
+  const pieces = p.incito_price?.minor === 'raised' ? pricePieces(text) : null;
+  const length = pieces
+    ? text.length - (pieces.separator.length + pieces.minor.length) * (1 - (p.incito_price!.minorSize ?? 50) / 100)
+    : text.length;
   if (p.text_max_size) {
-    const chars = Math.max(2, Math.ceil(text.length / lines));
+    const chars = Math.max(2, Math.ceil(length / lines));
     // Box sizes are in cell widths; sizes are in the cell's shorter side (`side` of its width).
     const byWidth = (box.w / side * DESIGN_REFERENCE_PX * 0.86) / (0.66 * chars);
     // Sharing its box with other lines — "1 stk." over the price — it may take only part of the height.
@@ -124,8 +130,8 @@ function paragraphStyle(p: DesignParagraph, layer: DesignLayer, text: string, bo
     lineHeight: p.text_line_height ?? 1.15,
     color,
     textAlign: (p.text_align as CSSProperties['textAlign']) ?? 'left',
-    fontWeight: p.text_weight === 'bold' ? 700 : p.text_weight === 'normal' ? 400 : heading ? 700 : 400,
-    fontFamily: heading ? 'var(--heading-font)' : 'var(--body-font)',
+    fontWeight: p.incito_price?.weight ?? (p.text_weight === 'bold' ? 700 : p.text_weight === 'normal' ? 400 : heading ? 700 : 400),
+    fontFamily: p.incito_price?.font ?? (heading ? 'var(--heading-font)' : 'var(--body-font)'),
     textTransform: (p.text_transform as CSSProperties['textTransform']) ?? undefined,
     letterSpacing: p.text_letter_spacing ? cq(p.text_letter_spacing) : undefined,
     /*
@@ -322,7 +328,7 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
           style={{ ...paragraphStyle(p, layer, text, box, said.length - 1, Math.min(1, 1 / aspect)), ...(part ? moved(part) : null) }}
           {...(part ? { 'data-part': part, 'data-text': String(vars[part === 'name' ? 'offerName' : 'offerDescription'] ?? '') } : {})}
         >
-          {text}
+          {setsPrice(p.incito_price) ? <PriceMark text={text} style={p.incito_price!} /> : text}
         </div>
       );
     });

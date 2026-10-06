@@ -12,3 +12,4 @@ export { shifted, snap, targetsFrom, SNAP_WITHIN, type Guide, type Snapped, type
 export { ImageSize, sizedImage } from './image.js';
 export * from './DesignTile.js';
 export * from './liquid.js';
+export * from './price-mark.js';
