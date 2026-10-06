@@ -388,6 +388,18 @@
           ],
           "default": null
         },
+        "design": {
+          "description": "The offer design tag this one tile is drawn in, chosen by hand on the\ntile. Above the rules and the page's own tag — the one decision made\nby a person looking at this product. Absent: the rules, then the page.",
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "displayName": {
           "description": "Editor's own wording for the tile, replacing the feed's.",
           "anyOf": [

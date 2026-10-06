@@ -43,6 +43,28 @@ export type OfferType = (typeof OFFER_TYPES)[number];
 const num = z.number().finite();
 const str = z.string().nullable().optional();
 
+/**
+ * How a price mark is drawn, past what the CMS can say: the øre and the
+ * ",-" raised and smaller beside the kroner, as a printed price mark sets
+ * them. Studio-only (`incito_` keys are taken off before a design is
+ * copied back to the CMS); absent, the price is plain text, as in the CMS.
+ */
+export const PriceStyle = z.object({
+  /** "inline": 45,- as text. "raised": the part after the kroner smaller and lifted. */
+  minor: z.enum(['inline', 'raised']).default('inline'),
+  /** The raised part's size, in percent of the kroner. */
+  minorSize: z.number().min(20).max(100).default(50),
+  /** How far it is lifted, in percent of the kroner's height. */
+  minorRaise: z.number().min(0).max(80).default(35),
+  /** Between kroner and øre: "," as printed, "." or nothing at all (19⁹⁵). */
+  separator: z.enum([',', '.', '']).default(','),
+  /** 400, 700, 900 — heavier than the CMS's "bold" when a chain's marks are black. */
+  weight: z.number().min(100).max(900).nullable().default(null),
+  /** A CSS font family for the price alone; null: the paragraph's own (heading or body). */
+  font: z.string().max(120).nullable().default(null),
+}).partial();
+export type PriceStyle = z.infer<typeof PriceStyle>;
+
 export const DesignParagraph = z.object({
   id: z.string(),
   text_content: z.string().default(''),
@@ -61,6 +83,7 @@ export const DesignParagraph = z.object({
   margin: str,
   padding: z.union([z.string(), num]).nullable().optional(),
   is_hidden: z.boolean().optional(),
+  incito_price: PriceStyle.optional(),
 }).passthrough();
 export type DesignParagraph = z.infer<typeof DesignParagraph>;
 
@@ -413,4 +436,15 @@ export function designCells(
   return Object.fromEntries(Object.entries(box).map(([id, c]) => [id, {
     x: c.x1, y: c.y1, w: Math.max(0.05, c.x2 - c.x1), h: Math.max(0.05, c.y2 - c.y1),
   }]));
+}
+
+/** A design as the CMS takes it back: the studio's own `incito_` keys off every paragraph. */
+export function forCms(designs: readonly OfferDesign[]): OfferDesign[] {
+  return designs.map((design) => ({
+    ...design,
+    layers: design.layers.map((layer) => ({
+      ...layer,
+      paragraphs: layer.paragraphs.map((p) => Object.fromEntries(Object.entries(p).filter(([key]) => !key.startsWith('incito_'))) as DesignParagraph),
+    })),
+  }));
 }

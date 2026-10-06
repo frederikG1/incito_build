@@ -397,6 +397,12 @@ export const PlacementOverrides = z.object({
    * difference is in the photographs, not in the id.
    */
   arrangement: z.enum(TILE_ARRANGEMENTS).nullable().default(null),
+  /**
+   * The offer design tag this one tile is drawn in, chosen by hand on the
+   * tile. Above the rules and the page's own tag — the one decision made
+   * by a person looking at this product. Absent: the rules, then the page.
+   */
+  design: z.string().max(120).nullable().optional(),
   /** Editor's own wording for the tile, replacing the feed's. */
   displayName: z.string().nullable().default(null),
   /**
