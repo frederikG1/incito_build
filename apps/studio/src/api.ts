@@ -240,6 +240,8 @@ export interface BuildRequest {
   brief?: string;
   skipCuration?: boolean;
   seed?: string;
+  /** Offers already in the avis; the build leaves them out. */
+  exclude?: string[];
   /** The week the paper is for. Cuts the feed and names the document. */
   week?: CatalogWeek;
 }

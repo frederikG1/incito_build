@@ -1,11 +1,16 @@
-import { useMemo, useState } from 'react';
-import { departmentOf } from '@incitio/compose';
-import { isImagePage, type CatalogDocument, type CatalogPage, type Offer } from '@incitio/schema';
+import { memo, useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { isImagePage, type Brand, type CatalogDocument, type CatalogPage, type Offer } from '@incitio/schema';
 import { ImagePage, ImageSize, PageView } from '@incitio/renderer';
+import { resolveVariant } from '@incitio/edit/core';
 import { THUMB_PX, useStudio } from './state.js';
-import { DEMO_NOTE, HOUSEHOLDS, SIGNALS_ARE_DEMO, type Household } from './signals.js';
+import { HOUSEHOLDS, type Household } from './signals.js';
 import { onList, orderFor } from './audience.js';
 import { templateOf } from './inventory.js';
+import { findOnPages, liveStatus, standIns } from './live-model.js';
+import { count, kr, when } from './format.js';
+import { readWho } from './who.js';
+import { BoardHead, Section, StandIn } from './Board.js';
 
 /**
  * Live — the avis after Thursday.
@@ -19,220 +24,240 @@ import { templateOf } from './inventory.js';
  * chain's, place for place — only the ORDER of the pages follows the
  * household reading it, so the family sees the dairy before the wine.
  * Who is reading is Tjek's to know; the households here are stand-ins.
+ *
+ * Before publishing there is nothing to change and nothing logged, so
+ * the side column is one sentence, not two empty forms.
  */
 
-const kr = (value: number) => (Number.isInteger(value) ? `${value},-` : value.toFixed(2).replace('.', ','));
-
-function when(iso: string): string {
-  const then = new Date(iso);
-  const today = new Date().toDateString() === then.toDateString();
-  const time = then.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
-  return today ? time : `${then.toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' })} ${time}`;
-}
-
 export function LiveBoard() {
-  const s = useStudio();
-  const document = s.variantBase ?? s.document;
+  const { document, brand, busy, unpublish } = useStudio(useShallow((s) => ({
+    document: s.variantBase ?? s.document, brand: s.brand, busy: Boolean(s.busy), unpublish: s.unpublish,
+  })));
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const household = HOUSEHOLDS.find((h) => h.id === householdId) ?? null;
-  const pages = useMemo(() => (document ? orderFor(document, household) : []), [document, household]);
-  if (!document || !s.brand) return null;
+  /*
+   * Which store's avis is on the phone. A store reads its own edition —
+   * the base with its extra offers and changes — so the preview shows
+   * that, without opening the edition in the editor behind it.
+   */
+  const [editionId, setEditionId] = useState<string | null>(null);
+  const editions = document?.variants ?? [];
+  const shown = useMemo(() => {
+    if (!document || !brand || !editionId || !editions.some((v) => v.id === editionId)) return document;
+    try { return resolveVariant(document, editionId, brand).document; } catch { return document; }
+  }, [document, brand, editionId, editions]);
+  const pages = useMemo(() => (shown ? orderFor(shown, household) : []), [shown, household]);
+  const status = useMemo(() => (document ? liveStatus(document) : null), [document]);
+  if (!document || !brand || !status) return null;
 
   const published = document.status === 'udgivet';
   const events = document.live ?? [];
-  const offers = new Map(document.offers.map((o) => [o.id, o]));
-  const listHits = household
-    ? document.offers.filter((o) => document.pages.some((p) => p.placements.some((pl) => pl.offerId === o.id)) && onList(o, household))
-    : [];
 
   return (
     <main className="book board liveboard">
-      <div className="book__head">
-        <h2>Live</h2>
-        <span className="book__said">
-          {published
-            ? `Udgivet · ${events.length} ${events.length === 1 ? 'ændring' : 'ændringer'} siden`
-            : 'Ikke udgivet endnu — sådan vil den se ud på telefonen'}
-        </span>
-        <div className="book__gap" />
-        {SIGNALS_ARE_DEMO && <span className="demo" title={DEMO_NOTE}>Eksempel-husstande</span>}
+      <BoardHead
+        title="Live"
+        said={published
+          ? `Udgivet · ${count(events.length, 'ændring', 'ændringer')} siden`
+          : 'Ikke udgivet endnu — sådan vil den se ud på telefonen'}
+      >
         {published && (
           <button
-            className="thin"
-            disabled={Boolean(s.busy)}
+            className="linkish"
+            disabled={busy}
             title="Avisen vises ikke længere. Den kan udgives igen fra Godkend."
             onClick={() => {
               if (!window.confirm('Træk avisen tilbage? Kunderne ser den ikke, før den er udgivet igen.')) return;
-              const who = (() => { try { return window.localStorage.getItem('incitio.who') ?? ''; } catch { return ''; } })();
-              void s.unpublish(who);
+              void unpublish(readWho());
             }}
           >Træk avisen tilbage</button>
         )}
-      </div>
+      </BoardHead>
 
       <div className="liveboard__body">
         <section className="liveboard__phonecol">
-          <div className="seg liveboard__who" role="tablist" aria-label="Hvem læser">
-            <button className={!household ? 'is-on' : ''} onClick={() => setHouseholdId(null)}>Alle</button>
-            {HOUSEHOLDS.map((h) => (
-              <button key={h.id} className={householdId === h.id ? 'is-on' : ''} onClick={() => setHouseholdId(h.id)}>{h.name}</button>
-            ))}
+          <div className="liveboard__whohead">
+            <div className="seg liveboard__who" role="tablist" aria-label="Hvem læser">
+              <button className={!household ? 'is-on' : ''} onClick={() => setHouseholdId(null)}>Alle</button>
+              {HOUSEHOLDS.map((h) => (
+                <button key={h.id} className={householdId === h.id ? 'is-on' : ''} onClick={() => setHouseholdId(h.id)}>{h.name}</button>
+              ))}
+            </div>
+            <StandIn what="Eksempel-husstande" />
           </div>
+          {editions.length > 0 && (
+            <label className="liveboard__edition">
+              <span>Butik</span>
+              <select value={editionId ?? ''} onChange={(event) => setEditionId(event.target.value || null)}>
+                <option value="">Alle butikker (grundavisen)</option>
+                {editions.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </label>
+          )}
           <p className="liveboard__said">
             {household
               ? <>{household.said}. Samme sider, samme pladser — rækkefølgen følger det, de køber.</>
               : 'Avisen som kæden har sat den. Vælg en husstand for at se den i deres rækkefølge.'}
           </p>
-          <Phone document={document} pages={pages} household={household} listHits={listHits} />
+          <Phone
+            document={shown ?? document} brand={brand} pages={pages} household={household} marks={status.marks}
+            store={editions.find((v) => v.id === editionId)?.name}
+          />
         </section>
 
         <section className="liveboard__side">
-          <LiveChanges document={document} published={published} />
-          <div className="liveboard__log">
-            <h3>Sket siden udgivelse</h3>
-            {events.length === 0 && <p className="slotpanel__muted">Intet endnu. Når en vare bliver udsolgt eller får ny pris, står det her — med tidspunkt.</p>}
-            <ol>
-              {[...events].reverse().map((event) => {
-                const name = offers.get(event.offerId)?.name ?? 'vare';
-                const sub = event.substituteId ? offers.get(event.substituteId)?.name : null;
-                return (
-                  <li key={event.id}>
-                    <time>{when(event.at)}</time>
-                    <span>
-                      {event.kind === 'udsolgt' && <><b>{name}</b> udsolgt{sub ? <> — {sub} står i stedet</> : ''}</>}
-                      {event.kind === 'pris' && <><b>{name}</b> {kr(event.before ?? 0)} → {kr(event.after ?? 0)}</>}
-                      {event.kind === 'tilbage' && <><b>{name}</b> er tilbage</>}
-                      {event.who && <small> · {event.who}</small>}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
+          {published ? (
+            <>
+              <LiveChanges document={document} soldOut={status.soldOut} />
+              <Section title="Sket siden udgivelse">
+                {events.length === 0
+                  ? <p className="bsection__said">Intet endnu. Udsolgte varer og nye priser står her med tidspunkt.</p>
+                  : <LiveLog document={document} />}
+              </Section>
+            </>
+          ) : (
+            <p className="liveboard__wait">
+              Når avisen er udgivet fra <b>Godkend</b>, melder du udsolgt og retter priser her. Kunderne ser det med
+              det samme, og hver ændring står i loggen med tidspunkt og navn.
+            </p>
+          )}
         </section>
       </div>
     </main>
   );
 }
 
-function Phone({ document, pages, household, listHits }: {
-  document: CatalogDocument; pages: CatalogPage[]; household: Household | null; listHits: Offer[];
+function LiveLog({ document }: { document: CatalogDocument }) {
+  const offers = new Map(document.offers.map((o) => [o.id, o.name]));
+  return (
+    <ol className="log">
+      {[...(document.live ?? [])].reverse().map((event) => {
+        const name = offers.get(event.offerId) ?? 'vare';
+        const sub = event.substituteId ? offers.get(event.substituteId) : null;
+        return (
+          <li key={event.id}>
+            <time>{when(event.at)}</time>
+            <span>
+              {event.kind === 'udsolgt' && <><b>{name}</b> udsolgt{sub ? <> — {sub} står i stedet</> : ''}</>}
+              {event.kind === 'pris' && <><b>{name}</b> {kr(event.before ?? 0)} → {kr(event.after ?? 0)}</>}
+              {event.kind === 'tilbage' && <><b>{name}</b> er tilbage</>}
+              {event.who && <small> · {event.who}</small>}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function Phone({ document, brand, pages, household, marks, store }: {
+  document: CatalogDocument; brand: Brand; pages: CatalogPage[]; household: Household | null; marks: Map<string, string>;
+  /** The store whose edition is shown, for the bar; none for the base avis. */
+  store?: string;
 }) {
-  const brand = useStudio((s) => s.brand)!;
   const offers = useMemo(() => new Map(document.offers.map((o) => [o.id, o])), [document.offers]);
-  // What the reader should be told about a tile: it stands in for a sold-out one, or its price just changed.
-  const marks = new Map<string, string>();
-  const standing = new Map<string, string>();
-  const out = new Set<string>();
-  for (const event of document.live ?? []) {
-    if (event.kind === 'udsolgt') {
-      if (event.substituteId) standing.set(event.substituteId, event.offerId);
-      else out.add(event.offerId);
-    }
-    if (event.kind === 'tilbage') {
-      out.delete(event.offerId);
-      for (const [sub, from] of standing) if (from === event.offerId) standing.delete(sub);
-    }
-    if (event.kind === 'pris') marks.set(event.offerId, 'Ny pris');
-  }
-  for (const id of out) marks.set(id, 'Udsolgt');
-  for (const [sub, from] of standing) marks.set(sub, `I stedet for ${offers.get(from)?.name ?? 'en udsolgt vare'}`);
-  const listed = new Set(listHits.map((o) => o.id));
+  const listHits = useMemo(() => {
+    if (!household) return [];
+    const placed = new Set(document.pages.flatMap((p) => p.placements.map((pl) => pl.offerId)));
+    return document.offers.filter((o) => placed.has(o.id) && onList(o, household));
+  }, [document, household]);
+  const listed = useMemo(() => new Set(listHits.map((o) => o.id)), [listHits]);
+  const indexOf = useMemo(() => new Map(document.pages.map((p, i) => [p.id, i])), [document.pages]);
 
   return (
     <div className="phone">
-      <div className="phone__bar"><i style={{ background: brand.tokens.brand }} /><b>{brand.name.split(' — ')[0]}</b><span>{document.week ? `Uge ${document.week.week}` : ''}</span></div>
+      <div className="phone__bar"><i style={{ background: brand.tokens.brand }} /><b>{brand.name.split(' — ')[0]}{store ? ` ${store}` : ''}</b><span>{document.week ? `Uge ${document.week.week}` : ''}</span></div>
       <div className="phone__screen">
         {household && listHits.length > 0 && (
           <div className="phone__list">
-            <b>{listHits.length} {listHits.length === 1 ? 'vare' : 'varer'} fra din indkøbsliste er på tilbud</b>
+            <b>{count(listHits.length, 'vare', 'varer')} fra din indkøbsliste er på tilbud</b>
             <span>{listHits.slice(0, 4).map((o) => o.name).join(' · ')}</span>
           </div>
         )}
-        {pages.map((page) => {
-          const index = document.pages.findIndex((p) => p.id === page.id);
-          const template = isImagePage(page) ? undefined : templateOf(document, brand, page.templateId);
-          const decorate = (slotId: string) => {
-            const placement = page.placements.find((p) => p.slotId === slotId);
-            if (!placement) return null;
-            const mark = marks.get(placement.offerId);
-            const mine = listed.has(placement.offerId);
-            if (!mark && !mine) return null;
-            return (
-              <div className="livemark">
-                {mark && <span className={`livemark__tag${mark === 'Udsolgt' ? ' livemark__tag--out' : ''}`}>{mark}</span>}
-                {mine && <span className="livemark__mine">På din liste</span>}
-              </div>
-            );
-          };
-          return (
-            <div key={page.id} className="phone__page" style={{ background: page.ground ?? brand.tokens.ground, ['--aspect' as string]: String(brand.pageAspect) }}>
-              <div className="phone__live">
-                <ImageSize.Provider value={THUMB_PX}>
-                  {isImagePage(page)
-                    ? <ImagePage page={page} brand={brand} pageIndex={index} pageNumber={index + 1} />
-                    : template
-                      ? <PageView page={page} template={template} brand={brand} offers={offers} pageIndex={index} pageNumber={index + 1} slotDecorator={decorate} />
-                      : null}
-                </ImageSize.Provider>
-              </div>
-            </div>
-          );
-        })}
+        {pages.map((page) => (
+          <PhonePage
+            key={page.id}
+            page={page}
+            index={indexOf.get(page.id) ?? 0}
+            document={document}
+            brand={brand}
+            offers={offers}
+            marks={marks}
+            listed={listed}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
+/** One page on the phone. Memoised: a page redraws when what it shows changes, not with the board. */
+const PhonePage = memo(function PhonePage({ page, index, document, brand, offers, marks, listed }: {
+  page: CatalogPage; index: number; document: CatalogDocument; brand: Brand;
+  offers: Map<string, Offer>; marks: Map<string, string>; listed: Set<string>;
+}) {
+  const template = isImagePage(page) ? undefined : templateOf(document, brand, page.templateId);
+  const decorate = (slotId: string) => {
+    const placement = page.placements.find((p) => p.slotId === slotId);
+    if (!placement) return null;
+    const mark = marks.get(placement.offerId);
+    const mine = listed.has(placement.offerId);
+    if (!mark && !mine) return null;
+    return (
+      <div className="livemark">
+        {mark && <span className={`livemark__tag${mark === 'Udsolgt' ? ' livemark__tag--out' : ''}`}>{mark}</span>}
+        {mine && <span className="livemark__mine">På din liste</span>}
+      </div>
+    );
+  };
+  return (
+    <div className="phone__page" style={{ background: page.ground ?? brand.tokens.ground, ['--aspect' as string]: String(brand.pageAspect) }}>
+      <div className="phone__live">
+        <ImageSize.Provider value={THUMB_PX}>
+          {isImagePage(page)
+            ? <ImagePage page={page} brand={brand} pageIndex={index} pageNumber={index + 1} />
+            : template
+              ? <PageView page={page} template={template} brand={brand} offers={offers} pageIndex={index} pageNumber={index + 1} slotDecorator={decorate} />
+              : null}
+        </ImageSize.Provider>
+      </div>
+    </div>
+  );
+});
+
 /** Find a product on the pages and say what happened to it. */
-function LiveChanges({ document, published }: { document: CatalogDocument; published: boolean }) {
-  const s = useStudio();
+function LiveChanges({ document, soldOut }: { document: CatalogDocument; soldOut: Set<string> }) {
+  const { busy, liveChange } = useStudio(useShallow((s) => ({ busy: Boolean(s.busy), liveChange: s.liveChange })));
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<string | null>(null);
   const [price, setPrice] = useState('');
   const [substitute, setSubstitute] = useState('');
-  const who = (() => { try { return window.localStorage.getItem('incitio.who') ?? ''; } catch { return ''; } })();
 
-  const placed = new Set(document.pages.flatMap((p) => p.placements.map((pl) => pl.offerId)));
-  const onPages = document.offers.filter((o) => placed.has(o.id));
-  const soldOut = new Set<string>();
-  for (const event of document.live ?? []) {
-    if (event.kind === 'udsolgt') soldOut.add(event.offerId);
-    if (event.kind === 'tilbage') soldOut.delete(event.offerId);
-  }
-  const needle = query.trim().toLowerCase();
-  const hits = needle ? onPages.filter((o) => `${o.name} ${o.brand}`.toLowerCase().includes(needle)).slice(0, 6) : [];
   const offer = document.offers.find((o) => o.id === picked) ?? null;
-
-  // Stand-ins: products in the avis's reserve, the same department first.
-  // Not already on a page, nor inside a grouped tile on one, and something with a price of its own.
-  const shown = new Set(document.offers.filter((o) => placed.has(o.id)).flatMap((o) => o.members));
-  const reserve = document.offers.filter((o) => !placed.has(o.id) && !shown.has(o.id) && !soldOut.has(o.id)
-    && o.members.length === 0 && o.price > 0);
-  const department = offer ? departmentOf(offer) : null;
-  const stands = [...reserve].sort((a, b) => Number(departmentOf(b) === department) - Number(departmentOf(a) === department)).slice(0, 30);
-
+  const hits = findOnPages(document, query);
+  const stands = offer ? standIns(document, offer, soldOut) : [];
+  const names = new Map(document.offers.map((o) => [o.id, o.name]));
   const done = () => { setPicked(null); setQuery(''); setPrice(''); setSubstitute(''); };
 
   return (
-    <div className="liveboard__change">
-      <h3>Ret i den udgivne avis</h3>
-      {!published && <p className="slotpanel__muted">Avisen er ikke udgivet endnu. Ændringer her gælder med det samme, når den er.</p>}
-      <div className="liveboard__soldout">
-        {[...soldOut].map((id) => (
-          <span key={id} className="liveboard__pill">
-            Udsolgt: {document.offers.find((o) => o.id === id)?.name}
-            <button
-              className="linkish"
-              disabled={Boolean(s.busy)}
-              onClick={() => void s.liveChange({ kind: 'tilbage', offerId: id, substituteId: null, before: null, after: null, who })}
-            >tilbage på lager</button>
-          </span>
-        ))}
-      </div>
+    <Section title="Ret i den udgivne avis">
+      {soldOut.size > 0 && (
+        <ul className="liveboard__soldout">
+          {[...soldOut].map((id) => (
+            <li key={id}>
+              <span>Udsolgt: <b>{names.get(id)}</b></span>
+              <button
+                className="linkish"
+                disabled={busy}
+                onClick={() => void liveChange({ kind: 'tilbage', offerId: id, substituteId: null, before: null, after: null, who: readWho() })}
+              >tilbage på lager</button>
+            </li>
+          ))}
+        </ul>
+      )}
       {!offer ? (
         <>
-          <input className="editions__search liveboard__search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find en vare i avisen" />
+          <input className="field-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find en vare i avisen" />
           {hits.length > 0 && (
             <ul className="liveboard__hits">
               {hits.map((o) => (
@@ -245,7 +270,7 @@ function LiveChanges({ document, published }: { document: CatalogDocument; publi
         </>
       ) : (
         <div className="liveboard__form">
-          <div className="slotpanel__head"><b>{offer.name}</b><button className="weekly__x" onClick={done} title="Annullér">×</button></div>
+          <div className="slotpanel__head"><b>{offer.name}</b><button className="weekly__x" onClick={done} title="Annullér" aria-label="Annullér">×</button></div>
           <div className="liveboard__act">
             <span>Udsolgt — vis i stedet</span>
             <select value={substitute} onChange={(event) => setSubstitute(event.target.value)}>
@@ -254,9 +279,9 @@ function LiveChanges({ document, published }: { document: CatalogDocument; publi
             </select>
             <button
               className="thin"
-              disabled={Boolean(s.busy)}
+              disabled={busy}
               onClick={() => {
-                void s.liveChange({ kind: 'udsolgt', offerId: offer.id, substituteId: substitute || null, before: null, after: null, who });
+                void liveChange({ kind: 'udsolgt', offerId: offer.id, substituteId: substitute || null, before: null, after: null, who: readWho() });
                 done();
               }}
             >Meld udsolgt</button>
@@ -266,17 +291,17 @@ function LiveChanges({ document, published }: { document: CatalogDocument; publi
             <input inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} />
             <button
               className="thin"
-              disabled={Boolean(s.busy)}
+              disabled={busy}
               onClick={() => {
                 const after = Number(price.replace(',', '.'));
                 if (!Number.isFinite(after) || after <= 0 || after === offer.price) return;
-                void s.liveChange({ kind: 'pris', offerId: offer.id, substituteId: null, before: offer.price, after, who });
+                void liveChange({ kind: 'pris', offerId: offer.id, substituteId: null, before: offer.price, after, who: readWho() });
                 done();
               }}
             >Ret prisen</button>
           </div>
         </div>
       )}
-    </div>
+    </Section>
   );
 }

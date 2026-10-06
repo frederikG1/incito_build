@@ -9,6 +9,7 @@ import { useStudio } from './state.js';
 import { shifted, snap, targetsFrom, type Guide } from './snap.js';
 import { OFFER_MIME } from './Tray.js';
 import { Crowded } from './Crowded.js';
+import { DesignButton } from './DesignMenu.js';
 
 /**
  * The editing overlay on one slot.
@@ -220,6 +221,7 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
   const updatePackItem = useStudio((s) => s.updatePackItem);
   const selectedPack = useStudio((s) => s.selectedPack);
   const selected = useStudio((s) => s.selectedOfferId === offerId && offerId !== undefined);
+  const hasDesigns = useStudio((s) => (s.brand?.offerDesigns.length ?? 0) > 0);
   /*
    * Whether a model is arranging THIS tile right now.
    *
@@ -809,6 +811,11 @@ export function TileEditor({ pageId, slotId, offerId }: TileEditorProps) {
               onClick={() => selectPart(part === 'media' ? null : part)}
             >{name}</button>
           ))}
+          {hasDesigns && (
+            <DesignButton scope={{ kind: 'tile', pageId, offerId }} className="celltool__design" title="Skift eller ret varens design">
+              Design ▾
+            </DesignButton>
+          )}
         </div>
       )}
 

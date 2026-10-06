@@ -8,6 +8,7 @@ import type { Finding } from './findings.js';
 import { OFFER_MIME, droppedOffers } from './Tray.js';
 import { DEPARTMENT_NAMES } from '@incitio/compose';
 import { CarryReport, FeedArrival, FeedChanges, SectionGallery } from './Weekly.js';
+import { cachedDiff, deltaSaid, usePreviousWeek } from './week-diff.js';
 
 /**
  * The whole avis, as printed spreads.
@@ -141,6 +142,10 @@ function Caption({ page, index }: { page: CatalogPage; index: number }) {
   const brand = useStudio((s) => s.brand);
   const document = useStudio((s) => s.document);
   const verdict = verdictOf(findings, page.id);
+  const brandId = useStudio((s) => s.brandId);
+  const catalogues = useStudio((s) => s.catalogues);
+  const previous = usePreviousWeek(document, brandId, catalogues);
+  const delta = deltaSaid(cachedDiff(previous, document)?.pages.get(page.id));
   // What the page is about, when nobody has named it: its department.
   const department = document && !page.title ? departmentOfPage(document, page.id) : null;
 
@@ -175,6 +180,8 @@ function Caption({ page, index }: { page: CatalogPage; index: number }) {
       <span className={verdict?.weight === 'stop' ? 'is-stop' : verdict ? 'is-warn' : ''} title={said}>
         {said}
       </span>
+      {/* Since last week: what a reader checks first, on the card before anyone opens the page. */}
+      {delta && <span className="leaf__delta" title="Ændret siden sidste uges avis">{delta}</span>}
     </div>
   );
 }
@@ -187,6 +194,9 @@ function Caption({ page, index }: { page: CatalogPage; index: number }) {
 function BookSums() {
   const document = useStudio((s) => s.document);
   const brand = useStudio((s) => s.brand);
+  const brandId = useStudio((s) => s.brandId);
+  const catalogues = useStudio((s) => s.catalogues);
+  const diff = cachedDiff(usePreviousWeek(document, brandId, catalogues), document);
   if (!document || document.pages.length === 0) return null;
   let offers = 0;
   let open = 0;
@@ -202,6 +212,15 @@ function BookSums() {
     <span className="book__said" title="Træk en side for at flytte den">
       {n} {n === 1 ? 'side' : 'sider'} · {offers} {offers === 1 ? 'vare' : 'varer'}
       {open > 0 && <> · <b className="book__open">{open} {open === 1 ? 'tom plads' : 'tomme pladser'}</b></>}
+      {diff && diff.since !== null && (diff.fresh + diff.repriced + diff.gone > 0) && (
+        <span className="book__delta">
+          {' · siden uge '}{diff.since}: {[
+            diff.fresh ? `${diff.fresh} nye` : '',
+            diff.repriced ? `${diff.repriced} ny${diff.repriced === 1 ? '' : 'e'} pris${diff.repriced === 1 ? '' : 'er'}` : '',
+            diff.gone ? `${diff.gone} ude` : '',
+          ].filter(Boolean).join(', ')}
+        </span>
+      )}
     </span>
   );
 }
@@ -277,11 +296,11 @@ function AddPages() {
             className="ways2__way"
             disabled={Boolean(s.busy) || !s.feed}
             title={s.feed ? '' : 'Hent ugens varer fra fil først — i menuen øverst til venstre'}
-            onClick={() => { setOpen(false); void s.build({ fresh: true }); }}
+            onClick={() => { setOpen(false); void s.build({ append: true }); }}
           >
             <span className="ways2__what">
               <b>Hurtigt udkast</b>
-              <span>{s.feed ? 'Ugens varer lagt i kædens layouts, afdeling for afdeling' : 'Kræver ugens varer fra fil'}</span>
+              <span>{s.feed ? 'Nye sider af de varer, der ikke står i avisen endnu — de andre sider røres ikke' : 'Kræver ugens varer fra fil'}</span>
             </span>
           </button>
 
@@ -332,6 +351,28 @@ function AddPages() {
  * products are there waiting.
  */
 /** Which theme the avis wears, and the way to change it. */
+/**
+ * The chain's varedesigns and the rules that pick them, beside the
+ * avis they draw. They lived only on the front page and in search, and
+ * people working on the pages did not know they existed.
+ */
+function ChainDesignButtons() {
+  const designs = useStudio((s) => s.brand?.offerDesigns.length ?? 0);
+  const rules = useStudio((s) => s.brand?.offerRules.length ?? 0);
+  const setDesignsOpen = useStudio((s) => s.setDesignsOpen);
+  const setRulesOpen = useStudio((s) => s.setRulesOpen);
+  return (
+    <>
+      <button className="thin" onClick={() => setDesignsOpen(true)} title="Hvor billede, pris og tekst står på en vare">
+        Varedesigns{designs ? ` · ${designs}` : ''}
+      </button>
+      <button className="thin" onClick={() => setRulesOpen(true)} title="Hvilket design en vare får, og hvornår">
+        Regler{rules ? ` · ${rules}` : ''}
+      </button>
+    </>
+  );
+}
+
 function ThemeButton() {
   const theme = useStudio((s) => (s.variantBase ?? s.document)?.theme);
   const open = useStudio((s) => s.setThemesOpen);
@@ -416,6 +457,7 @@ export function Book() {
         <BookSums />
         <div className="book__gap" />
         <ThemeButton />
+        <ChainDesignButtons />
         <button className="thin" onClick={() => setSectionsOpen(true)} title="Kædens gemte sidedesigns">
           Sektioner{sectionCount ? ` · ${sectionCount}` : ''}
         </button>

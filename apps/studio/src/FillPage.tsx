@@ -12,10 +12,12 @@ import { usePopover } from './popover.js';
 export function FillPageButton({ pageId }: { pageId: string }) {
   const s = useStudio();
   const [room, setRoom] = useState<Room | null | 'closed'>('closed');
+  const [empty, setEmpty] = useState(0);
   const open = room !== 'closed';
   usePopover(open, () => setRoom('closed'));
 
   const measure = () => {
+    setEmpty(s.emptySlots(pageId).length);
     const drawn = readPageBoxes(pageId);
     setRoom(drawn ? measureRoom(drawn.cells.map((cell) => cell.box), drawn.obstacles) : null);
   };
@@ -36,12 +38,20 @@ export function FillPageButton({ pageId }: { pageId: string }) {
         <>
           <div className="gallery__away" onPointerDown={() => setRoom('closed')} />
           <div className="fillpage__card">
+            {empty > 0 && (
+              <>
+                <p><b>{empty}</b> {empty === 1 ? 'plads står' : 'pladser står'} tom{empty === 1 ? '' : 'me'} på siden.</p>
+                <button className="go" onClick={() => { s.fillEmptySlots(pageId); setRoom('closed'); }}>
+                  Fyld {empty === 1 ? 'pladsen' : `de ${empty} pladser`} fra reserven
+                </button>
+              </>
+            )}
             {free < 4 ? (
-              <p>Siden er fyldt — der er ingen tom plads under varerne.</p>
+              empty === 0 && <p>Siden er fyldt — der er ingen tom plads under varerne.</p>
             ) : (
               <>
                 <p><b>{free} %</b> af siden står tom under varerne.</p>
-                <button className="go" onClick={() => { s.fillPage(pageId, 'grow'); setRoom('closed'); }}>
+                <button className={empty > 0 ? 'thin' : 'go'} onClick={() => { s.fillPage(pageId, 'grow'); setRoom('closed'); }}>
                   Gør fliserne større
                 </button>
                 <button

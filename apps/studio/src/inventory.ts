@@ -30,6 +30,8 @@ export interface SlotInfo {
   index: number;
   /** 0..1, this place's rank among the avis's places — what the heat map colours by. */
   warmth: number;
+  /** "Topplads", "Plads 3" — counted within its page. */
+  name: string;
 }
 
 /** How much of the page each place is: its measured box, else its cells of the grid. */
@@ -72,6 +74,7 @@ export function slotsOf(document: CatalogDocument, brand: Brand): SlotInfo[] {
     const template = templateOf(document, brand, page.templateId);
     if (!template) return;
     const shares = slotShares(template);
+    let seat = 0;
     for (const slot of slotAssignmentOrder(template)) {
       const placement = page.placements.find((p) => p.slotId === slot.id);
       const share = shares.get(slot.id) ?? 0;
@@ -88,6 +91,7 @@ export function slotsOf(document: CatalogDocument, brand: Brand): SlotInfo[] {
         booking: bookings.find((b) => b.pageId === page.id && b.slotId === slot.id) ?? null,
         index: 0,
         warmth: 0,
+        name: slotName({ role: slot.role, slotId: slot.id }, seat++),
       });
     }
   });

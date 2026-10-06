@@ -4,13 +4,15 @@ import {
   PAGE_PARTS, PAGE_PART_NAMES, TILE_PARTS, TILE_PART_NAMES,
   packLimits, packOverride, packTouched,
   pageGround, pageTextLimits, pageTextOverride, pageTextTouched,
-  partLimits, partOverride, partTouched, resolveLook,
+  brandCssVars, partLimits, partOverride, partTouched, resolveLook,
 } from '@incitio/schema';
 import type { CatalogPage, Offer, PagePart, PlacementOverrides, TilePart } from '@incitio/schema';
 import { PLACE_PROMPTS, placePrompt } from '@incitio/curator/place-prompt';
-import { useStudio } from './state.js';
+import { THUMB_PX, useStudio } from './state.js';
 import { ruleFromOffer } from './OfferRules.js';
-import { incitoSlotOf, pageBlocks, type IncitoBlock } from '@incitio/renderer';
+import { DesignTile, ImageSize, designChoices, incitoSlotOf, pageBlocks, type IncitoBlock } from '@incitio/renderer';
+import { DesignButton } from './DesignMenu.js';
+import { templateOf } from './inventory.js';
 import { priceOf, saidPrice } from './price.js';
 import { Measure } from './Measure.js';
 import { decorToBox, noteToBox } from './box.js';
@@ -1113,6 +1115,7 @@ export function Inspector() {
           DEPARTMENT_NAMES[departmentOf(offer)],
         ].filter(Boolean).join(' · ')}
       </p>
+      <DesignSay offer={offer} />
       <RulesSay offer={offer} />
       <div className="inspector__tabs" role="tablist">
         {INSPECTOR_TABS.map(([id, name]) => (
@@ -1927,6 +1930,41 @@ export function Inspector() {
       </ul>
       </details>
     </aside>
+  );
+}
+
+/**
+ * Which of the chain's offer designs this tile is drawn with, and the
+ * way into it — the design is where the picture, price and words stand,
+ * so "why is the price there" is answered one click from the tile.
+ */
+function DesignSay({ offer }: { offer: Offer }) {
+  const brand = useStudio((s) => s.brand);
+  const document = useStudio((s) => s.document);
+  const pageId = useStudio((s) => s.activePageId);
+  const open = useStudio((s) => s.setDesignsOpen);
+  if (!brand || !document || brand.offerDesigns.length === 0) return null;
+  const page = document.pages.find((entry) => entry.id === pageId && entry.placements.some((p) => p.offerId === offer.id))
+    ?? document.pages.find((entry) => entry.placements.some((p) => p.offerId === offer.id));
+  const template = page ? templateOf(document, brand, page.templateId) : undefined;
+  const placement = page?.placements.find((p) => p.offerId === offer.id);
+  if (!page || !template || !placement) return null;
+  const offers = new Map(document.offers.map((entry) => [entry.id, entry]));
+  const choice = designChoices(page, template, brand, offers).get(placement.slotId);
+  return (
+    <section className="inspector__design" aria-label="Varens design">
+      <span className="inspector__designcell" style={brandCssVars(brand) as React.CSSProperties}>
+        {choice && <ImageSize.Provider value={THUMB_PX}><DesignTile design={choice.design} offer={offer} aspect={1} /></ImageSize.Provider>}
+      </span>
+      <span className="inspector__designsaid">
+        <small>Varedesign</small>
+        <b title={choice?.because}>{choice?.design.tag ?? 'Kædens fliser'}</b>
+        <span className="inspector__designdo">
+          <DesignButton scope={{ kind: 'tile', pageId: page.id, offerId: offer.id }} className="thin">Skift ▾</DesignButton>
+          {choice && <button className="go" onClick={() => open(true, { designId: choice.design.id })}>✎ Ret design</button>}
+        </span>
+      </span>
+    </section>
   );
 }
 

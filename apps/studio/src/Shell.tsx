@@ -10,12 +10,13 @@ import { avisTitle } from './names.js';
 import { Chevron } from './Chevron.js';
 import { lanesOf } from './approvals.js';
 
-/** How many signatures are missing or out of date — on the Godkend tab. */
+/** How many signatures are missing or out of date — on the Godkend tab, and nothing when none are. */
 function SignoffCount() {
   const document = useStudio((s) => s.variantBase ?? s.document);
   if (!document) return null;
   const waiting = lanesOf(document).filter((lane) => lane.state !== 'godkendt').length;
-  return waiting > 0 ? <i className="seg__count">{waiting}</i> : <i className="seg__count seg__count--ok">✓</i>;
+  // A badge only when someone has to act; a tab with nothing to do stays plain.
+  return waiting > 0 ? <i className="seg__count">{waiting}</i> : null;
 }
 
 /**
@@ -231,7 +232,7 @@ export function Top() {
   const s = useStudio();
   const document = s.variantBase ?? s.document;
   // The avis's own tools only while an avis is what is on screen.
-  const inAvis = Boolean(s.document) && s.view !== 'hjem';
+  const inAvis = Boolean(s.document) && s.view !== 'hjem' && s.view !== 'varedesigns';
   return (
     <>
       <header className={`top${s.view === 'side' ? ' top--side' : ''}${s.view === 'hjem' ? ' top--home' : ''}`}>
@@ -240,7 +241,9 @@ export function Top() {
           <span className="mark__word">Incitio</span>
         </button>
         <ChainSwitch />
-        {document && s.view !== 'hjem' && (
+        {/* The chain's own page, said in the bar as an avis's screen is. */}
+        {s.view === 'varedesigns' && <span className="top__place">Varedesigns</span>}
+        {document && s.view !== 'hjem' && s.view !== 'varedesigns' && (
           <>
             <Document />
             <EditionPicker />

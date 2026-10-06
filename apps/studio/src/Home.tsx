@@ -80,8 +80,8 @@ export function Home() {
       </header>
 
       <div className="home__weeks">
-        <WeekCard label="Denne uge" week={today} avis={thisWeek[0] ?? null} away={awayFor(today)} openId={openId} onMake={() => setMaking(today)} />
-        <WeekCard label="Næste uge" week={coming} avis={nextOne[0] ?? null} away={awayFor(coming)} openId={openId} onMake={() => setMaking(coming)} />
+        <WeekCard label="Denne uge" week={today} avis={thisWeek[0] ?? null} away={awayFor(today)} openId={openId} from={latest(today)} onMake={() => setMaking(today)} />
+        <WeekCard label="Næste uge" week={coming} avis={nextOne[0] ?? null} away={awayFor(coming)} openId={openId} from={latest(coming)} onMake={() => setMaking(coming)} />
       </div>
 
       {listed.length > 0 && (
@@ -166,11 +166,13 @@ function Chain() {
 }
 
 /** One of the two weeks that matter: its avis, or one button that makes it. */
-function WeekCard({ label, week, avis, away, openId, onMake }: {
+function WeekCard({ label, week, avis, away, from, openId, onMake }: {
   label: string;
   week: CatalogWeek;
   avis: CatalogSummary | null;
   away: CatalogSummary | null;
+  /** What the new week would be made from, so the button can say so. */
+  from: CatalogSummary | null;
   openId: string | null;
   onMake: () => void;
 }) {
@@ -182,6 +184,9 @@ function WeekCard({ label, week, avis, away, openId, onMake }: {
         <span className="home__label">{label} · uge {week.week}</span>
         <p className="home__muted">Ingen avis endnu</p>
         <button className="go home__make" disabled={Boolean(s.busy)} onClick={onMake}>+ Lav uge {week.week}</button>
+        {from && !away && (
+          <span className="home__muted home__from">ud fra {from.week ? `uge ${from.week.week}` : from.name}</span>
+        )}
         {away && (
           <button className="linkish home__toggle" onClick={() => void s.setCatalogueMeta(away.id, { status: 'kladde' })}>
             eller hent «{away.name}» frem igen
@@ -346,7 +351,18 @@ function RowMenu({ item }: { item: CatalogSummary }) {
 function NewAvis({ week, from, onClose }: { week: CatalogWeek; from: CatalogSummary | null; onClose: () => void }) {
   const s = useStudio();
   const [reuse, setReuse] = useState(Boolean(from));
-  const [file, setFile] = useState<File | null>(null);
+  /*
+   * This week's file is often already in — uploaded on Varer this
+   * morning. Offered first, so making next week is two clicks rather
+   * than a trip through Finder. Not the sample the repo ships with the
+   * chain: that is some old week's products, and would look just as ready.
+   */
+  const loaded = useMemo(() => {
+    if (!s.feed) return null;
+    const shipped = s.sources.some((source) => source.path && source.path.split('/').pop() === s.feed!.source);
+    return shipped ? null : new File([s.feed.text], s.feed.source, { type: 'text/plain' });
+  }, [s.feed, s.sources]);
+  const [file, setFile] = useState<File | null>(loaded);
   const [over, setOver] = useState(false);
   const [themeId, setThemeId] = useState<string | null | undefined>(undefined);
   const input = useRef<HTMLInputElement>(null);
@@ -393,7 +409,9 @@ function NewAvis({ week, from, onClose }: { week: CatalogWeek; from: CatalogSumm
               onDragLeave={() => setOver(false)}
               onDrop={(event) => { event.preventDefault(); setOver(false); setFile(event.dataTransfer.files[0] ?? null); }}
             >
-              {file ? <><b>{file.name}</b><span>Klik for at vælge en anden fil</span></> : <><b>Vælg varefilen</b><span>eller træk den hertil</span></>}
+              {file
+                ? <><b>{file.name}</b><span>{file === loaded ? 'Den indlæste varefil · klik for at vælge en anden' : 'Klik for at vælge en anden fil'}</span></>
+                : <><b>Vælg varefilen</b><span>eller træk den hertil</span></>}
             </button>
           </div>
 

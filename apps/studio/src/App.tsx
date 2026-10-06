@@ -3,6 +3,8 @@ import { ImagePage, ImageSize, PageView, incitoSlotOf } from "@incitio/renderer"
 import { resolveTemplate } from "@incitio/brands";
 import { packLimits, pageTextLimits, partLimits } from "@incitio/schema";
 import { EDITOR_PX, useStudio } from "./state.js";
+import { startRouting } from "./route.js";
+import { DesignButton } from "./DesignMenu.js";
 
 import { Inspector } from "./Inspector.js";
 import { TileEditor } from "./TileEditor.js";
@@ -74,7 +76,6 @@ function PageMore({ pageId }: { pageId: string }) {
   const [open, setOpen] = useState(false);
   usePopover(open, () => setOpen(false));
   const [saving, setSaving] = useState(false);
-  const clearPage = useStudio((s) => s.clearPage);
   const removePage = useStudio((s) => s.removePage);
 
   return (
@@ -93,9 +94,6 @@ function PageMore({ pageId }: { pageId: string }) {
                 ☆ Gem som sektion…
               </button>
             )}
-            <button onClick={() => clearPage(pageId)}>
-              ⌫ Tøm siden — behold designet
-            </button>
             {/* Out of the bar: a red word beside everyday buttons invites the wrong click. */}
             <button className="more__drop" onClick={() => removePage(pageId)} title="⌘Z fortryder">
               ✕ Slet siden
@@ -211,6 +209,15 @@ function PageTools() {
           </button>
         )}
         {page.kind === "offers" && <FillPageButton pageId={page.id} />}
+        {page.kind === "offers" && (
+          <button
+            className="pagebar__pics"
+            onClick={() => s.clearPage(page.id)}
+            title="Tag alle varer af siden og behold designet — ⌘Z fortryder"
+          >
+            Tøm siden
+          </button>
+        )}
         <button
           className="pagebar__pics"
           title="Læg en tekst på siden — flyt den med musen, skriv den i panelet til højre"
@@ -219,6 +226,18 @@ function PageTools() {
           + Tekst
         </button>
       </div>
+      {/* How the products on this page look: the design they are drawn in, one press from the page. */}
+      {page.kind === "offers" && (s.brand?.offerDesigns.length ?? 0) > 0 && (
+        <div className="tools__group">
+          <DesignButton
+            scope={{ kind: "page", pageId: page.id }}
+            className="pagebar__pics pagebar__design"
+            title="Hvilket varedesign sidens varer tegnes i — og ret det"
+          >
+            Varedesign: <b>{page.design?.tag ?? s.brand?.designTag ?? "kædens"}</b> ▾
+          </DesignButton>
+        </div>
+      )}
       {pictured && <StandUp pageId={page.id} />}
 
       {/* The page's pictures, as chips in the same bar — only when it has any. */}
@@ -317,9 +336,8 @@ export function App() {
     }
   };
 
-  useEffect(() => {
-    void s.start();
-  }, []);
+  // Start from the address bar, and keep it up to date — see `route.ts`.
+  useEffect(() => startRouting(), []);
 
   /*
    * Keyboard, for the two things a pointer is bad at: history, and
@@ -829,7 +847,6 @@ export function App() {
 
       <Reproduce />
       <OfferRulesPanel />
-      <DesignsPanel />
       <ThemesPanel />
 
       {/*
@@ -845,6 +862,8 @@ export function App() {
       {s.view === "pladser" && s.brand && <SlotsBoard />}
       {s.view === "live" && s.brand && <LiveBoard />}
       {s.view === "godkend" && s.brand && <SignoffBoard />}
+      {/* The chain's, like the front page: there whether or not an avis is open. */}
+      {s.view === "varedesigns" && s.brand && <DesignsPanel />}
 
       {s.view === "side" && (
       /* Photographs at the size a page on screen shows them — see `ImageSize`. */

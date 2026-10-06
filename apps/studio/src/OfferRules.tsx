@@ -5,6 +5,7 @@ import {
 } from '@incitio/schema';
 import { DesignTile, ImageSize, PageView } from '@incitio/renderer';
 import { THUMB_PX, useStudio } from './state.js';
+import { blankDesign, freeTag } from './design-new.js';
 import { usePopover } from './popover.js';
 
 /**
@@ -417,6 +418,8 @@ function DesignPicker({ designs, value, example, onPick }: {
   designs: OfferDesign[]; value: string | null; example: Offer | null; onPick: (tag: string | null) => void;
 }) {
   const brand = useStudio((s) => s.brand);
+  const setDesignsOpen = useStudio((s) => s.setDesignsOpen);
+  const setOfferDesigns = useStudio((s) => s.setOfferDesigns);
   const tags = designTags(designs);
   return (
     <div className="layoutpick">
@@ -427,14 +430,37 @@ function DesignPicker({ designs, value, example, onPick }: {
       {tags.map((tag) => {
         const design = designs.find((d) => d.tag === tag)!;
         return (
-          <button key={tag} className={`layoutpick__item${value === tag ? ' is-on' : ''}`} onClick={() => onPick(tag)} title={tag}>
-            <span className="layoutpick__cell layoutpick__cell--design" style={brand ? brandCssVars(brand) as React.CSSProperties : undefined}>
-              {example && <DesignTile design={design} offer={example} aspect={1} />}
-            </span>
-            <small>{tag}</small>
-          </button>
+          <div key={tag} className="layoutpick__wrap">
+            <button className={`layoutpick__item${value === tag ? ' is-on' : ''}`} onClick={() => onPick(tag)} title={tag}>
+              <span className="layoutpick__cell layoutpick__cell--design" style={brand ? brandCssVars(brand) as React.CSSProperties : undefined}>
+                {example && <DesignTile design={design} offer={example} aspect={1} />}
+              </span>
+              <small>{tag}</small>
+            </button>
+            <button
+              className="layoutpick__edit"
+              onClick={() => setDesignsOpen(true, { designId: design.id, fromRules: true })}
+              title={`Ret designet «${tag}»`}
+            >Ret</button>
+          </div>
         );
       })}
+      {/* A design this rule needs and the chain lacks: made here, picked, and opened to be drawn. */}
+      <button
+        className="layoutpick__item layoutpick__item--new"
+        disabled={!brand}
+        onClick={() => {
+          if (!brand) return;
+          const design = blankDesign(`d-${Date.now().toString(36)}`, freeTag(brand.offerDesigns));
+          setOfferDesigns([...brand.offerDesigns, design], brand.designTag ?? designTags(brand.offerDesigns)[0] ?? design.tag);
+          onPick(design.tag);
+          setDesignsOpen(true, { designId: design.id, fromRules: true });
+        }}
+        title="Lav et nyt varedesign til denne regel"
+      >
+        <span className="layoutpick__none">+</span>
+        <small>Nyt design</small>
+      </button>
     </div>
   );
 }

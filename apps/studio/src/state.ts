@@ -16,6 +16,7 @@ import {
 import { APPROVAL_ROLE_NAMES, groupOffers, healLabelPrices, notOnePhotograph, readPackSize, rememberPrinted } from '@incitio/schema';
 import { nextWeek, weekName, weekOf, OfferFeed, withTheme, type Theme } from '@incitio/schema';
 import { bySeverity, coveredByText, measureFindings, readFindings, type Finding } from './findings.js';
+import { applyQuickFix, type QuickFix } from './quickfix.js';
 import { measureInputs } from '@incitio/workflow';
 import { priceRuleFindings } from './pricerules.js';
 import { bookingFindings } from './inventory.js';
@@ -25,8 +26,7 @@ import './image-route.js';
 import { incitoOfferBoxes, offerViewIds, sizedImage, packStyle, pageBlocks, pagedSheet } from '@incitio/renderer';
 import { freeSlots, growTemplate, grownId } from './grid.js';
 import * as api from './api.js';
-import { countPages } from './pdf.js';
-import {
+import { countPages } from './pdf.js';import {
   PACK_LIMITS, planCluster,
   type Complaint, type GhostFrame, type MeasuredProduct, type PackPatch, type PlacedProduct,
 } from './cluster-layout.js';
@@ -264,7 +264,8 @@ export type PanelKey = 'trin' | 'stemning' | 'sider';
  * sheets: to see whether the book worked you scrolled, and to compare
  * page three with page four you could not.
  */
-export type StudioView = 'hjem' | 'bog' | 'side' | 'udgaver' | 'varer' | 'pladser' | 'live' | 'godkend';
+/** The screens. `hjem` and `varedesigns` belong to the chain; the rest to the open avis. */
+export type StudioView = 'hjem' | 'bog' | 'side' | 'udgaver' | 'varer' | 'pladser' | 'live' | 'godkend' | 'varedesigns';
 
 /** Spreads, the way it prints — or one page at a time. */
 export type BookView = 'opslag' | 'sider';
@@ -476,6 +477,8 @@ export interface StudioState {
   refreshFindings: () => void;
   /** Go and stand at the tile a finding is about. */
   goToFinding: (finding: Finding) => void;
+  /** Do what a finding's own fix says — see `quickfix.ts`. Undoable. */
+  quickFix: (fix: QuickFix) => void;
   /** Select a product where it sits, and scroll the sheet to it. */
   goToOffer: (offerId: string) => void;
   /**
@@ -724,6 +727,13 @@ export interface StudioState {
    * See `fill.ts`.
    */
   fillPage: (pageId: string, mode: 'grow' | 'more') => void;
+  /** The page's places with no product in them, in the order they are dealt. */
+  emptySlots: (pageId: string) => string[];
+  /**
+   * Fill a page's empty places from the reserve, by the page's own
+   * department (or its section's tags), as a section is dealt. Undoable.
+   */
+  fillEmptySlots: (pageId: string) => void;
   /**
    * Give a crowded cell the room of an empty neighbour: the two boxes
    * become one and the empty cell goes. Needs the page's cells in boxes
@@ -779,7 +789,8 @@ export interface StudioState {
   past: CatalogDocument[];
   future: CatalogDocument[];
 
-  start: () => Promise<void>;
+  /** Load the chains and sign in — as `brandId` when a link names one, else the chain used last. */
+  start: (brandId?: string | null) => Promise<void>;
   signInAs: (brandId: string) => Promise<void>;
   /** Read this week's file and show what is in it. Free; no model. */
   uploadFeed: (name: string, text: string) => Promise<void>;
@@ -801,15 +812,26 @@ export interface StudioState {
    * still works with no API key. It does NOT curate: the way to get a
    * page worth printing is to hand in a page, which is `reproduce`.
    */
-  build: (options?: { fresh?: boolean }) => Promise<void>;
+  /** `fresh` rebuilds the whole avis; `append` only adds pages for the products not placed yet. */
+  build: (options?: { fresh?: boolean; append?: boolean }) => Promise<void>;
   save: () => Promise<void>;
   downloadPdf: (forPrint?: boolean) => Promise<void>;
 
   setReproduceOpen: (open: boolean) => void;
   setRulesOpen: (open: boolean) => void;
-  /** The chain's offer designs panel — see `Designs.tsx`. */
-  designsOpen: boolean;
-  setDesignsOpen: (open: boolean) => void;
+  /**
+   * Varedesigns — the chain's offer designs, a page of their own (`view:
+   * 'varedesigns'`, `#/<kæde>/varedesigns`). Opening it remembers where
+   * you were, so the way back lands on the same page of the same avis.
+   */
+  setDesignsOpen: (open: boolean, how?: { designId?: string | null; fromRules?: boolean }) => void;
+  /** The design open in the editor on that page; null is the list of them all. */
+  designEditing: string | null;
+  setDesignEditing: (designId: string | null) => void;
+  /** Where Varedesigns was opened from, to go back to. */
+  designsReturn: { view: StudioView; openPageId: string | null } | null;
+  /** Opened from the rules, so its way back is to them. */
+  designsFromRules: boolean;
   designsSaving: 'saved' | 'saving' | 'failed';
   /** The chain's offer designs and default tag, saved for the chain. */
   setOfferDesigns: (designs: OfferDesign[], tag: string | null) => void;
@@ -1365,6 +1387,8 @@ export interface StudioState {
     gesture?: string,
   ) => void;
 
+  /** The offer design tag a page's products are drawn in, unless a rule or the tile says otherwise. Null: the chain's. */
+  setPageDesignTag: (pageId: string, tag: string | null) => void;
   setPageTitle: (pageId: string, title: string) => void;
   /**
    * The theme line under the heading — "i det lune efterår".
@@ -3782,6 +3806,9 @@ export const useStudio = create<StudioState>((set, get) => {
     return found;
   }
 
+  /** The latest `openCatalogue` asked for — see there. */
+  let opening = 0;
+
   /** Where week 39's avis is stored. One avis per week, per chain. */
   function weekId(brandId: string, week: CatalogWeek): string {
     return `${brandId}-${week.year}-u${String(week.week).padStart(2, '0')}`;
@@ -3876,7 +3903,9 @@ export const useStudio = create<StudioState>((set, get) => {
     sectionsOpen: false,
     rulesOpen: false,
     rulesSaving: 'saved',
-    designsOpen: false,
+    designEditing: null,
+    designsReturn: null,
+    designsFromRules: false,
     designsSaving: 'saved',
     sectionsAt: 0,
     feedArrival: null,
@@ -4047,6 +4076,17 @@ export const useStudio = create<StudioState>((set, get) => {
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     },
 
+    quickFix(fix) {
+      if (fix.kind === 'plads') {
+        get().fillEmptySlots(fix.pageId);
+      } else {
+        gesture = null;
+        mutate((doc) => applyQuickFix(doc, fix));
+        set({ note: `${fix.kind === 'uge' ? 'Datoerne er rettet' : 'Billedet er sat ind'} · ⌘Z fortryder` });
+      }
+      get().refreshFindings();
+    },
+
     goToFinding(finding) {
       // Stand at the page itself, not at its thumbnail in the book.
       if (finding.pageId && get().openPageId !== finding.pageId) {
@@ -4076,7 +4116,7 @@ export const useStudio = create<StudioState>((set, get) => {
       if (finding.kind === 'skalmed') set({ view: 'varer', openPageId: null, goodsShow: 'skalmed-mangler', findingsOpen: false });
     },
 
-    async start() {
+    async start(asked) {
       /*
        * Patient on the way in. The API restarts whenever its code
        * changes, and a studio opened in those few seconds came up as an
@@ -4089,7 +4129,9 @@ export const useStudio = create<StudioState>((set, get) => {
           const brands = await api.fetchBrands();
           set({ brands, busy: null });
           const remembered = rememberedBrand();
-          const chosen = brands.find((b) => b.id === remembered) ?? brands[0];
+          const chosen = brands.find((b) => b.id === asked)
+            ?? brands.find((b) => b.id === remembered)
+            ?? brands[0];
           if (chosen) await get().signInAs(chosen.id);
           if (get().brand || attempt >= 8) return;
         } catch (error) {
@@ -4114,7 +4156,7 @@ export const useStudio = create<StudioState>((set, get) => {
       set({
         busy: 'Skifter kæde…',
         // The previous chain's designs, rules and themes are not this chain's.
-        designsOpen: false,
+        designEditing: null,
         rulesOpen: false,
         themesOpen: false,
         sectionsOpen: false,
@@ -4320,10 +4362,13 @@ export const useStudio = create<StudioState>((set, get) => {
       set({ busy: 'Bygger…', error: null, note: null });
 
       try {
+        const current = options.append ? get().variantBase ?? get().document : null;
+        const placed = current ? current.pages.flatMap((page) => page.placements.map((p) => p.offerId)) : [];
         const reply = await api.buildCatalogue(brandId, {
           feed: feed.text,
           maxPages,
           skipCuration: true,
+          ...(placed.length > 0 ? { exclude: placed } : {}),
           // The server drops offers outside the week it is given. While
           // the week filter is off (testing), every product goes in.
           ...(week && get().weekOnly ? { week } : {}),
@@ -4345,6 +4390,27 @@ export const useStudio = create<StudioState>((set, get) => {
             ? [`${reply.substitutions.length} sider fik en anden skabelon`]
             : []),
         ];
+
+        if (current) {
+          // Add, never replace: the new pages go after the last one, with their own ids and layouts.
+          const stamp = Date.now().toString(36);
+          const knownOffers = new Set(current.offers.map((offer) => offer.id));
+          const knownTemplates = new Set(current.templates.map((template) => template.id));
+          const fresh = reply.document.pages.map((page, index) => ({ ...page, id: `${current.id}-n${stamp}-${index + 1}` }));
+          const added = {
+            ...current,
+            pages: [...current.pages, ...fresh],
+            offers: [...current.offers, ...reply.document.offers.filter((offer) => !knownOffers.has(offer.id))],
+            templates: [...current.templates, ...reply.document.templates.filter((t) => !knownTemplates.has(t.id))],
+          };
+          mutate(() => added);
+          set({
+            busy: null,
+            activePageId: fresh[0]?.id ?? get().activePageId,
+            note: `${count(fresh.length, 'ny side', 'nye sider')} med ${reply.document.offers.length} varer, der ikke stod i avisen`,
+          });
+          return;
+        }
 
         const document = forWeek(reply.document);
         set({
@@ -4506,9 +4572,12 @@ export const useStudio = create<StudioState>((set, get) => {
     async openCatalogue(id) {
       const { brandId } = get();
       if (!brandId || !id) return;
+      // Two opens in flight (a link, and the parked avis coming back): the last one asked wins.
+      const ticket = ++opening;
       set({ busy: 'Åbner…', error: null, note: null });
       try {
         const stored = await api.fetchCatalogue(brandId, id);
+        if (ticket !== opening || get().brandId !== brandId) return;
         if (!stored) {
           set({ busy: null, error: 'Den avis findes ikke længere' });
           return;
@@ -4599,8 +4668,33 @@ export const useStudio = create<StudioState>((set, get) => {
 
     setReproduceOpen: (open) => set({ reproduceOpen: open, error: null }),
 
-    setRulesOpen: (open) => set({ rulesOpen: open, ...(open ? { designsOpen: false } : {}) }),
-    setDesignsOpen: (open) => set({ designsOpen: open, ...(open ? { rulesOpen: false } : {}) }),
+    setRulesOpen: (open) => set({ rulesOpen: open }),
+    setDesignsOpen: (open, how) => {
+      const { view, openPageId, designsReturn, document } = get();
+      if (open) {
+        set({
+          view: 'varedesigns',
+          designEditing: how?.designId ?? null,
+          designsFromRules: Boolean(how?.fromRules),
+          // Opened again from the page itself keeps the first way back.
+          designsReturn: view === 'varedesigns' ? designsReturn : { view, openPageId },
+          rulesOpen: false,
+          addPagesOpen: false,
+        });
+        return;
+      }
+      const back = designsReturn ?? { view: document ? 'bog' as const : 'hjem' as const, openPageId: null };
+      // A page that was deleted meanwhile is the book.
+      const page = back.openPageId && document?.pages.some((p) => p.id === back.openPageId) ? back.openPageId : null;
+      set({
+        view: back.view === 'side' && !page ? 'bog' : back.view === 'hjem' || document ? back.view : 'hjem',
+        openPageId: page,
+        designEditing: null,
+        designsReturn: null,
+        designsFromRules: false,
+      });
+    },
+    setDesignEditing: (designId) => set({ designEditing: designId }),
 
     setOfferDesigns(designs, tag) {
       const { brand, brandId } = get();
@@ -5256,6 +5350,64 @@ export const useStudio = create<StudioState>((set, get) => {
           }
           : t)),
       }));
+    },
+
+    emptySlots(pageId) {
+      const { document, brand } = get();
+      const page = document?.pages.find((entry) => entry.id === pageId);
+      if (!document || !brand || !page || page.kind === 'image') return [];
+      const template = document.templates.find((t) => t.id === page.templateId) ?? resolveTemplate(brand, page.templateId);
+      if (!template) return [];
+      const taken = new Set(page.placements.map((placement) => placement.slotId));
+      return slotAssignmentOrder(template).map((slot) => slot.id).filter((id) => !taken.has(id));
+    },
+
+    fillEmptySlots(pageId) {
+      const document = get().document;
+      const page = document?.pages.find((entry) => entry.id === pageId);
+      const empty = get().emptySlots(pageId);
+      if (!document || !page || empty.length === 0) {
+        set({ note: 'Der er ingen tomme pladser på siden.' });
+        return;
+      }
+      /*
+       * What the page is about: its products, or — emptied — the tags of
+       * the section it was dealt from. Neither: the strongest of anything.
+       */
+      const department = departmentOfPage(document, pageId);
+      const tags = page.section ? get().sections.find((entry) => entry.id === page.section!.id)?.tags ?? [] : [];
+      const wanted = department
+        ? [department]
+        : tags.filter((tag): tag is Department => (DEPARTMENTS as readonly string[]).includes(tag));
+      const { reserve, fromFeed } = reserveFor(document, wanted);
+      const placements = empty.slice(0, reserve.length).map((slotId, n) => ({
+        offerId: reserve[n]!.id,
+        slotId,
+        overrides: FRESH,
+      }));
+      if (placements.length === 0) {
+        set({ error: 'Reserven har ingen varer med billede at fylde pladserne med.' });
+        return;
+      }
+      gesture = null;
+      mutate((doc) => {
+        const known = new Set(doc.offers.map((offer) => offer.id));
+        const incoming = placements
+          .map((placement) => fromFeed.find((offer) => offer.id === placement.offerId))
+          .filter((offer): offer is Offer => Boolean(offer) && !known.has(offer!.id));
+        return {
+          ...doc,
+          offers: [...doc.offers, ...incoming],
+          pages: doc.pages.map((entry) => (entry.id === pageId
+            ? { ...entry, placements: [...entry.placements, ...placements] }
+            : entry)),
+        };
+      });
+      const index = document.pages.indexOf(page);
+      set({
+        note: `Side ${index + 1}: ${placements.length} af ${empty.length} tomme pladser fyldt fra reserven · ⌘Z fortryder`,
+      });
+      clearUnderText([pageId]);
     },
 
     fillPage(pageId, mode) {
@@ -6684,6 +6836,16 @@ export const useStudio = create<StudioState>((set, get) => {
           return { ...page, background: { ...page.background, ...patch } };
         }),
       }), patch === null ? undefined : name ?? `background:${pageId}`);
+    },
+
+    setPageDesignTag(pageId, tag) {
+      gesture = null;
+      mutate((document) => ({
+        ...document,
+        pages: document.pages.map((page) => (page.id === pageId
+          ? { ...page, design: { group: page.design?.group ?? 'standard', zones: page.design?.zones ?? {}, tag } }
+          : page)),
+      }));
     },
 
     setPageTitle(pageId, title) {
