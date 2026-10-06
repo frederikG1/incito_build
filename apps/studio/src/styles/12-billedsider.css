@@ -1,0 +1,45 @@
+/* ------------------------------------------------------ billedsider */
+
+/* The seam between two sheets, where an ad goes into the book. Quiet
+   until pointed at: there is one of these under every page. */
+.insert {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 10px auto 0;
+  padding: 7px 0;
+  width: 100%;
+  max-width: 820px;
+  border: 1px dashed #d3d7dd;
+  border-radius: 7px;
+  font-size: 12px;
+  color: #9aa0a8;
+  background: #fff;
+  cursor: pointer;
+  transition: color 90ms, border-color 90ms;
+}
+.insert input { display: none; }
+.insert:hover { color: var(--hot); border-color: var(--hot); }
+.insert--busy { opacity: 0.4; pointer-events: none; }
+
+.sheet__bar--image { align-items: center; gap: 10px; }
+.sheet__kind {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8b919b;
+}
+.sheet__bar--image .sheet__said { color: #6b7280; font-size: 13px; }
+.sheet__drop {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid #dcdfe4;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+}
+.sheet__drop:hover { border-color: #b4401f; color: #b4401f; }

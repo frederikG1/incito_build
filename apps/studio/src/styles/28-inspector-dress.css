@@ -1,0 +1,37 @@
+/* ------------------------------------------------ inspector, 2b dress */
+
+/*
+ * The inspector holds only what is selected, split three ways. The
+ * older rules above still shape the fields; this is the warm chrome and
+ * the tabs laid over them.
+ */
+.inspector { flex-basis: 312px; padding: 18px; border-left-color: var(--line); }
+.inspector__head h2 { margin-bottom: 4px; }
+.inspector__close { color: var(--muted); }
+.inspector__meta { margin: 0 0 14px; font-size: 12px; color: var(--muted); }
+.inspector__tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+.inspector__tabs button {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.inspector__tabs button:hover:not(.is-on) { background: var(--surface-hover); }
+.inspector__tabs button.is-on { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+/* The first heading in a tab sits right under the tabs, not under a rule. */
+.inspector__tabs + .inspector__group { margin-top: 0; padding-top: 0; border-top: 0; }
+.inspector__field { color: var(--ink-2); }
+.inspector__field input[type='text'] { padding: 7px 9px; border-color: var(--line-field); }
+.inspector__promote,
+.inspector__drop { padding: 8px 10px; border-radius: 7px; border-color: var(--line-strong); }
+.inspector__drop:hover { border-color: var(--stop); color: var(--stop); }
+.inspector__group { color: var(--muted); border-top-color: var(--line-soft); }
+.inspector__keys { color: var(--muted); border-top-color: var(--line-soft); }
+.inspector__keys b { color: var(--ink-2); }
+.inspector__check { color: var(--ink-2); margin-top: 12px; }
+.inspector--empty { color: var(--muted); }

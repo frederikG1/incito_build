@@ -1,0 +1,220 @@
+/* ------------------------------------------------------------- shelf */
+
+.shelf {
+  position: relative;
+  flex: 0 0 272px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+.shelf__head { display: flex; align-items: baseline; gap: 8px; padding: 14px 14px 8px; }
+.shelf__head b { font-size: 13px; font-weight: 600; }
+.shelf__count { font-size: 12px; color: var(--muted); }
+.shelf__tools { display: flex; flex-direction: column; gap: 6px; padding: 0 14px; }
+.shelf__find,
+.shelf__filter,
+.shelf__row select {
+  font: inherit;
+  font-size: 12.5px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-field);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+}
+.shelf__find { flex: 1 1 auto; }
+.shelf__filter { flex: 0 0 auto; }
+.shelf__hint { margin: 8px 14px 6px; font-size: 11.5px; color: var(--muted); }
+.shelf__grid {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 14px 14px;
+}
+/* As many columns as the shelf's width holds: two at its narrowest. */
+.shelf__group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  align-content: start;
+  gap: 8px;
+  padding-top: 4px;
+}
+.shelf__dept {
+  grid-column: 1 / -1; position: sticky; top: 0; z-index: 2;
+  margin: 6px -14px 0; padding: 6px 14px; background: var(--surface);
+  font-size: 12px; font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--line-soft);
+}
+.shelf__dept span { font-weight: 400; color: var(--muted); }
+.shelf__grid .good { width: auto; min-width: 0; }
+.shelf__empty { grid-column: 1 / -1; margin: 8px 0; font-size: 12px; color: var(--muted); }
+.shelf__picked {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--notice);
+}
+.shelf__pickedhead { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; }
+.shelf__row { display: flex; gap: 6px; }
+.shelf__row select { flex: 1 1 auto; }
+.shelf__do,
+.shelf__model {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.shelf__do:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.shelf__model { border-color: var(--model, #7a5af8); background: #f5f2ff; color: #3b2a8c; }
+.shelf__do i,
+.shelf__model i { font-style: normal; font-weight: 400; font-size: 11px; color: var(--muted); margin-left: 4px; }
+.shelf__do:disabled,
+.shelf__model:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* One page and the way in after it, in the page view's single column. */
+.stack { width: 100%; max-width: 720px; display: flex; flex-direction: column; align-items: center; gap: 14px; scroll-margin-top: 12px; }
+.stack + .stack { margin-top: 10px; }
+.page2__canvas .insert {
+  margin: 0;
+  max-width: 720px;
+  padding: 10px 0;
+  border: 1.5px dashed var(--line-dashed);
+  background: var(--notice);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.page2__canvas .insert:hover { border-color: var(--hot); color: var(--hot); }
+
+/* The page's one door to pictures: an outline button, so it reads as
+   the thing to press on a bar of quiet ones. */
+.pagebar button.pagebar__pics {
+  font-weight: 600;
+  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+.pagebar button.pagebar__pics:hover { border-color: var(--hot); color: var(--hot); background: var(--surface); }
+.pagebar button.pagebar__pics.is-on { border-color: var(--ok-line, #c5e2d0); background: var(--ok, #e8f4ec); color: var(--ok-ink, #1c5c34); }
+
+/* "Til side N" — the two one-step uploads at the top of the picture panel. */
+.pics__here { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line-soft); }
+.pics__here b { font-size: 13px; font-weight: 600; flex: 0 0 auto; }
+.pics__uploads { display: flex; gap: 8px; flex-wrap: wrap; }
+.pics__up { cursor: pointer; }
+.pics__up input { display: none; }
+.pics__up span {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.pics__up em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--muted); }
+.pics__up:hover span { border-color: var(--hot); color: var(--hot); }
+
+/* The page's own words, directly above the sheet. */
+.pagehead { width: 100%; max-width: 720px; display: flex; align-items: center; gap: 10px; }
+.pagehead__no { font-size: 12px; font-weight: 600; color: var(--muted); flex: 0 0 auto; }
+.pagehead input {
+  font: inherit;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+}
+.pagehead input:hover,
+.pagehead input:focus { border-color: var(--line-field); background: var(--surface); outline: none; }
+.pagehead__title { flex: 1 1 60%; font-size: 17px; font-weight: 600; }
+.pagehead__theme { flex: 1 1 40%; font-size: 13px; color: var(--ink-2) !important; }
+.pagehead input::placeholder { color: var(--muted); font-weight: 400; }
+.pagestep__title { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+
+.top__save {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.top__save:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.top__save:disabled { opacity: 0.45; cursor: not-allowed; }
+.top__save i { font-style: normal; font-weight: 400; color: var(--muted); }
+
+/* The mood artwork, as one sentence and one button. */
+.decor__say { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); max-width: 640px; }
+.decor__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.decor__more {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.decor__more:hover { color: var(--hot); }
+.decor__tune { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.decor__second {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.decor__second:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.decor__second:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* A picture's own panel. */
+.decorpanel__shot { display: grid; place-items: center; height: 110px; margin-bottom: 14px; border-radius: 8px; background: var(--surface-hover); }
+.decorpanel__shot img { max-width: 90%; max-height: 96px; object-fit: contain; }
+.decorpanel__row { display: flex; gap: 6px; }
+.decorpanel__row .inspector__promote { flex: 1 1 0; }
+.pic__name { font-size: 12px; color: var(--ink-2); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A note's own panel. */
+.notepanel__text {
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line-field);
+  border-radius: 6px;
+  resize: vertical;
+}
+.notepanel__swatches { display: flex; gap: 6px; align-items: center; }
+.notepanel__swatches button {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--line-strong); cursor: pointer; padding: 0;
+}
+.notepanel__swatches button.is-on { outline: 2px solid var(--hot); outline-offset: 2px; }
+.notepanel__swatches input[type=color] { width: 30px; height: 26px; border: 0; padding: 0; background: none; cursor: pointer; }
+.decor__old { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--line-field); border-radius: 7px; }

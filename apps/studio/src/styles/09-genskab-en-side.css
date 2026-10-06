@@ -1,0 +1,194 @@
+/* ------------------------------------------------------ genskab en side */
+
+/*
+ * A strip under the toolbar rather than a modal.
+ *
+ * The panel's second step is "the feed", and the feed is uploaded from
+ * the toolbar directly above it — a modal would grey out the one control
+ * the step tells you to use.
+ */
+.repro {
+  flex: 0 0 auto;
+  background: #fff;
+  border-bottom: 1px solid #d9dce1;
+  padding: 18px 22px 16px;
+}
+
+.repro__head { position: relative; max-width: 900px; }
+.repro__head h2 { margin: 0 0 4px; font-size: 16px; }
+.repro__head p { margin: 0 0 14px; font-size: 13px; color: #6b7280; max-width: 66ch; }
+
+.repro__close {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  border: none;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #8b919b;
+  cursor: pointer;
+}
+
+.repro__steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repro__steps li { display: flex; gap: 10px; align-items: start; }
+
+/* The number is the whole progress indicator: filled once the step has
+   what it needs, outlined while it is still the one to do. */
+.repro__steps b {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #c8ccd4;
+  color: #6b7280;
+}
+.repro__steps .is-done b { background: #1c7a45; border-color: #1c7a45; color: #fff; }
+.repro__steps .is-now b { border-color: var(--hot); color: var(--hot); }
+
+.repro__steps h3 { margin: 2px 0 3px; font-size: 13px; }
+.repro__steps h3 i { font-weight: 400; color: #8b919b; font-style: normal; }
+.repro__steps p { margin: 0 0 8px; font-size: 12px; color: #6b7280; }
+
+.repro__file input { display: none; }
+.repro__file span {
+  display: inline-block;
+  font-size: 12px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  border: 1px dashed #c0c5cd;
+  cursor: pointer;
+  color: #33363d;
+}
+.repro__file span:hover { border-color: var(--hot); color: var(--hot); }
+
+.repro__chosen {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-style: normal;
+  color: #1c5c34;
+  word-break: break-all;
+}
+.repro__chosen--none { color: #8a6b12; }
+
+/*
+ * The files handed in, as a list.
+ *
+ * A list rather than a filename: the order is the order they print in,
+ * any one of them can be dropped without redoing the upload, and a PDF
+ * row carries its own page range. All three are facts about one
+ * reference, so they sit on one row.
+ */
+.reflist { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.reflist li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid #e3e6ea;
+  border-radius: 6px;
+  background: #fafbfc;
+}
+.reflist__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 15ch;
+  color: #33363d;
+}
+.reflist__gap { flex: 1 1 auto; }
+.reflist__pages { display: flex; align-items: center; gap: 5px; color: #6b7280; }
+.reflist__pages input {
+  font: inherit;
+  font-size: 12px;
+  width: 62px;
+  padding: 3px 5px;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+}
+/* What the range actually asks for, counted back — "1-6" is six calls. */
+.reflist__pages i { font-style: normal; font-size: 11px; color: #8b919b; }
+.reflist__pages i.is-bad { color: #b4401f; }
+/* Back to the whole file in one click. Quiet: it is a shortcut for
+   something the field beside it already does. */
+.reflist__all { font-size: 11px !important; padding: 2px 5px !important; }
+.reflist li button {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid #dcdfe4;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+}
+.reflist li button:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.reflist li button:disabled { opacity: 0.35; cursor: not-allowed; }
+.reflist__drop:hover { border-color: #b4401f !important; color: #b4401f !important; }
+
+.repro__clear {
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #8b919b;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.repro__append {
+  display: flex;
+  align-items: start;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #33363d;
+  cursor: pointer;
+}
+.repro__append input { margin: 2px 0 0; }
+.repro__append i { font-style: normal; color: #8b919b; }
+
+.repro__note {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+}
+
+.repro__foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eceef1;
+}
+.repro__hint { margin: 0; flex: 1 1 auto; font-size: 12px; color: #6b7280; max-width: 70ch; }
+.repro__foot button {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--hot);
+  background: var(--hot);
+  color: #fff;
+  cursor: pointer;
+}
+.repro__foot button:disabled { opacity: 0.4; cursor: not-allowed; }

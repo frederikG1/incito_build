@@ -1,0 +1,88 @@
+/* ------------------------------------------------- de fire veje ind */
+
+.add { position: relative; display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+.add__card {
+  width: 176px;
+  height: 249px;
+  border: 1.5px dashed var(--line-dashed);
+  border-radius: 4px;
+  background: var(--notice);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.add__card:hover { border-color: var(--hot); color: var(--hot); }
+.add__card span { font-size: 22px; font-weight: 400; line-height: 1; }
+.add__said { font-size: 11.5px; color: var(--muted); }
+
+.ways2 {
+  position: absolute;
+  top: 0;
+  right: 190px;
+  width: 330px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgb(16 20 26 / 0.18);
+  padding: 10px;
+  z-index: 10;
+}
+.ways2--right { right: auto; left: 190px; }
+.ways2__head {
+  margin: 4px 8px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.ways2__way {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.ways2__way:last-child { margin-bottom: 0; }
+.ways2__way:hover:not(:disabled) { border-color: var(--hot); }
+.ways2__way--model:hover:not(:disabled) { border-color: var(--model); }
+.ways2__way:disabled { opacity: 0.45; cursor: not-allowed; }
+.ways2__what { flex: 1 1 auto; }
+.ways2__what b { display: block; font-size: 13px; font-weight: 600; }
+.ways2__what span { font-size: 11.5px; color: var(--muted); }
+/* The point of the control: nothing costs money without the price
+   being on the button that spends it. */
+.ways2__price { flex: 0 0 auto; font-size: 11px; font-weight: 600; }
+.ways2__price--free { color: var(--ok-ink); }
+.ways2__price--paid { color: var(--warn-ink); }
+.ways2__price--model { color: var(--model-ink); }
+/* The week's route stands out from the others. */
+.ways2__way--first { border-color: var(--hot); background: color-mix(in srgb, var(--hot) 5%, var(--surface)); }
+.ways2__more {
+  display: block;
+  width: 100%;
+  margin: 4px 0 6px;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+.ways2__more:hover { color: var(--ink, #111); }

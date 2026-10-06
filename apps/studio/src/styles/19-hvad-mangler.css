@@ -1,0 +1,158 @@
+/* --------------------------------------------------- hvad mangler */
+
+/*
+ * The checklist.
+ *
+ * A strip under the banners rather than a third column: it is read in
+ * bursts — before a print, after a rebuild — and a permanent panel
+ * would take width from the two things that need it, the products and
+ * the sheet. Capped in height and scrolled, because a fresh draft of a
+ * twenty-page book can carry sixty lines and the rest of the studio
+ * must not be pushed off screen by its own homework.
+ */
+/*
+ * What stands between the avis and the printer — a panel over the
+ * right edge, not a band across the top: opening it used to push the
+ * whole book down by a third of the screen.
+ */
+.checks {
+  position: fixed;
+  top: 64px;
+  right: 16px;
+  z-index: 55;
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100vh - 88px);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgb(16 20 26 / 0.2);
+  animation: weekly-in 160ms ease-out;
+}
+.checks__head { display: flex; align-items: center; gap: 8px; }
+.checks__head h2 { margin: 0; font-size: 15px; font-weight: 650; flex: 1 1 auto; }
+.checks__count { margin: 4px 0 10px; font-size: 12px; color: var(--muted); }
+.checks__again,
+.checks__close {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  cursor: pointer;
+  color: var(--ink-2);
+}
+.checks__again:hover,
+.checks__close:hover { border-color: var(--hot); color: var(--hot); }
+.checks__close { padding: 3px 8px; font-size: 14px; line-height: 1; }
+.checks__clear { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 10px; background: var(--ok); color: var(--ok-ink); }
+.checks__clear span { font-size: 22px; font-weight: 700; }
+.checks__clear p { margin: 0; font-size: 13px; }
+.checks__groups { overflow: auto; margin: 0 -6px; padding: 0 6px; }
+.checks__group + .checks__group { margin-top: 10px; }
+.checks__group h3 { margin: 0 0 3px; font-size: 11.5px; font-weight: 650; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.03em; }
+.checks__list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.checks__line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 8px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.checks__line:hover { background: var(--surface-hover); border-color: var(--line); }
+.checks__line.is-here { border-color: var(--hot); background: #eaf1fd; }
+.checks__mark { flex: 0 0 auto; width: 13px; text-align: center; opacity: 0.6; }
+.checks__said { flex: 1 1 auto; min-width: 0; }
+/* Two weights and no more: can this go to print, or is it worth a look. */
+.checks__line--stop .checks__mark { color: var(--stop); opacity: 1; }
+.checks__line--se { color: var(--muted); }
+
+/* The avis's state, beside the save. */
+.ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px 6px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms;
+}
+.ready__dot {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 10px;
+  color: #fff;
+}
+.ready--stop { border-color: #f0c7bb; background: #fdf1ed; color: var(--stop-ink); }
+.ready--stop .ready__dot { background: var(--stop); box-shadow: 0 0 0 3px rgb(180 64 31 / 0.15); }
+.ready--look { border-color: var(--warn-line); background: var(--warn); color: var(--warn-ink); }
+.ready--look .ready__dot { background: #d6a531; }
+.ready--ok { border-color: var(--ok-line); background: var(--ok); color: var(--ok-ink); }
+.ready--ok .ready__dot { background: var(--ok-ink); }
+.ready:hover, .ready.is-open { filter: brightness(0.97); }
+
+/* The count on the toolbar button that opens it. */
+.bar__badge {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #3a4048;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+.bar__badge--stop { background: #b4401f; color: #fff; }
+.bar button.accent .bar__badge,
+.bar button.primary .bar__badge { background: rgb(255 255 255 / 0.25); color: #fff; }
+
+/*
+ * A tile whose arrangement is still coming.
+ *
+ * The products are already in the cell and the page already prints —
+ * what is running is the model that improves where they stand, and it
+ * used to hold the whole toolbar hostage. Said on the cell instead,
+ * which is the only place it is true.
+ */
+.handle--standing { outline: 1px dashed color-mix(in srgb, var(--hot) 55%, transparent); }
+.handle__working {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 11px;
+  background: rgb(22 24 29 / 0.82);
+  color: #fff;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+}
+.handle__working .spinner { width: 9px; height: 9px; border-width: 1.5px; margin: 0; }

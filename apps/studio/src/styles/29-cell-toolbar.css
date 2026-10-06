@@ -1,0 +1,61 @@
+/* ------------------------------------------------------ cell toolbar */
+
+.celltool {
+  position: absolute;
+  left: 0;
+  top: -40px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--chrome, #16181d);
+  border-radius: 9px;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.3);
+  white-space: nowrap;
+  cursor: default;
+}
+.celltool button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #b8c0cc;
+  cursor: pointer;
+}
+.celltool button:hover,
+.celltool button.is-on { background: #2b3038; color: #fff; }
+
+/*
+ * The page's empty cells, laid over the sheet by `EmptyCells`. The grid
+ * tracks are copied off the printed page at runtime; nothing here
+ * reaches into the page itself.
+ */
+.empties {
+  position: absolute;
+  display: grid;
+  pointer-events: none;
+  z-index: 5;
+}
+.empties__cell {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+  border: 2px dashed var(--hot);
+  border-radius: 4px;
+  background: rgb(45 108 223 / 0.08);
+  color: var(--busy-ink, #26365e);
+  font-size: 11.5px;
+}
+.empties__cell b { font-size: 13px; font-weight: 600; }
+.empties__cell.is-over { background: rgb(45 108 223 / 0.2); }
+
+/* A book page a tray product is being held over. */
+.card--taking { outline: 2px solid var(--hot); outline-offset: 2px; }
+.sheet__paper { position: relative; }

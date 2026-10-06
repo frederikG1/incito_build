@@ -1,0 +1,87 @@
+/* ------------------------------------------------------------ trin */
+
+/*
+ * Where you are in the work, and what to do about it.
+ *
+ * Under the toolbar rather than in it, because it is not a control: it
+ * answers "what now", which the toolbar deliberately does not — every
+ * button there is always available, and that is what made it unreadable
+ * to somebody opening the studio for the first time.
+ */
+.steps {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 18px;
+  background: #fff;
+  border-bottom: 1px solid #e3e6ea;
+}
+
+.steps__list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 6px;
+  border-radius: 999px;
+  color: #8a8f98;
+  white-space: nowrap;
+}
+
+/* The number, as a coin. Filled once the step is behind you, outlined
+   while you are on it, faint before you get there. */
+.steps__no {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid #d3d7dd;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.steps__what { display: flex; align-items: baseline; gap: 7px; }
+.steps__what b { font-size: 13px; font-weight: 600; }
+.steps__what em { font-style: normal; font-size: 11px; opacity: 0.8; }
+
+.steps__step.is-done { color: #5b6069; }
+.steps__step.is-done .steps__no {
+  background: #d9dde3;
+  border-color: #d9dde3;
+  color: #33363d;
+}
+
+.steps__step.is-now {
+  background: rgb(122 90 248 / 0.1);
+  color: #33363d;
+}
+.steps__step.is-now .steps__no {
+  border-color: var(--hot);
+  color: var(--hot);
+  font-weight: 700;
+}
+
+/* The sentence. One, and about the step that is lit. */
+.steps__say {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #4b5563;
+}
+.steps__say b { color: #33363d; font-weight: 600; }
+
+@media (max-width: 1100px) {
+  /* The words go before the strip does: the numbers still say where
+     you are, and the sentence still says what to do. */
+  .steps__what em { display: none; }
+}

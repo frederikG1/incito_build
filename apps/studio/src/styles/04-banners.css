@@ -1,0 +1,10 @@
+/* ------------------------------------------------------------- banners */
+
+.banner { padding: 9px 16px; font-size: 13px; flex: 0 0 auto; }
+.banner code { font-size: 12px; background: rgb(0 0 0 / 0.07); padding: 1px 4px; border-radius: 3px; }
+.banner--error { background: #fdecea; color: #8a1c12; border-bottom: 1px solid #f3c9c4; }
+.banner--ok { background: #e8f4ec; color: #1c5c34; border-bottom: 1px solid #c5e2d0; }
+.banner--hint { background: #fdf5e0; color: #6b5312; border-bottom: 1px solid #ecdcae; }
+.banner--busy { background: #eef2fb; color: #26365e; border-bottom: 1px solid #cfd9ee; }
+/* The toolbar's spinner is white for a filled button; here it is on paper. */
+.banner--busy .spinner { border-color: rgb(38 54 94 / 0.25); border-top-color: #26365e; }

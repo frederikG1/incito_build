@@ -1,0 +1,98 @@
+/* ------------------------------------------------------- toplinjen */
+
+.top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.top__mark { font-size: 16px; letter-spacing: -0.01em; font-weight: 700; }
+.top__rule { width: 1px; height: 26px; background: var(--line); flex: 0 0 auto; }
+.top__gap { flex: 1 1 auto; }
+.top__saved { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/*
+ * The avis, as one hit target.
+ *
+ * Chain, week and "open another" were three separate controls in the
+ * toolbar answering one question — which avis am I in — so they are
+ * one button with the answer on it and the three ways to change it
+ * behind it.
+ */
+.doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  text-align: left;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+.doc:hover { background: var(--surface-hover); border-color: var(--line); }
+.docwrap { position: relative; flex: 0 1 auto; min-width: 0; }
+.doc { max-width: 100%; }
+.doc__lines { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.doc__name,
+.doc__said { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc__name { font-size: 15px; line-height: 1.2; font-weight: 600; }
+.doc__said { font-size: 12px; color: var(--muted); }
+/* Inside a page the header belongs to the page: the avis shrinks to one
+   line so the stepper and the title get the room. */
+.top--side { gap: 12px; }
+.top--side .docwrap { flex: 0 1 200px; min-width: 120px; }
+.top--side .pagetheme { flex: 0 1 150px; min-width: 70px; }
+.top--side .pagenote { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.top--side .doc__said { display: none; }
+.doc__caret { color: var(--muted); }
+
+.quiet {
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.quiet:hover:not(:disabled) { background: var(--surface-hover); }
+.quiet:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* The only filled button on the screen. */
+.go {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border: 1px solid var(--hot);
+  border-radius: 7px;
+  background: var(--hot);
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.go:hover:not(:disabled) { filter: brightness(1.07); }
+.go:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* An outline button, the studio's ordinary one. */
+.thin {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.thin:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.thin:disabled { opacity: 0.45; cursor: not-allowed; }
+.thin--drop:hover:not(:disabled) { border-color: var(--stop); color: var(--stop); }

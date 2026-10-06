@@ -1,0 +1,69 @@
+/* ------------------------------------------- varerne inde i én flise */
+
+.inspector__count { font-weight: 400; color: #a2a8b2; font-size: 11px; }
+
+.inspector__pack {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+/* Says what the row is for. Without it the thumbnails read as a list of
+   what is in the tile, which is only half true: they are also the way
+   to take one in hand. */
+.inspector__packsay {
+  margin: 0 0 14px;
+  font-size: 11px;
+  color: #8a8f98;
+}
+
+.inspector__packitem { position: relative; }
+
+/*
+ * Bigger than a chip, because it is the first thing the panel asks.
+ *
+ * Clicking a tile that holds five products and then hunting for a 54px
+ * thumbnail is the difference between a panel somebody uses and one
+ * they scroll past — and at that size a bottle and a bag of the same
+ * colour are the same picture.
+ */
+.inspector__packshot {
+  display: block;
+  width: 68px;
+  height: 68px;
+  padding: 4px;
+  border: 1px solid #d3d7dd;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.inspector__packshot img { width: 100%; height: 100%; object-fit: contain; }
+.inspector__packshot:hover { border-color: var(--hot); }
+.inspector__packitem.is-held .inspector__packshot {
+  border-color: var(--hot);
+  box-shadow: 0 0 0 2px var(--hot);
+}
+/* Taken off the page, and still listed — otherwise there is no way to
+   put it back. The same bargain the box list above makes. */
+.inspector__packitem.is-hidden .inspector__packshot { opacity: 0.35; }
+
+/* The dot every touched thing in this panel carries. */
+.inspector__packshot > i {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1;
+  color: #7a5af8;
+}
+
+.inspector__packitem .inspector__part-eye {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  padding: 0 3px;
+}

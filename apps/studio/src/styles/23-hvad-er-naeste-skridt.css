@@ -1,0 +1,41 @@
+/* ----------------------------------------------- hvad er næste skridt */
+
+/*
+ * One line that says where you are and what is in the way.
+ *
+ * It replaces the four-step strip AND the checklist panel: the steps
+ * are a breadcrumb nobody has to open, the sentence is the first
+ * finding written out, and the button goes there. Both are derived
+ * from `findings.ts` on every render — the same rule as `stepOf`,
+ * which is that a stored step can disagree with the document.
+ */
+.next {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 24px;
+  background: var(--notice);
+  border-bottom: 1px solid #eee7da;
+}
+.crumbs { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+.crumbs b { font-weight: 600; color: var(--ink-2); }
+.crumbs .is-now { font-weight: 700; color: #26365e; }
+.crumbs .is-later { font-weight: 400; color: var(--muted-step); }
+.crumbs i { font-style: normal; opacity: 0.4; }
+.next__rule { width: 1px; height: 22px; background: #eee7da; flex: 0 0 auto; }
+.next__said { margin: 0; font-size: 13.5px; color: var(--ink-2); flex: 1 1 auto; }
+.next__said b { font-weight: 600; }
+.next__go {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border: 1px solid #d8ccae;
+  border-radius: 7px;
+  background: var(--warn);
+  color: var(--warn-ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.next__go:hover { filter: brightness(0.98); }

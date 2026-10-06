@@ -1,0 +1,78 @@
+/* ------------------------------------------- hent eller tegn sider */
+
+/*
+ * The same strip as the mood-artwork one, and deliberately so: they are
+ * both "a row of controls that folds away", and giving the second one a
+ * look of its own would say the two are different kinds of thing.
+ */
+/* Light, for the same reason `.decor` is — see the note there. */
+.ways {
+  flex: 0 0 auto;
+  padding: 9px 18px 10px;
+  background: #f6f7f9;
+  color: #33363d;
+  border-bottom: 1px solid #e3e6ea;
+}
+
+
+
+.ways__row { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+
+/*
+ * One row per way in, each a complete thought.
+ *
+ * Side by side they read as one long form with eight fields; stacked,
+ * each row is a sentence — here is a link, take these pages, go.
+ */
+.ways__way {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid #e3e6ea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.ways__field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 260px; }
+.ways__field--wide { flex: 3 1 360px; }
+.ways__field--slim { flex: 0 0 110px; }
+
+.ways__label { font-size: 12px; font-weight: 600; }
+.ways__label em { font-style: normal; font-weight: 400; opacity: 0.65; }
+
+.ways__field input {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  color: #33363d;
+}
+.ways__field input::placeholder { color: #8a8f98; }
+.ways__field input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.ways__hint { font-size: 11px; opacity: 0.5; line-height: 1.3; min-height: 14px; }
+
+.ways__opts { display: flex; flex-direction: column; gap: 4px; margin-bottom: 18px; font-size: 12px; }
+.ways__opts label { display: flex; align-items: center; gap: 5px; opacity: 0.8; cursor: pointer; }
+
+.ways__go {
+  font: inherit;
+  font-size: 13px;
+  margin-bottom: 18px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--hot);
+  background: var(--hot);
+  color: #fff;
+  cursor: pointer;
+}
+.ways__go.accent { border-color: #7a5af8; background: #7a5af8; }
+.ways__go:hover:not(:disabled) { filter: brightness(1.08); }
+.ways__go:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.ways__off { margin: 0; font-size: 11px; opacity: 0.55; }
+.ways__off code { background: #21252c; padding: 1px 4px; border-radius: 3px; }

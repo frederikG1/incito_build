@@ -1,0 +1,102 @@
+/* ------------------------------------------------------------ bogen */
+
+.book { flex: 1 1 auto; overflow: auto; padding: 22px 24px 0; display: flex; flex-direction: column; gap: 16px; }
+.book__head { display: flex; align-items: center; gap: 12px; }
+.book__head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.book__said { font-size: 12.5px; color: var(--muted); }
+.book__gap { flex: 1 1 auto; }
+
+.seg { display: flex; border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; background: var(--surface); }
+.seg button {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 12px;
+  border: none;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--line-strong); }
+.seg button.is-on { background: var(--ink); color: #fff; }
+
+.book__row { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; padding-bottom: 22px; }
+
+/*
+ * One page, at the size a whole book fits on screen in.
+ *
+ * 176 × 249 is the chain's own `pageAspect` at a size where six
+ * spreads sit side by side. The inside is a stand-in drawn from the
+ * page's OWN `template.areas` — not a render: rendering 37 real sheets
+ * to look at the book would cost 37 pages of images for a glance.
+ */
+.leaf { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+.leaf__pair { display: flex; box-shadow: 0 4px 14px rgb(16 20 26 / 0.09); border-radius: 4px; overflow: hidden; }
+.leaf__pair .card { box-shadow: none; border-radius: 0; }
+.leaf__pair .card:first-child { border-right: none; }
+
+.card {
+  position: relative;
+  width: 176px;
+  height: 249px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgb(16 20 26 / 0.09);
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+  overflow: hidden;
+}
+/*
+ * The page itself, rendered at 500px and scaled to the card's 176 —
+ * scaled rather than rendered small, so nothing sized in pixels inside
+ * the page (hairlines, minimum type) comes out thicker than printed.
+ */
+.card__live {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 500px;
+  transform: scale(0.352);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.card__live .page { max-width: none; }
+.card__pill { z-index: 1; }
+.card:hover { border-color: var(--hot); }
+.card__cell { background: rgb(255 255 255 / 0.45); border-radius: 2px; }
+.card__cell--empty {
+  border: 1.5px dashed var(--stop);
+  background: none;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--stop-ink);
+}
+.card--stop { border: 2px solid var(--stop); }
+.card--warn { border: 1px solid var(--warn-line); }
+.card__pill {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--stop);
+  color: #fff;
+}
+.card__pill--warn { background: var(--warn); border: 1px solid var(--warn-line); color: var(--warn-ink); }
+/* A whole-sheet picture has no grid to stand in for. */
+.card--image { padding: 0; display: block; background-size: cover; background-position: center; }
+
+.leaf__caps { display: flex; gap: 20px; }
+.leaf__cap { display: flex; flex-direction: column; gap: 1px; width: 176px; }
+.leaf__cap b { font-size: 12.5px; font-weight: 600; }
+.leaf__cap span { font-size: 11.5px; color: var(--muted); }
+.leaf__cap span.is-stop { color: var(--stop-ink); }
+.leaf__cap span.is-warn { color: var(--warn-ink); }
+
+/* Where the pointer would drop a page being dragged. */
+.leaf--over { box-shadow: -3px 0 0 var(--hot); }
+.leaf--lifted { opacity: 0.4; }

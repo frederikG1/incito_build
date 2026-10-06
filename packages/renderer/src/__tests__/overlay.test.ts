@@ -47,7 +47,7 @@ describe('tile stacking', () => {
 
   const lifted = /const LIFTED = (\d+);/.exec(read('../OfferTile.tsx'));
   const handle = /\.handle\s*\{[^}]*?z-index:\s*(\d+)\s*;/s
-    .exec(read('../../../../apps/studio/src/app.css'));
+    .exec(read('../../../../apps/studio/src/styles/07-tile-editor.css'));
 
   it('the page declares the layers this test is about', () => {
     // A guard on the guard: if the renderer ever stops using z-index,

@@ -1,0 +1,154 @@
+/* ------------------------------------------------- de foldede paneler */
+
+/*
+ * What the toolbar folds out.
+ *
+ * Three strips used to stand permanently between the toolbar and the
+ * first sheet — the step indicator, the mood artwork and the two other
+ * ways into a page. Folded shut they still cost their line each, which
+ * is a hundred pixels of chrome above the one thing the screen is for.
+ *
+ * So they lie over the canvas instead. Not dimmed and not centred: a
+ * fold-out belongs under the button that opened it, and the page it is
+ * about has to stay readable behind it. Only the card takes the
+ * pointer; the rest of the layer is there to catch a click outside.
+ */
+/*
+ * Anchored, not centred: a fold-out belongs directly under the button
+ * that opened it. The element itself is a zero-height marker sitting
+ * where the strips used to sit — immediately below the toolbar, whose
+ * height is not a number anybody can write down since it wraps — and
+ * the card hangs off it.
+ */
+.panel {
+  position: relative;
+  height: 0;
+  z-index: 40;
+}
+.panel__away { position: fixed; inset: 0; }
+.panel__card {
+  position: absolute;
+  top: 8px;
+  left: 18px;
+  right: 18px;
+  max-width: 1100px;
+  background: #fff;
+  border: 1px solid #dfe3e8;
+  border-radius: 10px;
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.18);
+  /* Tall content — the drawn-layout row, the full prompt — scrolls
+     inside the card rather than growing past the bottom of the screen. */
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+}
+.panel__close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 1;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  border-radius: 5px;
+  width: 24px;
+  height: 24px;
+  font-size: 15px;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+}
+.panel__close:hover { border-color: #b4401f; color: #b4401f; }
+
+/* Inside a card they are plain sections: the borders and the paper
+   colour belonged to the strips they used to be. */
+.panel__card .steps,
+.panel__card .decor,
+.panel__card .ways {
+  border: 0;
+  background: none;
+  padding: 14px 18px;
+}
+.panel__card .decor__head { justify-content: flex-end; padding-right: 30px; }
+.panel__card .steps__say { margin-bottom: 0; }
+
+/* The step, in the toolbar. */
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 5px;
+  border: 1px solid #333944;
+  border-radius: 999px;
+  background: #21252c;
+  color: var(--chrome-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.chip:hover { background: #2b3038; }
+.chip--on { border-color: var(--hot); background: var(--hot); color: #fff; }
+.chip__no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3a4048;
+  font-size: 11px;
+  font-weight: 600;
+}
+.chip--on .chip__no { background: rgb(255 255 255 / 0.28); }
+
+/* Something in the panel needs attention — today, a missing key. */
+.bar__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #f0b429;
+  vertical-align: 1px;
+}
+
+/* The label in front of the prompt picker. */
+.way__which { font-size: 11px; color: #6b7280; }
+
+/*
+ * The price, under the tokens it is worked out from.
+ *
+ * Quieter than the line above it, because it is the only figure in
+ * this panel that was not measured — see `price.ts`. "anslået" is set
+ * smaller still, so the word is there without competing with the
+ * number it qualifies.
+ */
+.way__price { margin: 2px 0 0 !important; font-size: 11px; color: #6b7280; }
+.way__price i { font-style: normal; font-size: 10px; opacity: 0.7; }
+
+/* The reserve switch, under the model it qualifies. */
+.way__strict {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+/*
+ * A model answered that nobody chose.
+ *
+ * Loud on purpose. It used to be a parenthesis in a grey line, and a
+ * whole afternoon went by comparing two prompts on tiles that had all
+ * been made by the same reserve model.
+ */
+.way__swap { color: #b4401f; font-weight: 600; }
+
+/* The two ways to put one backdrop under more than one sheet. */
+.inspector__spread {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: -4px 0 14px;
+}

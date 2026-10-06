@@ -1,0 +1,252 @@
+/* ------------------------------------------------------------ bakken */
+
+/*
+ * What has not been placed, along the bottom.
+ *
+ * It was a sidebar, which took width from the two things that need it
+ * — the sheet and the products — and hid one behind the other. Along
+ * the bottom both are on screen at once, which is what makes dragging
+ * a product onto a page a gesture rather than a plan.
+ */
+.tray {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 24px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.tray--slim { flex-direction: row; align-items: center; gap: 12px; padding: 12px 24px; }
+.tray__head { display: flex; align-items: center; gap: 12px; }
+.tray__head b { font-size: 13px; font-weight: 600; flex: 0 0 auto; }
+.tray__said { font-size: 12px; color: var(--muted); }
+.tray__gap { flex: 1 1 auto; }
+.tray__find {
+  font: inherit;
+  font-size: 12.5px;
+  width: 200px;
+  padding: 6px 9px;
+  border: 1px solid var(--line-field);
+  border-radius: 7px;
+}
+.tray__find--slim { width: 150px; flex: 0 0 auto; }
+.tray__row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; }
+.tray__row--slim { flex: 1 1 auto; gap: 8px; }
+.tray__empty { margin: 0; font-size: 12px; color: var(--muted); }
+
+.good {
+  flex: 0 0 auto;
+  width: 112px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  cursor: grab;
+  font: inherit;
+  text-align: left;
+}
+.good:hover { border-color: var(--hot); }
+.good--picked { border-color: var(--hot); background: #f2f6fe; }
+.good__shot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 58px;
+  border-radius: 6px;
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+.good--picked .good__shot { background: #fff; }
+.good__shot img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.good__shot span { font-size: 9px; color: var(--muted); }
+.good__name { font-size: 11.5px; line-height: 1.25; height: 29px; overflow: hidden; }
+.good__price { font-size: 13px; font-weight: 700; }
+
+/* The same product as a chip, for the page view where the sheet needs
+   the height. */
+.good--chip {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  padding: 6px 10px 6px 6px;
+}
+.good--chip .good__shot { width: 40px; height: 38px; flex: 0 0 auto; }
+.good--chip .good__name {
+  height: auto;
+  font-size: 12px;
+  max-width: 140px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.good--chip .good__price { font-size: 12.5px; }
+
+/*
+ * The answer to a selection, where the selection is.
+ *
+ * Only on screen while something is picked: a permanently visible
+ * "add 0 products" is the kind of disabled control people stop
+ * reading.
+ */
+.picked {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  margin-left: 6px;
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+  width: 250px;
+}
+.picked p { margin: 0; font-size: 12px; color: var(--ink-2); }
+.picked p b { font-weight: 600; }
+.picked__share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--model);
+  border-radius: 8px;
+  background: var(--model-field);
+  cursor: pointer;
+}
+.picked__share:disabled { opacity: 0.45; cursor: not-allowed; }
+.picked__share b { display: block; font-size: 12.5px; font-weight: 600; color: var(--model-ink); }
+.picked__share span { font-size: 11px; color: #4a3a92; }
+.picked__share em { flex: 0 0 auto; font-style: normal; font-size: 11px; font-weight: 600; color: var(--model-ink); }
+.picked__clear {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+}
+.picked__clear:hover { border-color: var(--hot); color: var(--hot); }
+
+/* Menu behind the document button, and the layer that shuts it. */
+.sheetaway { position: fixed; inset: 0; z-index: 9; }
+.docmenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  width: 260px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgb(16 20 26 / 0.18);
+}
+.docmenu__field { display: block; margin-bottom: 10px; font-size: 12px; color: var(--ink-2); }
+.docmenu__field > span { display: block; margin-bottom: 4px; }
+.docmenu__field select,
+.docmenu__field input {
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line-field);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.docmenu__do {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.docmenu__do:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.docmenu__do:disabled { opacity: 0.45; cursor: not-allowed; }
+.docmenu__do i { font-style: normal; color: var(--muted); margin-left: 4px; }
+
+/* Udgaver: which store's edition is on screen. */
+.edition {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  font: inherit; font-size: 13px; padding: 6px 10px; margin-left: 8px;
+  border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.edition__label { font-size: 11px; color: var(--muted); }
+.edition--local { border-color: #d97706; background: #fff7ed; }
+.edition--local strong { color: #9a3412; }
+.edition__menu { width: 300px; }
+.edition__menu .is-on { border-color: var(--hot); }
+.edition__row { display: flex; gap: 6px; align-items: stretch; }
+.edition__row .docmenu__do--big { flex: 1 1 auto; }
+.edition__remove {
+  flex: 0 0 auto; margin-bottom: 6px; width: 28px; font: inherit; font-size: 15px; color: var(--muted);
+  border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); cursor: pointer;
+}
+.edition__remove:hover { color: #b42318; border-color: #b42318; }
+.edition__new { display: flex; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.edition__new input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--line-field); border-radius: 6px; }
+.edition__new .docmenu__do { width: auto; }
+.edition-note {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px;
+  padding: 7px 16px; font-size: 12.5px; color: #7c2d12; background: #fff7ed; border-bottom: 1px solid #fed7aa;
+}
+.edition-note .linkish { font: inherit; padding: 0; border: none; background: none; color: #9a3412; text-decoration: underline; cursor: pointer; }
+.edition-note details { font-size: 12px; }
+.edition-note--sections { color: #1e3a8a; background: #eff6ff; border-bottom-color: #bfdbfe; }
+.edition-note--sections .linkish { color: #1d4ed8; }
+.edition-note__muted { color: var(--muted); }
+.savesec__update { display: grid; gap: 4px; margin-bottom: 10px; font-size: 11.5px; color: var(--muted); }
+.savesec__or { margin-top: 4px; color: var(--ink-2); }
+.edition-note ul { margin: 4px 0 0; padding-left: 18px; }
+
+/* Udgaver, as a screen: one row per edition, checked against its own feed. */
+.top__tabs { flex: 0 0 auto; margin-left: 8px; }
+.docwrap:has(> .edition) { flex-shrink: 0; }
+.edition strong { white-space: nowrap; }
+.top__tabs button { white-space: nowrap; }
+.editions { gap: 12px; padding-bottom: 24px; }
+.editions__bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.editions__search { flex: 0 1 280px; min-width: 0; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line-field); border-radius: 7px; background: var(--surface); }
+.editions__table { display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); overflow: hidden; }
+.editions__row {
+  display: grid; grid-template-columns: minmax(140px, 1.2fr) minmax(120px, 1.4fr) 100px minmax(120px, 1.4fr) minmax(130px, 1fr);
+  gap: 12px; align-items: baseline; width: 100%; padding: 10px 14px;
+  font: inherit; font-size: 13px; text-align: left; color: var(--ink); background: none; border: none; cursor: pointer;
+}
+.editions__row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editions__row--head { cursor: default; font-size: 11.5px; color: var(--muted); background: var(--surface-hover); border-bottom: 1px solid var(--line-strong); }
+.editions__item + .editions__item { border-top: 1px solid var(--line-soft); }
+.editions__item > .editions__row:hover { background: var(--surface-hover); }
+.editions__item.is-open > .editions__row { background: var(--surface-hover); }
+.editions__item.is-over { outline: 2px dashed var(--hot); outline-offset: -3px; }
+.editions__detail { display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 14px; font-size: 12.5px; }
+.editions__actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.editions__stores { display: flex; gap: 8px; align-items: center; }
+.editions__stores span { font-size: 12px; color: var(--muted); }
+.editions__stores input { flex: 1 1 auto; max-width: 520px; font: inherit; font-size: 12.5px; padding: 6px 9px; border: 1px solid var(--line-field); border-radius: 6px; }
+.editions__findings h3 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.editions__findings--bad h3 { color: #b42318; }
+.editions__findings ul { margin: 0; padding-left: 18px; columns: 2 260px; }
+.editions__findings li { break-inside: avoid; }
+.editions__findings .linkish { font: inherit; font-size: 12px; padding: 0; border: none; background: none; color: var(--hot); text-decoration: underline; cursor: pointer; }
+.editions__muted { color: var(--muted); }
+.editions__bad { color: #b42318; font-weight: 600; }
+.editions__ok { color: #067647; font-weight: 600; }
+.editions__empty { margin: 0; padding: 14px; font-size: 13px; color: var(--muted); }
+.editions__new { display: flex; gap: 8px; flex-wrap: wrap; }
+.editions__new input { flex: 1 1 220px; min-width: 0; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line-field); border-radius: 7px; background: var(--surface); }
+@media (max-width: 760px) {
+  .editions__row { grid-template-columns: 1fr 1fr; }
+  .editions__row--head { display: none; }
+}

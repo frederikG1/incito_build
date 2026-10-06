@@ -1,0 +1,40 @@
+/* ------------------------------------------------ the design editor's tools */
+.dtools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; }
+.dtools__group { display: flex; gap: 1px; padding-right: 6px; border-right: 1px solid var(--line); }
+.dtools__group:last-child { border-right: none; padding-right: 0; margin-left: auto; }
+.dtools button {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 28px; height: 28px; padding: 0 6px; justify-content: center;
+  font: inherit; font-size: 12px; color: var(--ink-2); background: none; border: none; border-radius: 6px; cursor: pointer;
+}
+.dtools button:hover:not(:disabled) { background: var(--paper); color: var(--ink); }
+.dtools button.is-on { background: #fdf2f8; color: #be185d; }
+.dtools button:disabled { opacity: 0.35; cursor: default; }
+.dtools__pct { min-width: 52px !important; font-variant-numeric: tabular-nums; }
+
+.deditor__viewport { overflow: auto; max-height: 72vh; border-radius: 8px; background: repeating-conic-gradient(#f1efeb 0% 25%, #faf9f7 0% 50%) 0 0 / 16px 16px; padding: 12px; }
+.deditor__stage { margin: 0 auto; }
+.deditor__grid { position: absolute; inset: 0; pointer-events: none; background-image:
+  linear-gradient(to right, rgb(236 72 153 / 0.12) 1px, transparent 1px),
+  linear-gradient(to bottom, rgb(236 72 153 / 0.12) 1px, transparent 1px); }
+.deditor__handle { right: auto; bottom: auto; width: 10px; height: 10px; border-radius: 2px; transform: translate(-50%, -50%); }
+.deditor__handle--nw { left: 0; top: 0; cursor: nwse-resize; }
+.deditor__handle--n { left: 50%; top: 0; cursor: ns-resize; }
+.deditor__handle--ne { left: 100%; top: 0; cursor: nesw-resize; }
+.deditor__handle--e { left: 100%; top: 50%; cursor: ew-resize; }
+.deditor__handle--se { left: 100%; top: 100%; cursor: nwse-resize; }
+.deditor__handle--s { left: 50%; top: 100%; cursor: ns-resize; }
+.deditor__handle--sw { left: 0; top: 100%; cursor: nesw-resize; }
+.deditor__handle--w { left: 0; top: 50%; cursor: ew-resize; }
+.deditor__sel { position: absolute; border: 1px solid #ec4899; outline: 1px dashed rgb(255 255 255 / 0.8); pointer-events: none; z-index: 3; }
+.deditor__guide { position: absolute; pointer-events: none; z-index: 4; background: #06b6d4; }
+.deditor__guide--x { width: 1px; transform: translateX(-0.5px); }
+.deditor__guide--y { height: 1px; transform: translateY(-0.5px); }
+.deditor__marquee { position: absolute; pointer-events: none; z-index: 5; border: 1px solid #ec4899; background: rgb(236 72 153 / 0.08); }
+.deditor__status { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 8px 0 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.deditor__status b { color: var(--ink); font-weight: 600; }
+.deditor__color { display: flex; align-items: center; gap: 4px; }
+.deditor__color input[type=color] { width: 28px; height: 26px; padding: 0; border: 1px solid var(--line-field); border-radius: 5px; background: none; cursor: pointer; flex: none; }
+.deditor__align { display: inline-flex; }
+.deditor__align button { font-size: 12px; padding: 2px 7px; }
+.deditor__layers li .quiet { opacity: 0.45; }
+.deditor__layers li:hover .quiet, .deditor__layers li.is-picked .quiet { opacity: 1; }

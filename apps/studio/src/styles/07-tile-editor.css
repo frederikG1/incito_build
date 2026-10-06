@@ -1,0 +1,219 @@
+/* -------------------------------------------------------- tile editor
+ *
+ * The editor's overlay, layered over the renderer's slots. Only ever
+ * mounted through `slotDecorator`, which the print render does not pass
+ * — so none of this can reach a PDF.
+ */
+
+.handle {
+  position: absolute;
+  inset: 0;
+  /*
+   * Above everything the tile can draw. NOT a round number picked for
+   * looks — it has to beat the renderer's highest, and it is checked:
+   * see `overlay.test.ts`.
+   *
+   * The overlay is the editor's whole surface, and a tile element that
+   * outranks it takes the pointer away from it silently. There is no
+   * error and nothing looks wrong: `elementsFromPoint` still finds the
+   * box, the panel still lists it, ⌫ still takes it off the page — only
+   * the press never reaches the overlay, so the box cannot be picked up
+   * or double-clicked. Which is exactly what happened when the tile's
+   * own layers were raised for the bleed work: `.tile__info` went to 20
+   * and the price mark to 30, and this sat at 10 underneath both. The
+   * artwork has no z-index, which is why panning the picture went on
+   * working and made the rest look like a mystery.
+   *
+   * 40 clears the renderer's 30, inside the stacking context `.slot`
+   * establishes, so it still cannot reach past its own cell.
+   */
+  z-index: 40;
+  cursor: pointer;
+  border-radius: 4px;
+  /* Outline, not border: a border would inset the overlay's own
+     coordinate space, and the in-place text editor is positioned in it
+     — two pixels of drift between the input and the words it covers. */
+  transition: background 90ms, outline-color 90ms;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+/* Selected, the surface is the artwork's: drag it to move the picture
+   inside its frame. The swap gesture retreats to the corner grip. */
+/*
+ * A text laid over a tile — "100 stk.", "Storkøb min. 1,3 kg" — is above
+ * the tile in print (36 over 30), and has to be above its handle here, or
+ * the handle takes every press on it and the words cannot be picked up.
+ * `.slot` sets no stacking context, so the handle's 40 competes with the
+ * note on the page itself. Editor only: nothing here reaches a PDF.
+ */
+.page__note--editable:not(.page__note--behind) { z-index: 45; }
+
+.handle--armed { cursor: grab; }
+.handle--armed:active { cursor: grabbing; }
+.handle--editing { cursor: text; }
+
+.handle__grip {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.45);
+  opacity: 0;
+  cursor: grab;
+  transition: opacity 90ms;
+}
+
+.slot:hover .handle__grip,
+.handle--armed .handle__grip { opacity: 1; }
+.handle--editing .handle__grip { opacity: 0; }
+
+.handle--dragging { opacity: 0.35; }
+
+.handle--over {
+  outline-color: var(--hot, #2d6cdf);
+  background: rgb(45 108 223 / 0.14);
+}
+
+/* The live readout during a pan or zoom. Tabular figures so the numbers
+   do not jitter sideways while the pointer moves. */
+.handle__hud {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: rgb(0 0 0 / 0.62);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/*
+ * The box under the pointer, and the box in hand.
+ *
+ * Drawn in the overlay at a measured rectangle rather than as an
+ * outline on the tile's own elements. The tile is the print component:
+ * it renders the PDF as well as the screen, and giving it a notion of
+ * "selected element" would be an editor concept leaking into the thing
+ * that goes to press. The overlay knows the rectangle; only the overlay
+ * needs to.
+ */
+.handle__part {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 3px;
+  outline: 1px dashed color-mix(in srgb, var(--hot) 70%, transparent);
+  outline-offset: 2px;
+  background: rgb(45 108 223 / 0.07);
+}
+
+.handle__part > b {
+  position: absolute;
+  left: 0;
+  /* Above the box, and below it when the box is at the very top of the
+     tile — a label that hangs off the page cannot be read. */
+  bottom: calc(100% + 4px);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font: 600 10px/1.5 system-ui, sans-serif;
+  white-space: nowrap;
+  color: #fff;
+  background: var(--hot);
+  opacity: 0.85;
+}
+
+.handle__part:not(.handle__part--held) > b { opacity: 0; }
+.handle__part--held {
+  outline: 2px solid var(--hot);
+  background: rgb(45 108 223 / 0.1);
+}
+
+/* A box hard against the top of the tile has nowhere above it to hang
+   its label, so the label drops inside the box instead. */
+.handle__part--tight > b { bottom: auto; top: 2px; }
+
+/* One product of a cluster: a solid ring rather than the box's, because
+   both are in hand at once and two identical outlines one inside the
+   other say nothing about which is which. */
+.handle__part--item {
+  outline: 2px solid #7a5af8;
+  background: rgb(122 90 248 / 0.1);
+}
+.handle__part--item > b { background: #7a5af8; }
+
+/*
+ * The handle on a page's own line — see `PageTextEditor`.
+ *
+ * Grabbable straight away, unlike a tile's box: a heading sits on empty
+ * paper, so there is no neighbouring element a stray press could be
+ * meant for, and the arming step a tile needs would only be in the way.
+ * The box hugs the words (see `.page__text`), so the outline IS the
+ * selection marker and no separate rectangle is drawn.
+ */
+.handle--text {
+  cursor: grab;
+  /* Snug against the type rather than inset into it: these boxes are
+     one line tall and 2px of overlap eats a descender. */
+  outline-offset: 2px;
+}
+.handle--text:active { cursor: grabbing; }
+.handle--text:hover { outline-color: color-mix(in srgb, var(--hot) 55%, transparent); }
+.handle--text.handle--armed { outline-color: var(--hot); }
+.handle--text.handle--editing { cursor: text; }
+
+/* The line's name, above its box. Shown only while it is pointed at or
+   held — a permanent label on every heading would print-preview as
+   clutter on a canvas full of sheets. */
+.handle__tag {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 4px);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font: 600 10px/1.5 system-ui, sans-serif;
+  white-space: nowrap;
+  color: #fff;
+  background: var(--hot);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 90ms;
+}
+.handle--text:hover .handle__tag,
+.handle--text.handle--armed .handle__tag { opacity: 0.85; }
+.handle--editing .handle__tag { opacity: 0; }
+
+/* The in-place editor on a line fills its own box rather than being
+   positioned into a tile's coordinate space. */
+.handle__text--fill { inset: 0; }
+
+/*
+ * The in-place text editor.
+ *
+ * It inherits the printed type from the element it covers — font, size,
+ * weight, colour, alignment are copied in TileEditor — so the only
+ * things set here are the ones that make it an input rather than a
+ * paragraph. Anything decorative would make the edit look different
+ * from the result, which is the one thing in-place editing must not do.
+ */
+.handle__text {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: 2px solid var(--hot);
+  outline-offset: 2px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.94);
+  resize: none;
+  overflow: hidden;
+}

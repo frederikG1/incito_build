@@ -1,0 +1,145 @@
+/* ----------------------------------------------------------- inspector */
+
+.inspector {
+  flex: 0 0 300px;
+  overflow: auto;
+  padding: 16px;
+  background: #fff;
+  border-left: 1px solid #d9dce1;
+}
+
+.inspector--empty { color: #8b919b; font-size: 13px; }
+
+.inspector__head { display: flex; align-items: start; gap: 8px; }
+.inspector__head h2 { margin: 0 0 12px; font-size: 15px; line-height: 1.25; flex: 1 1 auto; }
+.inspector__close {
+  border: none;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: #8b919b;
+}
+
+.inspector__facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 0 0 16px;
+  font-size: 12px;
+}
+.inspector__facts dt { color: #6b7280; }
+.inspector__facts dd { margin: 0; }
+
+.inspector__field { display: block; margin-bottom: 14px; font-size: 12px; color: #4b5563; }
+.inspector__field span { display: block; margin-bottom: 4px; }
+.inspector__field input[type='text'] {
+  font: inherit;
+  font-size: 13px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+}
+.inspector__field input[type='range'] { width: 100%; }
+
+/*
+ * Three states, one control.
+ *
+ * Front / auto / back is a choice among three, and three links in a row
+ * read as three unrelated commands — you cannot see which one is in
+ * force. A segmented control shows the answer as well as the options,
+ * which is the whole question here: an editor wants to know where this
+ * product stands, not to issue an instruction into the dark.
+ */
+.segment {
+  display: flex;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+.segment button {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 4px;
+  border: 0;
+  border-left: 1px solid #d3d7dd;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+}
+.segment button:first-child { border-left: 0; }
+.segment button:hover { background: #eef1f5; color: #33363d; }
+.segment button.is-on {
+  background: var(--hot);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* A label with its buttons on one line — the depth control, where the
+   answer is a choice and not a number on a track. */
+/* The one dropdown in this panel. Matched to the text field above it
+   rather than to the toolbar's dark selects: this is the white panel. */
+.inspector__field select {
+  font: inherit; font-size: 13px; width: 100%;
+  padding: 6px 8px; border: 1px solid #d3d7dd; border-radius: 5px; background: #fff;
+}
+
+.inspector__field small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #8b919b;
+}
+
+.inspector__group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 20px 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #8b919b;
+  border-top: 1px solid #e6e8ec;
+  padding-top: 12px;
+}
+
+.inspector__link {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--hot);
+  cursor: pointer;
+  margin-left: auto;
+}
+.inspector__link:hover { text-decoration: underline; }
+
+/* The shortcuts, spelled out. A direct-manipulation editor that does
+   not say what it responds to is just a picture of one. */
+.inspector__keys {
+  margin: 18px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid #e6e8ec;
+  list-style: none;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #8b919b;
+}
+.inspector__keys b { color: #4b5563; font-weight: 600; }
+
+.inspector__check {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+  color: #4b5563;
+}

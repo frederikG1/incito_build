@@ -1,0 +1,182 @@
+/* ------------------------------------------------ stemningsbilleder */
+
+/*
+ * Its own strip under the toolbar, in the toolbar's colours so it reads
+ * as chrome rather than as part of the paper below it.
+ *
+ * Two labelled fields, because they go to two different models and an
+ * editor who cannot tell them apart will put "akvarel" in the left one
+ * and get photographs. The labels ARE the feature.
+ */
+/*
+ * Light, not chrome.
+ *
+ * These were the toolbar's own dark colours, on the reasoning that they
+ * are tools rather than paper. Folded — which is how they spend almost
+ * all their life — that put two black bars between the step strip and
+ * the page, and they read as dead weight: nothing about them said they
+ * opened. Pale, with a rule under, they read as what they are: two
+ * sections somebody can unfold when they need them.
+ */
+.decor {
+  flex: 0 0 auto;
+  padding: 9px 18px 10px;
+  background: #f6f7f9;
+  color: #33363d;
+  border-bottom: 1px solid #e3e6ea;
+}
+
+/* Folded, the strip is one row and should read as a line, not a panel. */
+
+.decor__head { display: flex; align-items: center; gap: 10px; }
+
+/* The whole name is the hit target, not a 12px triangle. */
+
+.decor__row { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.decor__row { margin-top: 8px; }
+.decor__row--meta { align-items: center; gap: 10px; }
+
+
+.decor__field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 240px; max-width: 340px; }
+.decor__field--wide { flex: 2 1 340px; max-width: 520px; }
+
+.decor__label { font-size: 12px; font-weight: 600; }
+/* The half that says what the field is FOR, quieter than the name. */
+.decor__label em { font-style: normal; font-weight: 400; opacity: 0.65; }
+
+.decor__field input {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  color: #33363d;
+}
+.decor__field input::placeholder { color: #8a8f98; }
+.decor__field input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.decor__hint { font-size: 11px; opacity: 0.5; line-height: 1.3; min-height: 14px; }
+.decor__hint--warn { opacity: 1; color: #a8600a; }
+
+/* Styled here, not inherited: `.bar button` is scoped to the toolbar. */
+.decor__go {
+  font: inherit;
+  font-size: 13px;
+  margin-bottom: 19px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--hot);
+  background: var(--hot);
+  color: #fff;
+  cursor: pointer;
+}
+.decor__go:hover:not(:disabled) { filter: brightness(1.08); }
+.decor__go:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.decor__toggle {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+}
+.decor__toggle:hover { color: #33363d; background: #eef1f5; }
+
+/* Says the field is doing something, without unfolding the prompt. */
+.decor__badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e6e9ee;
+  color: #4b5563;
+}
+
+/*
+ * The key control, pushed to the right end of the row it shares with
+ * the strip's own name.
+ *
+ * `margin-left: auto` rather than a column, because the row already
+ * holds badges of unpredictable width and the key is the one thing in
+ * it a person goes looking for.
+ */
+.decor__key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.decor__keyinput {
+  font: inherit;
+  font-size: 12px;
+  width: 210px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+}
+
+.decor__model { font-size: 11px; opacity: 0.5; }
+.decor__off { font-size: 11px; color: #f0b429; }
+
+/*
+ * The prompt, in full, monospaced because it is a literal — the thing
+ * that leaves the machine, not a description of it.
+ */
+.decor__prompt {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #15181d;
+  border: 1px solid var(--chrome-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  opacity: 0.72;
+  max-height: 132px;
+  overflow-y: auto;
+}
+/* The editor's own words, so "mine versus automatic" is one glance. */
+.decor__prompt mark {
+  background: #f0b429;
+  color: #1b1f25;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-weight: 600;
+}
+
+.upload input { display: none; }
+.upload--accent span {
+  border-style: solid;
+  border-color: var(--hot);
+  background: var(--hot);
+  color: #fff;
+  font-weight: 600;
+}
+.upload--accent:hover span { background: #6a48f0; border-color: #6a48f0; }
+.upload span {
+  display: inline-block;
+  font-size: 13px;
+  white-space: nowrap;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px dashed var(--chrome-line);
+  cursor: pointer;
+}
+
+.spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 5px;
+  border: 2px solid rgb(255 255 255 / 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

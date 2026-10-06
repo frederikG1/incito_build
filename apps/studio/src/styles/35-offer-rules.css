@@ -1,0 +1,72 @@
+/* ------------------------------------------------ the chain's offer rules */
+
+.rules {
+  position: fixed; top: 56px; right: 0; bottom: 0; z-index: 80;
+  width: min(560px, 100vw); overflow: auto;
+  background: var(--surface); border-left: 1px solid var(--line-strong);
+  box-shadow: -18px 0 40px rgb(16 20 26 / 0.12);
+  padding: 16px 18px 28px;
+}
+.rules__head { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; }
+.rules__head > div { flex: 1; }
+.rules__head h2 { margin: 0 0 4px; font-size: 16px; }
+.rules__head p { margin: 0; font-size: 12.5px; color: var(--muted); }
+.rules__saved { font-size: 11.5px; color: var(--muted); white-space: nowrap; padding-top: 3px; }
+.rules__saved--failed { color: var(--stop); }
+.rules__close { border: none; background: none; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; }
+.rules__empty { font-size: 13px; color: var(--muted); }
+.rules__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.rules__add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 14px; font-size: 12.5px; color: var(--ink-2); }
+
+.rule { border: 1px solid var(--line-strong); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+.rule--off { opacity: 0.55; }
+.rule__head { display: flex; gap: 6px; align-items: center; }
+.rule__name { flex: 1; font: inherit; font-weight: 600; font-size: 13.5px; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; background: none; }
+.rule__name:hover, .rule__name:focus { border-color: var(--line-strong); }
+.rule__when, .rule__then { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-top: 10px; font-size: 12.5px; }
+.rule__when > b, .rule__then > b { flex: 0 0 64px; font-size: 12px; color: var(--ink-2); }
+.rule__then { align-items: stretch; flex-direction: column; }
+.rule__then > b { flex: none; }
+.rule__all { color: var(--muted); }
+.rule__cond { display: inline-flex; gap: 4px; align-items: center; }
+.rule__cond i { font-style: normal; color: var(--muted); }
+.rule__cond select, .rule__pct input, .rule__word, .rule__text input { font: inherit; font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); }
+.rule__pct { display: inline-flex; gap: 3px; align-items: center; }
+.rule__pct input { width: 52px; }
+.rule__word { width: 110px; }
+.rule__x { padding: 0 4px; }
+.rule__choice { display: grid; grid-template-columns: 104px 1fr; gap: 8px; align-items: center; }
+.rule__choice > span { font-size: 12px; color: var(--ink-2); }
+.rule__choice .seg { flex-wrap: wrap; width: fit-content; }
+.rule__choice .seg button { padding: 4px 9px; font-size: 12px; }
+.rule__text { display: grid; grid-template-columns: 104px 1fr; gap: 8px; align-items: center; font-size: 12px; color: var(--ink-2); }
+.rule__foot { margin-top: 10px; font-size: 12px; color: var(--muted); display: grid; gap: 8px; }
+
+/* The offers a rule catches, drawn on a small page of their own. */
+.rule__preview { position: relative; width: 260px; height: calc(260px / 0.707); overflow: hidden; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line-soft); }
+.rule__live { position: absolute; left: 0; top: 0; width: 500px; transform: scale(0.52); transform-origin: 0 0; pointer-events: none; }
+.rule__live .page { max-width: none; }
+.inspector__rules { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: -2px 0 10px; }
+.inspector__rules button {
+  padding: 0; border: none; background: none;
+  font: inherit; font-size: 12px; color: var(--hot); cursor: pointer; text-align: left;
+}
+.inspector__rules button:hover { text-decoration: underline; }
+.rule__count {
+  display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 9px;
+  font-size: 11px; line-height: 18px; text-align: center; background: var(--line-soft); color: var(--ink-2);
+}
+.rule__count--idle { background: #fdecc8; color: #8a5a00; }
+.rule__choice--layout { align-items: start; }
+.layoutpick { display: flex; flex-wrap: wrap; gap: 6px; }
+.layoutpick__item {
+  display: grid; gap: 3px; justify-items: center; padding: 4px; width: 86px;
+  border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); cursor: pointer; font: inherit;
+}
+.layoutpick__item.is-on { border: 2px solid var(--hot); padding: 3px; }
+.layoutpick__item small { font-size: 10.5px; color: var(--ink-2); text-align: center; line-height: 1.2; }
+.layoutpick__none { display: grid; place-items: center; width: 76px; height: 76px; color: var(--muted); background: var(--paper, #f4f2ee); border-radius: 4px; }
+/* The top-left cell of a 2 × 3 page, 76 px wide: the page drawn at 500 px, scaled, cropped. */
+.layoutpick__cell { position: relative; display: block; width: 76px; height: 76px; overflow: hidden; border-radius: 4px; }
+.layoutpick__live { position: absolute; left: 0; top: 0; width: 500px; transform: scale(0.304); transform-origin: 0 0; pointer-events: none; }
+.layoutpick__live .page { max-width: none; }

@@ -1,0 +1,106 @@
+/* ------------------------------------------------------------ ugen */
+
+/*
+ * The week, in the toolbar.
+ *
+ * Two things in one control: the number, which is editable in place,
+ * and the dates, which are what the offers are actually checked
+ * against. Nobody reads "uge 39" as a fortnight in September, so both
+ * are shown — and the dates are the part that shrinks first, because
+ * the number is the one the toolbar cannot do without.
+ */
+.week { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.week__pick { display: flex; align-items: center; gap: 5px; font-size: 12px; opacity: 0.9; }
+.week__pick input {
+  width: 52px;
+  background: #21252c;
+  color: var(--chrome-ink);
+  border: 1px solid #333944;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+.week__range {
+  font-size: 11px;
+  opacity: 0.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.week__range i { font-style: normal; color: #f0b429; opacity: 0.9; }
+.week--none { font-size: 12px; opacity: 0.45; }
+
+/*
+ * The one question this studio asks.
+ *
+ * Over everything, because it is holding a request that cannot run
+ * without an answer, and because a strip somewhere on the page would
+ * be missed by exactly the person who needs it. Dim rather than black:
+ * the avis behind it is the context for the answer.
+ */
+.ask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(16 18 22 / 0.42);
+}
+.aiask__card {
+  width: min(480px, calc(100vw - 32px));
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px 22px 16px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
+}
+.aiask__card h2 { margin: 0 0 6px; font-size: 17px; letter-spacing: -0.01em; }
+.aiask__why { margin: 0 0 16px; font-size: 12.5px; line-height: 1.45; color: #6b7280; }
+.aiask__row { display: flex; align-items: flex-end; gap: 12px; }
+.aiask__field { display: flex; flex-direction: column; gap: 3px; }
+.aiask__field > span { font-size: 11px; color: #6b7280; }
+.aiask__field input,
+.aiask__field select {
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 14px;
+  background: #fff;
+}
+.aiask__field input { width: 78px; }
+.aiask__field input:focus,
+.aiask__field select:focus { border-color: var(--hot); outline: none; }
+.aiask__said { margin: 0 0 7px; font-size: 13px; color: #4b5563; }
+.aiask__said b { color: #16181d; }
+.aiask__said--bad { color: #b4401f; }
+.aiask__foot { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+.aiask__name { flex: 1 1 auto; font-size: 11px; color: #8b919b; min-width: 0; }
+.aiask__skip,
+.aiask__go {
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.aiask__skip { color: #6b7280; }
+.aiask__skip:hover { border-color: #b4401f; color: #b4401f; }
+.aiask__go { border-color: var(--hot); background: var(--hot); color: #fff; font-weight: 600; }
+.aiask__go:hover:not(:disabled) { filter: brightness(1.07); }
+.aiask__go:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* The week as a filter on the product list. */
+.library__week {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 12px 8px;
+  font-size: 12px;
+  color: #4b5563;
+  cursor: pointer;
+}
+.library__week i { font-style: normal; color: #8b919b; }

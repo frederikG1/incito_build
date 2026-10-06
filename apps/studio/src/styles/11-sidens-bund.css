@@ -1,0 +1,55 @@
+/* ------------------------------------------------------- sidens bund */
+
+.ground { display: flex; align-items: center; gap: 8px; }
+
+/*
+ * The swatch IS the colour input.
+ *
+ * A native `input[type=color]` draws its own chrome and its own inner
+ * border, which at 30px reads as a broken button rather than as the
+ * page's colour. Sized to zero inside a label painted with the value,
+ * so the whole square is the control and shows exactly the colour it
+ * sets.
+ */
+.ground__swatch {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid rgb(0 0 0 / 0.18);
+  cursor: pointer;
+  overflow: hidden;
+}
+.ground__swatch input { opacity: 0; width: 100%; height: 100%; cursor: pointer; border: none; padding: 0; }
+
+.ground__hex {
+  font: inherit;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  width: 88px;
+  padding: 6px 8px;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+  text-transform: lowercase;
+}
+
+.ground__pick {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ground__pick:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.ground__pick:disabled { opacity: 0.5; cursor: progress; }
+
+.ground__note { margin: 6px 0 0; font-size: 11px; color: #8b919b; }
+.ground__note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* With nothing selected the panel is a hint sheet; the ground control
+   above it still needs to read as a control, not as part of the hint. */
+.inspector--empty .inspector__group { margin-top: 0; border-top: none; padding-top: 0; }
+.inspector--empty .ground__note { margin-bottom: 18px; }

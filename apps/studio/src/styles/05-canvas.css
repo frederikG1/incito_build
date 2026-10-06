@@ -1,0 +1,417 @@
+/* -------------------------------------------------------------- canvas */
+
+.app__body { flex: 1 1 auto; display: flex; min-height: 0; }
+
+/*
+ * Room around the paper.
+ *
+ * The sheet ran edge to edge against the panels, so the studio's own
+ * chrome and the page being made were the same surface. A wide gutter
+ * and a shadow under the sheet say which one is the product.
+ */
+.canvas {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 28px 40px 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 36px;
+  background: #eef0f3;
+}
+
+.empty { color: #6b7280; font-size: 14px; }
+
+/*
+ * A page-shaped hole where the pages will be.
+ *
+ * Better than a sentence: it says what the studio makes, and it makes
+ * the canvas read as a place things land rather than as a grey void
+ * with a line of text floating in it.
+ */
+.blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.blank__sheet {
+  width: 100%;
+  max-width: 720px;
+  aspect-ratio: 210 / 297;
+  max-height: 58vh;
+  border: 2px dashed #d3d7dd;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      transparent 0 14px,
+      rgb(255 255 255 / 0.55) 14px 28px
+    ),
+    #f4f5f7;
+}
+.blank__said { margin: 0; font-size: 13px; color: #6b7280; }
+
+.sheet { width: 100%; max-width: 720px; /* a page's own layers (notes, handles) must never rise over the pinned tool bar */ isolation: isolate; }
+.sheet .page {
+  box-shadow: 0 1px 2px rgb(16 20 26 / 0.06), 0 12px 32px rgb(16 20 26 / 0.1);
+  border-radius: 2px;
+}
+
+/*
+ * Two deliberate rows, not one that breaks.
+ *
+ * A sheet is 720px at most, and title, theme line, offer count, layout,
+ * shuffle, image and the two page arrows do not fit across it. Left to
+ * wrap they landed differently on every page depending on how long the
+ * heading was, which is the "things are all over the place" this was
+ * rebuilt to fix. Split by what they ARE instead: the top row is what
+ * the page says, the bottom row is what it is.
+ */
+.sheet__bar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.sheet__title {
+  font: inherit;
+  font-weight: 600;
+  flex: 1 1 auto;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+}
+.sheet__title:hover { border-color: #d3d7dd; background: #fff; }
+.sheet__title:focus { border-color: var(--hot); background: #fff; outline: none; }
+
+
+/*
+ * The right-hand half of the bar, grouped.
+ *
+ * Varer, Layout and the shuffle answer one question — what shape is this
+ * page — and sat loose among the title and the page arrows they read as
+ * six unrelated controls. Boxed together they read as one, and the gap
+ * before them is what tells you the left half is a different thing.
+ */
+/* What the page says. */
+.sheet__said { display: flex; align-items: center; gap: 8px; }
+
+/* What the page is. The gap pushes the page arrows to the far edge, so
+   they sit in the same place on every sheet whatever else is in the row. */
+/*
+ * The page's own row, grouped the way the toolbar is.
+ *
+ * Nine controls of five different shapes sat in one line here — a
+ * number field, two selects, a glyph, two dashed file labels, two
+ * buttons and two arrows — and nothing said which belonged with which.
+ * Grouped and ruled, it reads as four decisions: how the page is laid
+ * out, what is painted on it, what happens to its clusters, and where
+ * it sits in the avis.
+ */
+.sheet__does {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 1px solid #e3e6ea;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.sheet__tools,
+.sheet__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A hairline between groups, drawn by the group that follows one. */
+.sheet__group,
+.sheet__image { position: relative; }
+.sheet__group::before,
+.sheet__image::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: #e3e6ea;
+}
+
+.sheet__order { display: flex; gap: 4px; margin-left: auto; }
+
+/* One height for everything in the row, whatever shape it is. */
+.sheet__does button,
+.sheet__does select,
+.sheet__does input,
+.sheet__does .sheet__image span {
+  min-height: 26px;
+}
+
+/* Its own file input, styled like the toolbar's. */
+.sheet__image input { display: none; }
+.sheet__image span {
+  display: inline-block;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px dashed #c0c5cd;
+  color: #33363d;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sheet__image span:hover { border-color: var(--hot); color: var(--hot); }
+
+/*
+ * The pictures on this page.
+ *
+ * A row of small cards, each carrying the three things that decide where
+ * a decoration lands: which corner it hangs in, how big it is, and how
+ * far it is turned. Shown only when the page has one — see the note in
+ * App.tsx.
+ */
+.sheet__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.pic {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border: 1px solid #e3e6ea;
+  border-radius: 7px;
+  background: #fafbfc;
+}
+.pic__hold {
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+.pic__hold:hover { border-color: var(--hot); }
+.pic img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #fff;
+}
+/* The card says which picture is in hand, so the dashed outline on the
+   page and the row below it are plainly the same thing. */
+.pic.is-held { border-color: var(--hot); background: #fff; }
+.pic.is-held .pic__hold { border-color: var(--hot); }
+.pic select {
+  font: inherit;
+  font-size: 11px;
+  color: #33363d;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+  background: #fff;
+  padding: 3px 4px;
+}
+.pic input[type='range'] { width: 74px; accent-color: var(--hot); }
+.pic__drop {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 5px;
+  border: 1px solid #dcdfe4;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+}
+.pic__drop:hover { border-color: #b4401f; color: #b4401f; }
+
+.inspector__promote {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  color: #33363d;
+  cursor: pointer;
+}
+.inspector__promote:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.inspector__promote:disabled { opacity: 0.45; cursor: default; }
+
+/*
+ * The arrangement block: how a cluster is stood up, and what the last
+ * run did.
+ *
+ * Boxed rather than loose in the panel, because it is the one place in
+ * the inspector where a choice costs money — and because the report
+ * under it only makes sense as the answer to the control above it.
+ */
+.way {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 2px 0 10px;
+  padding: 9px 10px;
+  border: 1px solid #e3e6ea;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.way__field { display: flex; flex-direction: column; gap: 3px; }
+.way__field > span { font-size: 11px; color: #6b7280; }
+.way__field select {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 7px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.way__aside { margin: 0; font-size: 11px; line-height: 1.35; color: #6b7280; }
+
+/* The one press this box is for: full width, and coloured like the
+   decision it is. */
+.way__go {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 12px;
+  border: 1px solid var(--hot, #2f6df6);
+  border-radius: 7px;
+  background: var(--hot, #2f6df6);
+  color: #fff;
+  cursor: pointer;
+}
+.way__go:hover:not(:disabled) { filter: brightness(1.06); }
+.way__go:disabled { opacity: 0.45; cursor: default; }
+
+.way__prompt { display: flex; align-items: center; gap: 8px; }
+
+/* The last few runs, so a prompt change can be compared with what it
+   replaced rather than remembered. */
+.way__runs {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+.way__runs li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  color: #55606d;
+}
+.way__runs span { flex: 1 1 auto; min-width: 0; }
+.way__badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e6e9ee;
+  color: #4b5563;
+}
+
+/* Monospaced because it is a literal — the thing that leaves the
+   machine, not a description of it. */
+.way__text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  min-height: 220px;
+  padding: 8px 9px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  background: #fff;
+  resize: vertical;
+}
+
+/* Measured facts about the last run, set apart from the controls. */
+.way__run {
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px solid #e3e6ea;
+}
+.way__run p { margin: 0 0 4px; font-size: 11px; line-height: 1.4; color: #55606d; }
+.way__run p:last-child { margin-bottom: 0; }
+.way__warn { color: #b45309 !important; }
+
+/* The theme line, quieter than the heading it sits beside — it is the
+   second voice in the masthead and should look like it here too. */
+.sheet__subtitle {
+  font: inherit;
+  font-size: 12px;
+  flex: 0 1 26ch;
+  min-width: 8ch;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #6b7280;
+}
+.sheet__subtitle:hover { border-color: #d3d7dd; background: #fff; }
+.sheet__subtitle:focus { border-color: var(--hot); background: #fff; outline: none; color: #33363d; }
+
+/*
+ * The layout controls. `sheet__title` takes the slack, so the pickers
+ * keep their width and stay in the same place from page to page —
+ * a control that shifts sideways with the length of a page heading is
+ * a control you have to find again every time.
+ */
+.sheet__title { flex: 1 1 auto; min-width: 60px; }
+
+.sheet__pick {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.sheet__pick select {
+  font: inherit;
+  font-size: 12px;
+  color: #33363d;
+  border: 1px solid #d3d7dd;
+  border-radius: 5px;
+  background: #fff;
+  padding: 2px 4px;
+  max-width: 150px;
+}
+
+.bar__note {
+  font-size: 12px;
+  color: #b8c0cc;
+  white-space: nowrap;
+  cursor: default;
+}
+.sheet__bar button {
+  font: inherit;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.sheet__bar button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.sheet__why { margin: 0 0 8px; font-size: 12px; color: #6b7280; font-style: italic; }
+
+/* The page itself is the renderer's; only its frame is ours. */
+.sheet .page { box-shadow: 0 4px 18px rgb(0 0 0 / 0.13); }
+.sheet .tile { cursor: pointer; }

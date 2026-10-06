@@ -1,0 +1,77 @@
+/* ---------------------------------------------------- layout gallery */
+
+.gallery { position: relative; }
+.gallery__open {
+  display: flex; align-items: center; gap: 8px;
+  font: inherit; font-size: 12px; font-weight: 600;
+  padding: 3px 9px 3px 4px; border: 1px solid var(--line-strong); border-radius: 7px;
+  background: var(--surface); color: var(--ink-2); cursor: pointer;
+}
+.gallery__open:hover { border-color: var(--hot); color: var(--hot); }
+.gallery__away { position: fixed; inset: 0; z-index: 90; }
+.gallery__card {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 91;
+  width: 420px; max-height: 70vh; overflow: auto;
+  padding: 12px; background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; box-shadow: 0 20px 50px rgb(16 20 26 / 0.18);
+}
+.gallery__row { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.gallery__row:first-child { border-top: 0; padding-top: 0; }
+.gallery__row b { flex: 0 0 54px; font-size: 12px; font-weight: 600; color: var(--ink-2); padding-top: 4px; }
+.gallery__options { display: flex; flex-wrap: wrap; gap: 8px; }
+.gallery__option {
+  padding: 4px; border: 1px solid var(--line-strong); border-radius: 7px;
+  background: var(--surface); cursor: pointer;
+}
+.gallery__option:hover:not(:disabled) { border-color: var(--hot); }
+.gallery__option.is-on { border: 2px solid var(--hot); padding: 3px; }
+.gallery__option:disabled { opacity: 0.35; cursor: not-allowed; }
+.gallery__card--live { width: 560px; max-height: 80vh; }
+.gallery__option--live { display: grid; gap: 4px; justify-items: center; padding: 5px; }
+.gallery__option--live.is-on { padding: 4px; }
+.gallery__option--live small { font-size: 11px; color: var(--ink-2); max-width: 128px; }
+.gallery__live {
+  position: relative; display: block; overflow: hidden; border-radius: 3px;
+  background: var(--paper, #f4f2ee); box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+.gallery__live > span { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
+.gallery__live .page { max-width: none; }
+.gallery__more {
+  display: block; margin: 8px 0 0; padding: 4px 0; border: 0; background: none;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--hot); cursor: pointer;
+}
+.gallery__hint { margin: 8px 0 0; font-size: 11.5px; color: var(--muted); }
+.thumb {
+  display: grid; gap: 2px; width: 40px; aspect-ratio: 0.707; padding: 3px;
+  background: var(--paper, #f4f2ee); border-radius: 3px; position: relative; box-sizing: border-box;
+}
+.gallery__open .thumb { width: 22px; padding: 2px; gap: 1px; }
+.thumb i { background: #a9b8d6; border-radius: 1px; }
+.gallery__option.is-on .thumb i { background: var(--hot); }
+.thumb--free { display: block; }
+.thumb--free i { position: absolute; }
+
+/* A tile with more products than room. */
+.crowd { position: absolute; left: 6px; top: 6px; z-index: 3; }
+.crowd__chip {
+  font: inherit; font-size: 11px; font-weight: 600;
+  padding: 3px 8px; border-radius: 999px;
+  border: 1px solid var(--warn-line); background: var(--warn); color: var(--warn-ink);
+  cursor: pointer; white-space: nowrap;
+}
+.crowd__chip:hover { border-color: var(--hot); color: var(--hot); }
+.crowd__menu {
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 4; width: 250px;
+  display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 9px;
+  box-shadow: 0 14px 34px rgb(16 20 26 / 0.18);
+}
+.crowd__menu button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  font: inherit; font-size: 12.5px; font-weight: 600; text-align: left;
+  padding: 7px 9px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--surface); color: var(--ink-2); cursor: pointer;
+}
+.crowd__menu button:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.crowd__menu button:disabled { opacity: 0.5; cursor: default; }
+.crowd__menu em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--muted); }

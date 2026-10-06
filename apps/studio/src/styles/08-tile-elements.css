@@ -1,0 +1,65 @@
+/* ------------------------------------------------------- tile elements
+ *
+ * Every box the tile draws, listed so that one taken off the page can
+ * be put back — the only way home for a hidden element, since a hidden
+ * element cannot be clicked.
+ */
+.inspector__parts {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.inspector__part {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #d7d9de;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.inspector__part-name {
+  border: 0;
+  background: none;
+  padding: 3px 7px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  color: #33363d;
+}
+
+/* The dot says "this one has been touched", so a tile someone worked on
+   a week ago does not have to be reconstructed by clicking through all
+   nine boxes. */
+.inspector__part-name > i {
+  font-style: normal;
+  color: var(--hot);
+  margin-left: 3px;
+}
+
+.inspector__part-eye {
+  border: 0;
+  border-left: 1px solid #e6e8ec;
+  background: none;
+  padding: 3px 6px;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  color: #9aa0aa;
+}
+
+.inspector__part-eye:hover { color: #33363d; }
+
+.inspector__part.is-held {
+  border-color: var(--hot);
+  box-shadow: inset 0 0 0 1px var(--hot);
+}
+
+.inspector__part.is-hidden .inspector__part-name {
+  text-decoration: line-through;
+  opacity: 0.5;
+}

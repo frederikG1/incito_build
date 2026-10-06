@@ -1,0 +1,280 @@
+/* --------------------------------------------------------- varelisten */
+
+/*
+ * The products, down the left, opposite the inspector.
+ *
+ * Left rather than right because of what the two panels are: this is
+ * where things come FROM and the inspector is where the selected thing
+ * IS, and reading order puts the source before the subject. It also
+ * keeps the canvas between them, which is where everything lands.
+ */
+/*
+ * Wider than it was, and everything in it a size up.
+ *
+ * 272px with 12px names was a list you had to lean into: the packshot
+ * was a stamp, the name wrapped after three words, and the one button
+ * that does the whole job read like a footnote. This is a list
+ * somebody picks products from for an hour at a time.
+ */
+.library {
+  flex: 0 0 340px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fff;
+  border-right: 1px solid #d9dce1;
+}
+
+/* Folded away it is a tab, not a panel — the canvas gets the room. */
+.library__tab {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin: 10px 0 0 10px;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 10px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #33363d;
+  cursor: pointer;
+  writing-mode: vertical-rl;
+}
+.library__tab:hover { border-color: var(--hot); color: var(--hot); }
+
+.library__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 12px 8px;
+}
+.library__head strong { font-size: 15px; }
+.library__said { flex: 1 1 auto; font-size: 12px; color: #8b919b; line-height: 1.25; }
+.library__close {
+  border: none;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: #8b919b;
+}
+
+.library__search {
+  font: inherit;
+  font-size: 14px;
+  margin: 0 12px 8px;
+  padding: 6px 8px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+}
+
+.library__empty { margin: 0 12px; font-size: 12px; color: #8b919b; }
+
+.library__list { flex: 1 1 auto; overflow: auto; padding: 0 6px 12px; }
+
+.library__group h4 {
+  margin: 10px 0 4px;
+  /* The heading follows the list rather than scrolling away: on a feed
+     of twelve hundred rows, losing which group you are in is losing the
+     whole point of grouping. */
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+
+/* The whole heading folds the group — a 12px caret is not a target. */
+.library__fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  text-align: left;
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+.library__fold:hover { background: #f2f4f7; color: #33363d; }
+.library__caret { font-size: 9px; opacity: 0.6; width: 8px; }
+/* The count sits at the far end, where it can be compared down the list. */
+.library__fold span:last-child { margin-left: auto; font-weight: 400; color: #a2a8b2; }
+.library__group ul { list-style: none; margin: 0; padding: 0; }
+
+.card { display: flex; align-items: center; gap: 4px; }
+
+.card__body {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font: inherit;
+  text-align: left;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  cursor: pointer;
+}
+.card__body:hover { background: #f2f4f7; }
+.card--picked .card__body { border-color: var(--hot); background: #eaf1fd; }
+
+.card__shot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 58px;
+  border-radius: 6px;
+  background: #f2f4f7;
+  overflow: hidden;
+}
+.card__shot img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.card__none { font-size: 9px; color: #a2a8b2; text-align: center; line-height: 1.1; }
+
+/* Two lines and then an ellipsis: a leaflet name runs to sixty
+   characters and the list has to stay scannable. */
+.card__name {
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card__price { font-size: 14px; font-weight: 700; white-space: nowrap; }
+
+/*
+ * Already in the avis, and therefore not on offer here.
+ *
+ * Greyed rather than hidden: knowing that a product is placed — and on
+ * which page — is half of what this list is read for, and a product
+ * that vanished the moment it was used would make the feed look like
+ * it was shrinking. It cannot be ticked; clicking it goes to the tile.
+ */
+.card--placed .card__body {
+  opacity: 0.45;
+  filter: saturate(0.35);
+}
+.card--placed .card__body:hover {
+  opacity: 0.7;
+  filter: none;
+  background: #f2f4f7;
+}
+.card--placed .card__name { text-decoration: line-through; text-decoration-color: #c7ccd3; }
+.card__where {
+  /* The page number carries the explanation, so it must look like
+     something with an answer rather than a stray label. */
+  cursor: help;
+}
+.card__where { flex: 0 0 auto; font-size: 11px; color: #8b919b; width: 34px; text-align: center; }
+
+.card__add {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #33363d;
+  cursor: pointer;
+}
+.card__add:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.card__add:disabled { opacity: 0.3; cursor: default; }
+
+.library__act {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px;
+  border-top: 1px solid #e3e6ea;
+  background: #fafbfc;
+}
+/* One line per decision: which page, then each of the two ways on. */
+.library__act-row { display: flex; align-items: center; gap: 8px; }
+.library__act-row .field { flex: 1 1 auto; min-width: 0; }
+.library__act-row .field select { flex: 1 1 auto; min-width: 0; }
+.library__act > .primary { width: 100%; }
+.library__act-row .primary { flex: 0 0 auto; }
+.library__note {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+}
+
+/* The composed photograph is a different thing from the cutouts, not a
+   setting on them, so it gets its own button and its own colour — the
+   same violet everything the image model draws is marked in. */
+/*
+ * The one-press button, sized like the decision it is.
+ *
+ * It does four things — cell, composition, reading, placement — and
+ * sat at twelve pixels below a row of pickers, where it read as an
+ * option rather than as the way through.
+ */
+.library__compose {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 11px 12px;
+  border: 1px solid #7a5af8;
+  border-radius: 7px;
+  background: #7a5af8;
+  color: #fff;
+  cursor: pointer;
+}
+.library__compose:hover:not(:disabled) { filter: brightness(1.06); }
+.library__compose:disabled { opacity: 0.4; cursor: not-allowed; }
+.library__aside { margin: -2px 0 0; font-size: 12px; color: #6b7280; line-height: 1.35; }
+.library__act .field span { color: #6b7280; }
+.library__act select,
+.library__act button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 9px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #33363d;
+  cursor: pointer;
+}
+.library__act .primary { border-color: var(--hot); background: var(--hot); color: #fff; }
+.library__act button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/*
+ * Which sheet the library is pointed at.
+ *
+ * A hairline, not a highlight: the page is the thing being looked at
+ * and must not be recoloured to say where a click would land.
+ */
+.sheet--active > .sheet__bar { box-shadow: inset 3px 0 0 var(--hot); padding-left: 9px; }
+
+.inspector__drop {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  color: #33363d;
+  cursor: pointer;
+}
+.inspector__drop:hover { border-color: #c2483f; color: #c2483f; }

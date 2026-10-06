@@ -1,0 +1,121 @@
+/* ------------------------------------------- kædens egne billeder */
+
+.library__tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 12px 6px;
+}
+.library__tabs button {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8b919b;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.library__tabs button:hover { background: #f2f4f7; color: #33363d; }
+.library__tabs button.is-on { color: #16181d; background: #eef1f5; }
+.library__tabs .library__close { margin-left: auto; font-weight: 400; }
+
+.pics__add { display: block; margin: 0 12px 10px; }
+.pics__add input { display: none; }
+.pics__add span {
+  display: block;
+  text-align: center;
+  padding: 9px;
+  border: 1px dashed #c8ccd3;
+  border-radius: 7px;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+}
+.pics__add span:hover { border-color: var(--hot); color: var(--hot); }
+.pics__add--busy { opacity: 0.4; pointer-events: none; }
+
+.pics { list-style: none; margin: 0; padding: 0 6px 12px; overflow: auto; flex: 1 1 auto; }
+.pic-card {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  grid-template-areas: 'shot name' 'shot does';
+  gap: 2px 8px;
+  align-items: center;
+  padding: 5px 6px;
+  border-radius: 7px;
+}
+.pic-card:hover { background: #f2f4f7; }
+.pic-card__shot {
+  grid-area: shot;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  /* A chequer, so a cut-out on transparency reads as cut out rather
+     than as a picture with a white box round it. */
+  background:
+    linear-gradient(45deg, #e9ecf0 25%, transparent 25%, transparent 75%, #e9ecf0 75%) 0 0/10px 10px,
+    linear-gradient(45deg, #e9ecf0 25%, transparent 25%, transparent 75%, #e9ecf0 75%) 5px 5px/10px 10px,
+    #fff;
+  border: 1px solid #e3e6ea;
+  border-radius: 5px;
+}
+.pic-card__shot img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.pic-card__name {
+  grid-area: name;
+  font-size: 12px;
+  color: #33363d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pic-card__does { grid-area: does; display: flex; align-items: center; gap: 4px; }
+.pic-card__does button {
+  border: 1px solid #d3d7dd;
+  background: #fff;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 7px;
+  color: #4b5563;
+  cursor: pointer;
+}
+.pic-card__does button:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+.pic-card__does button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pic-card__drop { margin-left: auto; padding: 2px 6px !important; }
+.pic-card__drop:hover { border-color: #b4401f !important; color: #b4401f !important; }
+
+/*
+ * A route in the "Nye sider" panel that is not for a customer.
+ *
+ * Set apart rather than hidden: it is a developer's shortcut, it is
+ * useful, and it spent months in the toolbar looking like something
+ * somebody was meant to press.
+ */
+.ways__way--aside {
+  opacity: 0.6;
+  border-top: 1px dashed #dfe3e8;
+  padding-top: 12px;
+  margin-top: 2px;
+}
+.ways__way--aside:hover { opacity: 1; }
+
+/* ============================================ studioets to skærme */
+
+/*
+ * The shell.
+ *
+ * Two screens, one chrome: the book — the whole avis as printed
+ * spreads — and one page of it, large. The editor used to have only
+ * the second, as a single scrolling column of sheets, so seeing
+ * whether the BOOK worked meant scrolling it and comparing page three
+ * with page four was not possible at all.
+ *
+ * Everything below styles editor chrome only. The catalogue sheet is
+ * `packages/renderer/src/styles.css` and the two must stay separable,
+ * or the PDF stops matching the screen.
+ */
+.shell { display: flex; flex-direction: column; height: 100vh; min-width: 1024px; }

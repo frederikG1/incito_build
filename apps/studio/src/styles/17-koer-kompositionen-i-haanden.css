@@ -1,0 +1,68 @@
+/* --------------------------------------- kør kompositionen i hånden */
+
+/* The proof: the picture the round trip drew, and the arithmetic it
+   led to. Named for what it holds now that the by-hand route is
+   gone. */
+.proof {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px;
+  border: 1px solid #e3e6ea;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.proof__numbers {
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  height: 90px;
+  padding: 7px;
+  border: 1px solid #d3d7dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #4b5160;
+  resize: vertical;
+}
+
+/*
+ * A place to drop a picture.
+ *
+ * `display: block` and its own margin, because a <label> is inline
+ * and these no longer live inside a flex column: standing on their
+ * own in the panel they overlapped each other and their own second
+ * line. A control has to carry its own layout.
+ */
+.drop {
+  display: block;
+  width: 100%;
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-align: center;
+  padding: 8px;
+  border: 1px dashed #7a5af8;
+  border-radius: 6px;
+  color: #7a5af8;
+  cursor: pointer;
+}
+.drop input { display: none; }
+.drop:hover { background: rgb(122 90 248 / 0.07); }
+.drop em {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+/* The one that keeps the chain's own pixels. Solid, because it is not a
+   trade-off the way the other one is. */
+.drop--layout {
+  border-style: solid;
+  background: #7a5af8;
+  color: #fff;
+}
+.drop--layout:hover { background: #6a48f0; }
+
+/* In the sheet's bar, beside the layout pickers. */
+.sheet__clusters { white-space: nowrap; }

@@ -1,0 +1,23 @@
+/* ------------------------------------------------- hjælpelinjer */
+
+/*
+ * Why a drag stopped where it did.
+ *
+ * A drag that lines itself up without saying so is indistinguishable
+ * from one that stuck: the line is not decoration, it is the feedback
+ * that makes the behaviour legible. Drawn in the overlay so nothing
+ * about an editor selection reaches the print components.
+ */
+.handle__guide {
+  position: absolute;
+  pointer-events: none;
+  background: #ff2d92;
+  z-index: 80;
+}
+.handle__guide--x { width: 1px; }
+.handle__guide--y { height: 1px; }
+
+/* A heading lines up with things outside its own box — the sheet's
+   margin, the tile below — so its lines are measured against the
+   viewport and positioned against it too. */
+.handle__guide--sheet { position: fixed; }

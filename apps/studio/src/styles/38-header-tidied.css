@@ -1,0 +1,32 @@
+/* ---------------------------------------------------- header, tidied
+ * The words for the checks and for saving are what the header is for;
+ * they stay down to a laptop's 1280. Search gives way first, to its icon.
+ */
+.chevron { flex: 0 0 auto; color: var(--muted); }
+.go--caret .chevron { color: currentColor; }
+.find { display: inline-flex; align-items: center; gap: 6px; }
+.find__icon { flex: 0 0 auto; color: var(--muted); }
+@media (min-width: 1280px) and (max-width: 1679px) {
+  .top .ready__said, .top .saving__said { display: inline; }
+  .top .ready, .top .saving__state { padding-left: 10px; padding-right: 11px; }
+}
+.saving__said { font-variant-numeric: tabular-nums; }
+/* The sum of the free places is the long number; it gets the room. */
+.editions__table--nofeed .editions__row { grid-template-columns: minmax(140px, 1.2fr) minmax(120px, 1.4fr) 100px minmax(130px, 1fr); }
+@media (max-width: 760px) { .editions__table--nofeed .editions__row { grid-template-columns: 1fr 1fr; } }
+
+/* Designs made by hand: the field list's head with its "add", the way back to the rules. */
+.deditor__layershead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.deditor__add { font: inherit; font-size: 12.5px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--hot); cursor: pointer; }
+.designs__back { align-self: flex-start; margin: -6px 0 8px; font: inherit; font-size: 12.5px; padding: 0; border: none; background: none; color: var(--hot); cursor: pointer; }
+
+/* In a rule's design picker: "Ret" on the design under the pointer, and a tile that makes a new one. */
+.layoutpick__wrap { position: relative; display: grid; }
+.layoutpick__edit {
+  position: absolute; top: 6px; right: 6px; font: inherit; font-size: 10.5px; font-weight: 600; padding: 2px 7px;
+  border: 1px solid var(--hot); border-radius: 999px; background: var(--surface); color: var(--hot); cursor: pointer; opacity: 0;
+}
+.layoutpick__wrap:hover .layoutpick__edit, .layoutpick__edit:focus-visible { opacity: 1; }
+.layoutpick__edit:hover { background: var(--hot); color: #fff; }
+.layoutpick__item--new { border-style: dashed; }
+.layoutpick__item--new .layoutpick__none { color: var(--hot); font-size: 20px; }
