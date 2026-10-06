@@ -11,6 +11,7 @@ import { count, kr, when } from './format.js';
 import { quickFixOf } from './quickfix.js';
 import { usePreviousWeek } from './week-diff.js';
 import { knownNames, rememberName, useWho } from './who.js';
+import { useMaySign } from './session.js';
 import { BoardHead, Section, StandIn } from './Board.js';
 
 /**
@@ -211,6 +212,8 @@ const LaneRow = memo(function LaneRow({ lane, document }: { lane: Lane; document
   })));
   const [who] = useWho();
   const name = who.trim();
+  const allowed = useMaySign(lane.role);
+  const notYours = allowed ? '' : `Kun for ${APPROVAL_ROLE_NAMES[lane.role].toLowerCase()} — bed en admin om rollen`;
   const state = lane.state === 'godkendt' ? 'Godkendt'
     : lane.state === 'forældet' ? count(lane.changes.length, 'ændring', 'ændringer') : 'Mangler';
 
@@ -239,13 +242,13 @@ const LaneRow = memo(function LaneRow({ lane, document }: { lane: Lane; document
       <span className="lane__state">{state}</span>
       <div className="lane__acts">
         {lane.approval && (
-          <button className="linkish" disabled={busy} onClick={() => void unapprove(lane.role)}>Træk tilbage</button>
+          <button className="linkish" disabled={busy || !allowed} title={notYours} onClick={() => void unapprove(lane.role)}>Træk tilbage</button>
         )}
         {lane.state !== 'godkendt' && (
           <button
             className="thin"
-            disabled={!name || busy}
-            title={name ? '' : 'Skriv dit navn øverst'}
+            disabled={!name || busy || !allowed}
+            title={notYours || (name ? '' : 'Skriv dit navn øverst')}
             onClick={() => void approve(lane.role, name)}
           >
             {lane.state === 'forældet' ? 'Godkend ændringerne' : `Godkend som ${APPROVAL_ROLE_NAMES[lane.role].toLowerCase()}`}

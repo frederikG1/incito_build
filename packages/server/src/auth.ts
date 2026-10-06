@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
+import { APPROVAL_ROLES, type ApprovalRole } from '@incitio/schema';
 
 /**
  * Who is signed in, and which chains they may act as.
@@ -20,6 +21,25 @@ export type AuthMode = 'off' | 'on';
 export interface Membership {
   brandId: string;
   role: string;
+}
+
+/**
+ * What a membership allows. `redaktør` edits; each sign-off role
+ * (`marketing`, `indkob`, `pris`) may also sign as that role; `admin` may
+ * do all of it. A membership holds one or more, comma-separated:
+ * `npm run accounts -- grant mette@sb.dk superbrugsen:redaktør,pris`.
+ */
+export const ACCOUNT_ROLES = ['redaktør', 'admin', ...APPROVAL_ROLES] as const;
+
+export function rolesOf(user: User, brandId: string): string[] {
+  const membership = user.brands.find((m) => m.brandId === brandId);
+  return membership ? membership.role.split(',').map((role) => role.trim()).filter(Boolean) : [];
+}
+
+/** Whether this person may sign (or withdraw) the given sign-off for this chain. */
+export function maySign(user: User, brandId: string, role: ApprovalRole): boolean {
+  const roles = rolesOf(user, brandId);
+  return roles.includes('admin') || roles.includes(role);
 }
 
 export interface User {
@@ -85,6 +105,12 @@ export class Accounts {
   }
 
   grant(email: string, brandId: string, role = 'redaktør'): void {
+    const roles = role.split(',').map((r) => r.trim()).filter(Boolean);
+    const unknown = roles.filter((r) => !(ACCOUNT_ROLES as readonly string[]).includes(r));
+    if (roles.length === 0 || unknown.length > 0) {
+      throw new Error(`ukendt rolle ${unknown.join(', ') || '(tom)'} — brug ${ACCOUNT_ROLES.join(', ')}`);
+    }
+    role = roles.join(',');
     const row = this.row(email);
     if (!row) throw new Error(`ingen konto for ${email}`);
     this.db.prepare(

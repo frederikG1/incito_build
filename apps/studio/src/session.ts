@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { SIGNED_OUT_EVENT, fetchMe, signIn, signOut, type SignedInUser } from './api.js';
 import { signedInAs } from './who.js';
+import { useStudio } from './state.js';
 
 /**
  * Whether the studio may be shown, and to whom.
@@ -63,4 +64,18 @@ if (typeof window !== 'undefined') {
   window.addEventListener(SIGNED_OUT_EVENT, () => {
     if (session.state === 'signed-in') set({ state: 'signed-out', said: 'Du er blevet logget ud — log ind igen.' });
   });
+}
+
+/**
+ * Whether the person at the screen may sign this sign-off for the open
+ * chain — the same rule the server enforces (`maySign`): the role on
+ * their membership, or admin. With sign-in off, anyone may, as before.
+ */
+export function useMaySign(role: string): boolean {
+  const current = useSession();
+  const brandId = useStudio((s) => s.brandId);
+  if (current.state !== 'signed-in') return true;
+  const membership = current.user.brands.find((m) => m.brandId === brandId);
+  const roles = (membership?.role ?? '').split(',').map((r) => r.trim());
+  return roles.includes('admin') || roles.includes(role);
 }

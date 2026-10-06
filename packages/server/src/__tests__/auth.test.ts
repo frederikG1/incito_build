@@ -201,3 +201,50 @@ describe('migrations', () => {
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'memberships'").get()).toBeUndefined();
   });
 });
+
+describe('sign-off roles', () => {
+  const seed = () => {
+    const offer = Offer.parse({ id: 'ost', name: 'Klovborg', price: 30, imageUrl: 'https://example.test/ost.png', validFrom: '2026-09-04', validTo: '2026-09-10', quantity: { size: null, unit: 'pcs' } });
+    store.save('superbrugsen', CatalogDocument.parse({
+      id: 'u36', schemaVersion: 2, name: 'Uge 36', brandId: 'superbrugsen',
+      createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z',
+      offers: [offer], pages: [{ id: 'p1', templateId: 'sb/duo-2', placements: [{ slotId: 'a', offerId: 'ost' }] }],
+    }));
+  };
+  const sign = async (cookie: string, role: string) => app.request('/api/brand/catalogs/u36/approvals', {
+    method: 'POST',
+    headers: { ...as(cookie, 'superbrugsen'), 'content-type': 'application/json' },
+    body: JSON.stringify({ role, who: 'x', updatedAt: store.get('superbrugsen', 'u36')!.updatedAt }),
+  });
+
+  it('signs only the roles the membership holds', async () => {
+    seed();
+    const { cookie } = await login(); // mette: pris
+    expect((await sign(cookie, 'marketing')).status).toBe(403);
+    expect((await sign(cookie, 'pris')).status).toBe(200);
+  });
+
+  it('an editor signs nothing; an admin signs everything', async () => {
+    seed();
+    store.accounts.addUser('ole@sb.dk', 'Ole', PASSWORD);
+    store.accounts.grant('ole@sb.dk', 'superbrugsen', 'redaktør');
+    const editor = (await login('ole@sb.dk')).cookie;
+    expect((await sign(editor, 'pris')).status).toBe(403);
+    store.accounts.grant('ole@sb.dk', 'superbrugsen', 'redaktør,admin');
+    expect((await sign(editor, 'marketing')).status).toBe(200);
+    expect((await sign(editor, 'indkob')).status).toBe(200);
+  });
+
+  it('withdrawing a signature takes the same role', async () => {
+    seed();
+    const { cookie } = await login();
+    const response = await app.request(`/api/brand/catalogs/u36/approvals/marketing?updatedAt=${encodeURIComponent(store.get('superbrugsen', 'u36')!.updatedAt)}`, {
+      method: 'DELETE', headers: as(cookie, 'superbrugsen'),
+    });
+    expect(response.status).toBe(403);
+  });
+
+  it('refuses a role that does not exist', () => {
+    expect(() => store.accounts.grant('mette@sb.dk', 'superbrugsen', 'chef')).toThrow(/ukendt rolle chef/);
+  });
+});

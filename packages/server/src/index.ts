@@ -26,7 +26,7 @@ import { referencesRoutes } from './routes/references.js';
 import { pdfRoutes } from './routes/pdf.js';
 
 export { Store } from './db.js';
-export { Accounts, type AuthMode, type User } from './auth.js';
+export { Accounts, ACCOUNT_ROLES, maySign, rolesOf, type AuthMode, type User } from './auth.js';
 export { assertProductionReady, isProduction, ProductionRefused, productionRefusals } from './production.js';
 export { migrate, SCHEMA_VERSION } from './migrations.js';
 export { readDefaultDesigns } from './defaults.js';

@@ -10,7 +10,7 @@ import {
   type Blocker, type Finding, type PriceSource, type ResolvedEdition, type Stop,
 } from '@incitio/workflow';
 import { SaveConflict, type Store } from './db.js';
-import type { User } from './auth.js';
+import { maySign, type User } from './auth.js';
 
 /**
  * Every write to a stored catalogue, and the workflow around it.
@@ -32,7 +32,7 @@ interface Scope { Variables: { brand: BrandDefinition; user: User | null } }
 
 /** A write refused, with the status and body to answer with. */
 export class Refused extends Error {
-  constructor(readonly status: 404 | 409 | 422 | 428, readonly body: Record<string, unknown>) {
+  constructor(readonly status: 403 | 404 | 409 | 422 | 428, readonly body: Record<string, unknown>) {
     super(String(body['error'] ?? 'refused'));
   }
 }
@@ -189,6 +189,17 @@ export function workflowRoutes(
   const notPublished = (document: CatalogDocument, what: string) => {
     if (document.status === 'udgivet') throw new Refused(422, { error: `avisen er udgivet — ${what} sker som en live-ændring` });
   };
+  /*
+   * Signed in, a sign-off is signed by someone whose membership holds
+   * that role (or admin) — see `maySign`. Signed out (sign-in off, the
+   * laptop) the name is stated, as it always was.
+   */
+  const mayAct = (c: Context, brandId: string, role: (typeof APPROVAL_ROLES)[number]) => {
+    const user = (c as Context<Scope>).get('user');
+    if (user && !maySign(user, brandId, role)) {
+      throw new Refused(403, { error: `du kan ikke godkende som ${APPROVAL_ROLE_NAMES[role].toLowerCase()} — bed en admin om rollen` });
+    }
+  };
   const answer = (c: Context, run: () => Committed | Promise<Committed>) =>
     Promise.resolve().then(run).then((done) => c.json({ document: done.document }), (error) => refusal(c, error));
 
@@ -200,6 +211,7 @@ export function workflowRoutes(
   app.post('/api/brand/catalogs/:id/approvals', (c) => answer(c, async () => {
     const { brand } = c.get('brand');
     const request = await body(c, ApproveRequest);
+    mayAct(c, brand.id, request.role);
     return commit(brand, c.req.param('id'), request.updatedAt, (stored) => {
       notPublished(stored, 'godkendelse');
       const at = new Date().toISOString();
@@ -215,6 +227,7 @@ export function workflowRoutes(
     const { brand } = c.get('brand');
     const role = z.enum(APPROVAL_ROLES).safeParse(c.req.param('role'));
     if (!role.success) throw new Refused(404, { error: `no role "${c.req.param('role')}"` });
+    mayAct(c, brand.id, role.data);
     return commit(brand, c.req.param('id'), stampOf(c), (stored) => {
       notPublished(stored, 'at trække en godkendelse tilbage');
       return { document: unsigned(stored, role.data), label: `godkendelse trukket · ${APPROVAL_ROLE_NAMES[role.data]}`, owner: true };

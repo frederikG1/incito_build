@@ -3,7 +3,7 @@
  *
  *   npm run accounts -- list
  *   npm run accounts -- add <email> "<navn>" [--brand superbrugsen[:rolle]]...
- *   npm run accounts -- grant <email> <brand>[:rolle]
+ *   npm run accounts -- grant <email> <brand>[:rolle,rolle]   # redaktør | admin | marketing | indkob | pris
  *   npm run accounts -- revoke <email> <brand>
  *   npm run accounts -- passwd <email>
  *   npm run accounts -- disable <email>

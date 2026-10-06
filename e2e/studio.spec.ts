@@ -82,3 +82,14 @@ test.describe('saving', () => {
     await expect(page.getByLabel('Overskrift på flisen')).toHaveValue(wording);
   });
 });
+
+test.describe('roles', () => {
+  test('an editor sees the sign-off buttons, but may not press them', async ({ page }) => {
+    const { catalogId } = seeded();
+    await page.goto(`/#/superbrugsen/${catalogId}/godkend`);
+    const sign = page.getByRole('button', { name: /^Godkend som/ }).first();
+    await expect(sign).toBeVisible();
+    await expect(sign).toBeDisabled();
+    await expect(sign).toHaveAttribute('title', /Kun for/);
+  });
+});
