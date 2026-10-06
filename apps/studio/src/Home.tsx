@@ -5,6 +5,7 @@ import { useStudio } from './state.js';
 import { usePopover } from './popover.js';
 import { Cover } from './Cover.js';
 import { avisTitle } from './names.js';
+import { FeedCheck } from './FeedCheck.js';
 
 /**
  * Forsiden — where a week's work starts.
@@ -160,6 +161,7 @@ function Chain() {
             </span>
           </button>
         ))}
+        <FeedCheck />
       </div>
     </section>
   );

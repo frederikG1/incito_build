@@ -7,7 +7,7 @@ import {
   Themes,
 } from '@incitio/schema';
 import {
-  findBrand, findSource, listBrands, resolveSource, type BrandDefinition,
+  feedHealth, findBrand, findSource, listBrands, resolveSource, type BrandDefinition,
 } from '@incitio/brands';
 import { buildCatalogue } from '@incitio/pipeline';
 import {
@@ -39,6 +39,7 @@ export { Store } from './db.js';
 export { Accounts, type AuthMode, type User } from './auth.js';
 export { assertProductionReady, isProduction, ProductionRefused, productionRefusals } from './production.js';
 export { migrate, SCHEMA_VERSION } from './migrations.js';
+export { readDefaultDesigns } from './defaults.js';
 
 /**
  * How a request says which chain it is acting as.
@@ -152,6 +153,32 @@ function feedDealer(text: string): string | null {
     }
   } catch { /* not JSON the dealer can be read from */ }
   return null;
+}
+
+/**
+ * A chain as every route draws it: its brand file, with its own offer
+ * rules and offer designs folded in — its saved ones, else the ones it
+ * ships with. Exported so a script that renders (the pixel diff) draws
+ * exactly what the PDF route prints.
+ */
+export function chainBrand(
+  store: Store,
+  definition: BrandDefinition,
+  defaultDesigns: AppOptions['defaultDesigns'] = {},
+): BrandDefinition {
+  const id = definition.brand.id;
+  const rules = store.offerRules(id);
+  const designs = store.offerDesigns(id) ?? defaultDesigns[id] ?? null;
+  return {
+    ...definition,
+    brand: withOfferGrids({
+      ...definition.brand,
+      // Its own rules, else the ones its designs ship with ("uden billede → …").
+      ...(rules && rules.length > 0 ? { offerRules: rules } : defaultDesigns[id]?.rules?.length
+        ? { offerRules: defaultDesigns[id]!.rules! } : {}),
+      ...(designs ? { offerDesigns: designs.designs, designTag: designs.tag } : {}),
+    }),
+  };
 }
 
 export function createApp(store: Store, options: AppOptions = {}) {
@@ -294,24 +321,23 @@ export function createApp(store: Store, options: AppOptions = {}) {
         403,
       );
     }
-    /*
-     * With the chain's own offer rules folded in, so every route that
-     * renders — the PDF included — draws what the studio shows.
-     */
-    const rules = store.offerRules(definition.brand.id);
-    // And its offer designs: its own, else the ones it ships with.
-    const designs = store.offerDesigns(definition.brand.id) ?? options.defaultDesigns?.[definition.brand.id] ?? null;
-    c.set('brand', {
-      ...definition,
-      brand: withOfferGrids({
-        ...definition.brand,
-        // Its own rules, else the ones its designs ship with ("uden billede → …").
-        ...(rules && rules.length > 0 ? { offerRules: rules } : options.defaultDesigns?.[definition.brand.id]?.rules?.length
-          ? { offerRules: options.defaultDesigns[definition.brand.id]!.rules! } : {}),
-        ...(designs ? { offerDesigns: designs.designs, designTag: designs.tag } : {}),
-      }),
-    });
+    // With the chain's own rules and designs folded in, so every route that
+    // renders — the PDF included — draws what the studio shows.
+    c.set('brand', chainBrand(store, definition, options.defaultDesigns));
     await next();
+  });
+
+  /*
+   * A feed file judged before anything is built from it — see
+   * `feedHealth`. The raw file as the body, its name in `?name=` (the
+   * extension decides CSV/XML/JSON). Nothing is stored: this is the
+   * look a person takes the morning the chain's file lands.
+   */
+  app.post('/api/brand/feed-health', async (c) => {
+    const text = await c.req.text();
+    if (!text.trim()) return c.json({ error: 'tom fil' }, 422);
+    if (text.length > 50_000_000) return c.json({ error: 'filen er for stor' }, 413);
+    return c.json(feedHealth(c.get('brand'), text, c.req.query('name') ?? 'feed', labels));
   });
 
   /** This chain's identity, its layouts, and the formats it delivers. */

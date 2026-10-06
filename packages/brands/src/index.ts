@@ -12,6 +12,7 @@ export * from './types.js';
 export * from './grid.js';
 export * from './labels.js';
 export * from './mappings/index.js';
+export * from './health.js';
 
 /**
  * Every tenant the system knows.

@@ -30,9 +30,13 @@
     "cms": "node ./node_modules/.bin/vite-node scripts/cms-report.ts",
     "schema": "node ./node_modules/.bin/vite-node scripts/export-schema.ts",
     "edit": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/edit-catalogue.ts",
+    "e2e": "playwright test",
+    "pixeldiff": "node ./node_modules/.bin/vite-node scripts/pixel-diff.ts",
+    "feed-health": "node ./node_modules/.bin/vite-node scripts/feed-health.ts",
     "accounts": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/accounts.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.2",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",

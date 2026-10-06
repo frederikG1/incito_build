@@ -1,0 +1,12 @@
+/* ---------------------------------------------------------- feedtjek */
+.feedcheck { display: contents; }
+.feedcheck__pick { cursor: pointer; }
+.feedcheck__pick input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.feedcheck__report {
+  grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px;
+  padding: 12px 14px; border-radius: 10px; border: 1px solid var(--ok-line); background: var(--ok); color: var(--ok-ink);
+}
+.feedcheck__report p { margin: 0; }
+.feedcheck__report ul { margin: 4px 0 0; padding-left: 18px; }
+.feedcheck__report--advarsel { border-color: var(--warn-line); background: var(--warn); color: var(--warn-ink); }
+.feedcheck__report--ulæselig, .feedcheck__said--ulæselig { border-color: var(--stop); background: var(--notice); color: var(--stop-ink); }

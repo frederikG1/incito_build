@@ -1,5 +1,6 @@
 import { Brand, CatalogDocument, CatalogPage, CatalogWeek, Offer, OfferRules, PageTemplate, Themes, type Theme } from '@incitio/schema';
 import type { EditOp } from '@incitio/edit/core';
+import type { FeedHealth } from '@incitio/brands';
 import type { ApprovalRole, LiveEvent, OfferDesign, SlotBooking } from '@incitio/schema';
 
 const BASE = '/api';
@@ -152,6 +153,17 @@ export interface BrandProfile {
   testPublication?: string;
   /** Every format this chain delivers. The first is the default. */
   sources: BrandSource[];
+}
+
+/** A feed file judged before anything is built from it — see `feedHealth` in @incitio/brands. */
+export async function checkFeed(brandId: string, file: File): Promise<FeedHealth> {
+  const response = await fetch(`${BASE}/brand/feed-health?name=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: headers(brandId, { 'content-type': 'text/plain' }),
+    body: await file.text(),
+  });
+  if (!response.ok) await fail(response);
+  return (await response.json()) as FeedHealth;
 }
 
 export async function fetchBrandProfile(brandId: string): Promise<BrandProfile> {

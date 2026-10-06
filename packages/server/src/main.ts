@@ -1,12 +1,11 @@
 import { serve } from '@hono/node-server';
-import { readdirSync, readFileSync } from 'node:fs';
-import { OfferRules, readDesignExport, type OfferDesign } from '@incitio/schema';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseLabelDictionary, EMPTY_LABEL_DICTIONARY } from '@incitio/ingest';
 import { cacheImagesIn, sharedBrowser } from '@incitio/decor';
 import type { Brand, CatalogDocument } from '@incitio/schema';
 import { measuredFindings } from './print.js';
-import { createApp, isProduction, ProductionRefused, Store, type AuthMode } from './index.js';
+import { createApp, isProduction, ProductionRefused, readDefaultDesigns, Store, type AuthMode } from './index.js';
 
 // Deliberately NOT under data/: Vite serves that directory as its static
 // root, which would publish the database over HTTP.
@@ -50,21 +49,7 @@ const labels = (() => {
  * copied out of Tjek's CMS (Design templates → Offers → Copy to clipboard).
  * Used until the chain saves its own in the studio.
  */
-const defaultDesigns = (() => {
-  const dir = fileURLToPath(new URL('../../../data/designs/', import.meta.url));
-  const out: Record<string, { designs: OfferDesign[]; tag: string | null; rules: OfferRules }> = {};
-  let files: string[] = [];
-  try { files = readdirSync(dir).filter((file) => file.endsWith('-cms.json')); } catch { return out; }
-  for (const file of files) {
-    try {
-      const { designs, tag, rules } = readDesignExport(readFileSync(`${dir}${file}`, 'utf8'));
-      out[file.replace(/-cms\.json$/, '')] = { designs, tag, rules: OfferRules.parse(rules) };
-    } catch (error) {
-      console.warn(`designs: ${file} kunne ikke læses (${error instanceof Error ? error.message : error})`);
-    }
-  }
-  return out;
-})();
+const defaultDesigns = readDefaultDesigns(fileURLToPath(new URL('../../../data/designs/', import.meta.url)));
 
 // The chain's product photographs, fetched once per machine — see `cachedImage`.
 cacheImagesIn(process.env['INCITIO_IMAGE_CACHE'] ?? fileURLToPath(new URL('../../../.data/image-cache', import.meta.url)));

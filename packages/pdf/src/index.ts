@@ -9,6 +9,7 @@ import { renderCatalogueHtml } from './html.js';
 
 export * from './html.js';
 export * from './assets.js';
+export * from './pixel-diff.js';
 
 export interface PrintOptions {
   /** Page width in millimetres. A4 portrait is 210. */
