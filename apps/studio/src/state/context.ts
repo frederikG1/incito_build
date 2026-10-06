@@ -116,7 +116,7 @@ export function makeContext(set: StoreApi<StudioState>['setState'], get: StoreAp
       set({
         ...(healed && healed !== open ? { document: healed } : {}),
         feedOffers: reading.offers,
-        feedReading: { source: reading.source, withImage: reading.withImage },
+        feedReading: { source: reading.source, withImage: reading.withImage, health: reading.health ?? null },
         librarySelection: [],
         ...(announce
           ? {
@@ -126,6 +126,7 @@ export function makeContext(set: StoreApi<StudioState>['setState'], get: StoreAp
               reading.source.name,
               count(reading.offers.length, 'vare', 'varer'),
               `${reading.withImage} med billede`,
+              ...(reading.health && (reading.health.verdict !== 'ok' || reading.health.noImage.count > 0) ? ['se feedtjekket i varelisten'] : []),
             ].join(' · '),
           }
           : {}),

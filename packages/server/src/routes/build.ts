@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { CatalogDocument } from '@incitio/schema';
 import { findSource, resolveSource } from '@incitio/brands';
+import { feedHealth } from '@incitio/brands';
 import { buildCatalogue } from '@incitio/pipeline';
 import { ingestFeed } from '@incitio/ingest';
 import { mediaType } from '@incitio/match';
@@ -426,6 +427,8 @@ export function buildRoutes(app: Hono<Scope>, ctx: RouteContext) {
         // number that decides what can go on a page: an offer without a
         // photograph cannot stand in for a product in print.
         withImage: feed.offers.filter((offer) => offer.imageUrl).length,
+        // The same verdict Feedtjek gives, so the file is judged where it lands.
+        health: feedHealth(definition, parsed.data.feed, parsed.data.filename ?? 'feed', labels),
       });
     } catch (error) {
       return c.json({

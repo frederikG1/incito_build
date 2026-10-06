@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { seeded } from './account.js';
@@ -91,5 +92,33 @@ test.describe('roles', () => {
     await expect(sign).toBeVisible();
     await expect(sign).toBeDisabled();
     await expect(sign).toHaveAttribute('title', /Kun for/);
+  });
+});
+
+test.describe('the week\'s file', () => {
+  test('is judged where it lands: products without a picture are said in the shelf', async ({ page }) => {
+    const { catalogId, pages } = seeded();
+    // W36 with the first three entries' pictures taken out.
+    const feed = JSON.parse(readFileSync(new URL('../data/feeds/SuperBrugsenW36.json', import.meta.url), 'utf8')) as {
+      Pages: { Entries: Record<string, unknown>[] }[];
+    };
+    let blanked = 0;
+    for (const entry of feed.Pages.flatMap((p) => p.Entries)) {
+      if (blanked >= 3) break;
+      entry['Motivid'] = '';
+      entry['Varer'] = [];
+      blanked += 1;
+    }
+    const file = fileURLToPath(new URL('../.data/e2e/uden-billeder.json', import.meta.url));
+    writeFileSync(file, JSON.stringify(feed));
+    await page.goto(`/#/superbrugsen/${catalogId}/varer`);
+    await page.locator('.goods__file input[type=file]').setInputFiles(file);
+    // The read-in says so itself, and points at the shelf.
+    await expect(page.locator('.toast')).toContainText('se feedtjekket i varelisten');
+    await page.evaluate((hash) => { window.location.hash = hash; }, `/superbrugsen/${catalogId}/side/${pages[0]}`);
+    const verdict = page.locator('.shelf__verdict');
+    await expect(verdict).toContainText('3 uden billede');
+    await verdict.getByRole('button', { name: 'Luk' }).click();
+    await expect(verdict).toHaveCount(0);
   });
 });

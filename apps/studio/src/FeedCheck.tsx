@@ -44,23 +44,34 @@ export function FeedCheck() {
         </span>
       </label>
       {error && <p className="feedcheck__said feedcheck__said--ulæselig">{error}</p>}
-      {health && (
-        <section className={`feedcheck__report feedcheck__report--${health.verdict}`} aria-live="polite">
-          <b>{SAID[health.verdict]}</b>
-          <p>
-            {health.offers} tilbud
-            {health.dropped.length > 0 && ` · ${health.dropped.reduce((n, d) => n + d.count, 0)} rækker tabt`}
-            {` · ${health.noImage.count} uden billede`}
-            {health.validity.from && ` · gælder ${health.validity.from} → ${health.validity.to}`}
-          </p>
-          <small>{health.reason}</small>
-          {health.warnings.length > 0 && (
-            <ul>{health.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
-          )}
-          {health.noImage.count > 0 && <small>Uden billede: {health.noImage.offerIds.join(', ')}{health.noImage.count > 10 ? ' …' : ''}</small>}
-          {health.unreadColumns.length > 0 && <small>Kolonner ingen læser: {health.unreadColumns.join(', ')}</small>}
-        </section>
-      )}
+      {health && <FeedHealthReport health={health} />}
     </div>
+  );
+}
+
+/**
+ * A feed's verdict, said the same way on the front page's Feedtjek and in
+ * the shelf when the week's file is read in.
+ */
+export function FeedHealthReport({ health, onClose }: { health: FeedHealth; onClose?: () => void }) {
+  return (
+    <section className={`feedcheck__report feedcheck__report--${health.verdict}`} aria-live="polite">
+      <b>
+        {SAID[health.verdict]}
+        {onClose && <button className="feedcheck__close" onClick={onClose} aria-label="Luk">×</button>}
+      </b>
+      <p>
+        {health.offers} tilbud
+        {health.dropped.length > 0 && ` · ${health.dropped.reduce((n, d) => n + d.count, 0)} rækker tabt`}
+        {` · ${health.noImage.count} uden billede`}
+        {health.validity.from && ` · gælder ${health.validity.from} → ${health.validity.to}`}
+      </p>
+      <small>{health.reason}</small>
+      {health.warnings.length > 0 && (
+        <ul>{health.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+      )}
+      {health.noImage.count > 0 && <small>Uden billede: {health.noImage.offerIds.join(', ')}{health.noImage.count > 10 ? ' …' : ''}</small>}
+      {health.unreadColumns.length > 0 && <small>Kolonner ingen læser: {health.unreadColumns.join(', ')}</small>}
+    </section>
   );
 }

@@ -607,7 +607,7 @@ export interface StudioState {
    */
   feedOffers: Offer[];
   /** Which reader ran, and how many of the products carry a photograph. */
-  feedReading: { source: api.FeedReading['source']; withImage: number } | null;
+  feedReading: { source: api.FeedReading['source']; withImage: number; health: api.FeedReading['health'] | null } | null;
   libraryOpen: boolean;
   librarySearch: string;
   /**

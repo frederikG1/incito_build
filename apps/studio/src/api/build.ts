@@ -1,4 +1,5 @@
 /** Building a week: the build itself, its decoration, uploads and the feed. */
+import type { FeedHealth } from '@incitio/brands';
 import { CatalogDocument, CatalogWeek, Offer } from '@incitio/schema';
 import { BASE, headers, fail } from './http.js';
 
@@ -178,6 +179,8 @@ export interface FeedReading {
   offers: Offer[];
   /** How many of them could stand in for a product in print. */
   withImage: number;
+  /** The file judged as Feedtjek judges it — see `feedHealth`. */
+  health?: FeedHealth;
 }
 
 /**

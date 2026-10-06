@@ -1,4 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import type { FeedHealth } from '@incitio/brands';
+import { FeedHealthReport } from './FeedCheck.js';
 import type { Offer } from '@incitio/schema';
 import { DEPARTMENTS, DEPARTMENT_NAMES, byImportance, departmentOf, type Department } from '@incitio/compose';
 import { formatPrice, incitoSlotOf, pageBlocks, sizedImage } from '@incitio/renderer';
@@ -88,6 +90,19 @@ const Good = memo(function Good({ offer, where, must }: { offer: Offer; where?: 
     </button>
   );
 });
+
+/**
+ * The week's file, judged where its products land: shown when the file
+ * dropped rows, has products without a picture, or warned — until it is
+ * closed or another file is read in.
+ */
+function FeedVerdict() {
+  const health = useStudio((s) => s.feedReading?.health ?? null);
+  const [closed, setClosed] = useState<FeedHealth | null>(null);
+  if (!health || closed === health) return null;
+  if (health.verdict === 'ok' && health.noImage.count === 0) return null;
+  return <div className="shelf__verdict"><FeedHealthReport health={health} onClose={() => setClosed(health)} /></div>;
+}
 
 export function Tray() {
   const s = useStudioPick(
@@ -248,6 +263,8 @@ export function Tray() {
       {!idle && <p className="shelf__hint"><b>Træk</b> hen på siden · <b>klik</b> flere for at samle dem</p>}
 
       {/* As many to a row as the width holds — two at the narrowest. */}
+      {/* Above the products, not over the shelf head: the print checklist folds out over that corner. */}
+      <FeedVerdict />
       <div className="shelf__grid">
         {waiting.length === 0
           ? <p className="shelf__empty">{unplaced.length === 0 && !showPlaced ? 'Alle varer har en plads.' : 'Ingen varer passer til søgningen.'}</p>

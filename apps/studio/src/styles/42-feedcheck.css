@@ -10,3 +10,7 @@
 .feedcheck__report ul { margin: 4px 0 0; padding-left: 18px; }
 .feedcheck__report--advarsel { border-color: var(--warn-line); background: var(--warn); color: var(--warn-ink); }
 .feedcheck__report--ulæselig, .feedcheck__said--ulæselig { border-color: var(--stop); background: var(--notice); color: var(--stop-ink); }
+.feedcheck__report b { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.feedcheck__close { border: 0; background: none; font: inherit; font-size: 16px; line-height: 1; cursor: pointer; color: inherit; padding: 0 2px; }
+.shelf__verdict { padding: 10px 12px 0; }
+.shelf__verdict .feedcheck__report { font-size: 13px; }
