@@ -10,6 +10,7 @@ import {
   type Blocker, type Finding, type PriceSource, type ResolvedEdition, type Stop,
 } from '@incitio/workflow';
 import { SaveConflict, type Store } from './db.js';
+import type { User } from './auth.js';
 
 /**
  * Every write to a stored catalogue, and the workflow around it.
@@ -27,7 +28,7 @@ import { SaveConflict, type Store } from './db.js';
  *   avis may not introduce a price the rules stop (`checkWrite`).
  */
 
-interface Scope { Variables: { brand: BrandDefinition } }
+interface Scope { Variables: { brand: BrandDefinition; user: User | null } }
 
 /** A write refused, with the status and body to answer with. */
 export class Refused extends Error {
@@ -170,6 +171,14 @@ export function workflowRoutes(
     try { payload = await c.req.json(); } catch { throw new Refused(422, { error: 'body is not valid JSON' }); }
     const parsed = schema.safeParse(payload);
     if (!parsed.success) throw new Refused(422, { error: 'invalid request', issues: parsed.error.issues.slice(0, 5) });
+    /*
+     * Signed in, the name on a signature is the account's, whatever the
+     * body says: "who" is then proven, not stated.
+     */
+    const user = (c as Context<Scope>).get('user');
+    if (user && parsed.data && typeof parsed.data === 'object' && 'who' in parsed.data) {
+      return { ...parsed.data, who: user.name };
+    }
     return parsed.data;
   };
   const stampOf = (c: Context): string => {

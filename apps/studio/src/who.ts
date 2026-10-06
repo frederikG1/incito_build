@@ -27,6 +27,14 @@ function subscribe(listener: () => void) {
   return () => { listeners.delete(listener); };
 }
 
+/**
+ * Signed in, the name is the account's: set here once, and what the
+ * server puts on a signature anyway — see the server's `workflow.ts`.
+ */
+export function signedInAs(name: string) {
+  writeWho(name);
+}
+
 export function useWho(): [string, (value: string) => void] {
   const who = useSyncExternalStore(subscribe, readWho, () => '');
   return [who, useCallback(writeWho, [])];

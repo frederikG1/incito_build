@@ -9,6 +9,7 @@ import { usePopover } from './popover.js';
 import { avisTitle } from './names.js';
 import { Chevron } from './Chevron.js';
 import { lanesOf } from './approvals.js';
+import { signOutNow, useSession } from './session.js';
 
 /** How many signatures are missing or out of date — on the Godkend tab, and nothing when none are. */
 function SignoffCount() {
@@ -276,6 +277,7 @@ export function Top() {
         {s.view === 'side' ? <PageHead /> : <div className="top__gap" />}
 
         <SearchButton />
+        <SignedIn />
         {inAvis && (
           <>
             <ReadyPill />
@@ -295,3 +297,15 @@ export function Top() {
   );
 }
 
+
+/** Who is signed in, and the way out — only when the server asks for sign-in. */
+function SignedIn() {
+  const session = useSession();
+  if (session.state !== 'signed-in') return null;
+  return (
+    <span className="top__who" title={session.user.email}>
+      {session.user.name}{' '}
+      <button className="top__signout" onClick={() => void signOutNow()}>Log ud</button>
+    </span>
+  );
+}

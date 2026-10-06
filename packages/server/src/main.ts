@@ -6,7 +6,7 @@ import { parseLabelDictionary, EMPTY_LABEL_DICTIONARY } from '@incitio/ingest';
 import { cacheImagesIn, sharedBrowser } from '@incitio/decor';
 import type { Brand, CatalogDocument } from '@incitio/schema';
 import { measuredFindings } from './print.js';
-import { createApp, Store } from './index.js';
+import { createApp, isProduction, ProductionRefused, Store, type AuthMode } from './index.js';
 
 // Deliberately NOT under data/: Vite serves that directory as its static
 // root, which would publish the database over HTTP.
@@ -79,10 +79,37 @@ const port = Number(process.env['PORT'] ?? 8787);
 const measure = async (document: CatalogDocument, brand: Brand) =>
   measuredFindings(document, brand, { assetDir, browser: await sharedBrowser() });
 
-serve({ fetch: createApp(store, { assetDir, labels, defaultDesigns, measure }).fetch, port }, (info) => {
+/*
+ * Production is declared, never guessed, and checked before anything
+ * listens: Eksempeltal or an open door and the process exits non-zero
+ * with the reasons in a block nobody scrolls past — see `production.ts`.
+ * Sign-in is on by default there; on a laptop it is off unless asked for.
+ */
+const production = isProduction(process.env);
+const authSetting = process.env['INCITIO_AUTH'] ?? (production ? 'on' : 'off');
+if (authSetting !== 'on' && authSetting !== 'off') {
+  console.error(`INCITIO_AUTH skal være "on" eller "off", ikke "${authSetting}"`);
+  process.exit(1);
+}
+const auth: AuthMode = authSetting;
+
+let app: ReturnType<typeof createApp>;
+try {
+  app = createApp(store, { assetDir, labels, defaultDesigns, measure, auth, production });
+} catch (error) {
+  if (error instanceof ProductionRefused) {
+    console.error(error.message);
+    store.close();
+    process.exit(1);
+  }
+  throw error;
+}
+
+serve({ fetch: app.fetch, port }, (info) => {
   console.log(
     `incitio api på http://localhost:${info.port} (db: ${dbPath}, `
-    + `${labels.entries.length} mærker)`,
+    + `${labels.entries.length} mærker, login ${auth === 'on' ? 'til' : 'fra'}`
+    + `${production ? ', PRODUKTION' : ''})`,
   );
 });
 

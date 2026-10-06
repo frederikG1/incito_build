@@ -4,8 +4,10 @@ import { dirname } from 'node:path';
 import { CatalogDocument, CatalogPage, Offer, OfferRules, PageTemplate, OfferDesigns, Themes, type OfferDesign } from '@incitio/schema';
 import { z } from 'zod';
 import { lanesOf } from '@incitio/workflow';
+import { migrate } from './migrations.js';
+import { Accounts } from './auth.js';
 
-/**
+/*
  * Storage for the studio.
  *
  * Documents are stored whole, as JSON, rather than decomposed into
@@ -14,92 +16,9 @@ import { lanesOf } from '@incitio/workflow';
  * placements would buy query flexibility nobody needs and cost a schema
  * migration every time the layout model gains a field.
  *
- * Every read and write is scoped by brand — see the note on `get`.
+ * Every read and write is scoped by brand — see the note on `get`. The
+ * tables themselves, and every change to them, are in `migrations.ts`.
  */
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS catalogs (
-  id          TEXT PRIMARY KEY,
-  brand_id    TEXT NOT NULL,
-  name        TEXT NOT NULL,
-  document    TEXT NOT NULL,
-  created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL
-);
-
--- Every save appends here, so a bad regeneration is always recoverable.
-CREATE TABLE IF NOT EXISTS catalog_versions (
-  catalog_id  TEXT NOT NULL,
-  version     INTEGER NOT NULL,
-  document    TEXT NOT NULL,
-  label       TEXT NOT NULL DEFAULT '',
-  created_at  TEXT NOT NULL,
-  PRIMARY KEY (catalog_id, version)
-);
-
-CREATE INDEX IF NOT EXISTS idx_catalogs_brand ON catalogs (brand_id);
-
-/*
- * The chain's own pictures — balloons, birthday flags, a paper
- * texture — as a list somebody can find again.
- *
- * The bytes are on disk and always were; what did not exist was any
- * record that they had been uploaded, so a file could only be reached
- * by a document that already pointed at it. Upload a background, undo,
- * and it was gone for good.
- *
- * Keyed by (brand, ref) rather than by the content hash alone: the
- * same picture uploaded by two chains is one file on disk and two
- * rows here, which is what lets one chain rename or remove its copy
- * without touching the other's.
- */
-CREATE TABLE IF NOT EXISTS uploads (
-  brand_id    TEXT NOT NULL,
-  ref         TEXT NOT NULL,
-  name        TEXT NOT NULL,
-  created_at  TEXT NOT NULL,
-  PRIMARY KEY (brand_id, ref)
-);
-
-/*
- * The chain's section designs — "Frost med balloner", "Bagside",
- * "Fredag & lørdag" — the pages a leaflet reuses week after week with
- * different products in the cells. Stored whole, like a catalogue, and
- * like a catalogue scoped by brand in every query.
- */
-CREATE TABLE IF NOT EXISTS sections (
-  id          TEXT PRIMARY KEY,
-  brand_id    TEXT NOT NULL,
-  name        TEXT NOT NULL,
-  section     TEXT NOT NULL,
-  created_at  TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_sections_brand ON sections (brand_id);
-
-/*
- * How the chain wants its offers to look — its own rules, written in the
- * studio. One row per chain: the list IS the setting, and its order is
- * its precedence, so it is stored whole.
- */
-CREATE TABLE IF NOT EXISTS offer_designs (
-  brand_id    TEXT PRIMARY KEY,
-  designs     TEXT NOT NULL,
-  design_tag  TEXT,
-  updated_at  TEXT NOT NULL
-);
-
--- The chain's themes — birthday, Halloween — stored whole, like its rules.
-CREATE TABLE IF NOT EXISTS themes (
-  brand_id    TEXT PRIMARY KEY,
-  themes      TEXT NOT NULL,
-  updated_at  TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS offer_rules (
-  brand_id    TEXT PRIMARY KEY,
-  rules       TEXT NOT NULL,
-  updated_at  TEXT NOT NULL
-);
-`;
 
 /**
  * One saved page design.
@@ -170,13 +89,16 @@ export class SaveConflict extends Error {
 
 export class Store {
   private readonly db: DatabaseSync;
+  /** Who may sign in, and to which chains — see `auth.ts`. */
+  readonly accounts: Accounts;
 
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA foreign_keys = ON');
-    this.db.exec(SCHEMA);
+    migrate(this.db);
+    this.accounts = new Accounts(this.db);
   }
 
   /**

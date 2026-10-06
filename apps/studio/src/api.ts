@@ -72,6 +72,8 @@ function headers(brandId: string, extra: Record<string, string> = {}): HeadersIn
 }
 
 async function fail(response: Response): Promise<never> {
+  // The session ran out or was ended elsewhere: the sign-in screen takes over — see `session.ts`.
+  if (response.status === 401) window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
   const body = (await response.json().catch(() => ({}))) as {
     detail?: string;
     error?: string;
@@ -91,6 +93,39 @@ async function fail(response: Response): Promise<never> {
   throw new Error(issue?.message
     ? `${said} (${[...(issue.path ?? [])].join('.') || 'body'}: ${issue.message})`
     : said);
+}
+
+/** Fired when the API answers 401, so the studio can ask for a sign-in instead of showing an error. */
+export const SIGNED_OUT_EVENT = 'incitio:signed-out';
+
+export interface SignedInUser {
+  id: string;
+  email: string;
+  name: string;
+  brands: { brandId: string; role: string }[];
+}
+
+/** Whether this server wants a sign-in, and who is signed in. Same-origin, so the session cookie rides along. */
+export async function fetchMe(): Promise<{ auth: 'on' | 'off'; user: SignedInUser | null }> {
+  const response = await fetch(`${BASE}/auth/me`);
+  if (!response.ok) await fail(response);
+  return (await response.json()) as { auth: 'on' | 'off'; user: SignedInUser | null };
+}
+
+export async function signIn(email: string, password: string): Promise<SignedInUser> {
+  const response = await fetch(`${BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  // A wrong password is an answer for the form, not a signed-out event.
+  if (response.status === 401) throw new Error('Forkert e-mail eller adgangskode');
+  if (!response.ok) await fail(response);
+  return ((await response.json()) as { user: SignedInUser }).user;
+}
+
+export async function signOut(): Promise<void> {
+  await fetch(`${BASE}/auth/logout`, { method: 'POST' });
 }
 
 export interface BrandSummary { id: string; name: string; color?: string; accent?: string }

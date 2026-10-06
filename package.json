@@ -29,7 +29,8 @@
     "map": "node ./node_modules/.bin/vite-node scripts/map-feed.ts",
     "cms": "node ./node_modules/.bin/vite-node scripts/cms-report.ts",
     "schema": "node ./node_modules/.bin/vite-node scripts/export-schema.ts",
-    "edit": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/edit-catalogue.ts"
+    "edit": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/edit-catalogue.ts",
+    "accounts": "node --env-file-if-exists=.env ./node_modules/.bin/vite-node scripts/accounts.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

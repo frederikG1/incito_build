@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize, sep } from 'node:path';
+import { standInsIn } from './stand-ins.js';
 
 const DATA = fileURLToPath(new URL('../../data', import.meta.url));
 
@@ -72,12 +73,34 @@ function imageWorker(): Plugin {
 }
 
 /**
+ * No Eksempeltal in a production build.
+ *
+ * `INCITIO_ENV=production` declares a build that real chains will use;
+ * then any stand-in still in the source (see `stand-ins.ts`) fails the
+ * build, listed, instead of shipping invented reach and price history
+ * behind a small "Eksempeltal" label. Every other build is untouched.
+ */
+function noStandInsInProduction(): Plugin {
+  return {
+    name: 'incitio-no-stand-ins',
+    apply: 'build',
+    buildStart() {
+      if (process.env['INCITIO_ENV'] !== 'production') return;
+      const found = standInsIn(fileURLToPath(new URL('./src', import.meta.url)));
+      if (found.length > 0) {
+        this.error(['', 'EKSEMPELTAL I EN PRODUKTIONSBYGNING — bygningen stopper:', ...found.map((f) => `  ✗ ${f}`), ''].join('\n'));
+      }
+    },
+  };
+}
+
+/**
  * `data/` is served as the static root so generated product images resolve
  * at the same `/images/...` paths the feed carries — no rewriting of URLs
  * between ingest and render.
  */
 export default defineConfig({
-  plugins: [imageWorker(), liveData(), react()],
+  plugins: [noStandInsInProduction(), imageWorker(), liveData(), react()],
   publicDir: DATA,
   server: {
     port: 5173,

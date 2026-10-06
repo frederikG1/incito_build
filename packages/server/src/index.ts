@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
 import {
   CatalogDocument, CatalogWeek, Offer, OfferDesigns, OfferRules, packSizeOf, withOfferGrids, type Brand, type OfferDesign,
@@ -31,8 +32,13 @@ import { findPageCells, importPublication, PublicationError } from '@incitio/pub
 import { SaveConflict, Section, Store } from './db.js';
 import { keepWorkflow, standInPrices, type PriceSource } from '@incitio/workflow';
 import { makeCommit, Refused, refusal, workflowRoutes, type Measure } from './workflow.js';
+import { LoginThrottle, SESSION_COOKIE, SESSION_MS, type AuthMode, type User } from './auth.js';
+import { assertProductionReady } from './production.js';
 
 export { Store } from './db.js';
+export { Accounts, type AuthMode, type User } from './auth.js';
+export { assertProductionReady, isProduction, ProductionRefused, productionRefusals } from './production.js';
+export { migrate, SCHEMA_VERSION } from './migrations.js';
 
 /**
  * How a request says which chain it is acting as.
@@ -77,7 +83,8 @@ function imageKey(c: { req: { header: (name: string) => string | undefined } }):
 }
 
 interface Scope {
-  Variables: { brand: BrandDefinition };
+  /** `user` is who the session belongs to — null when signed out, or when sign-in is off. */
+  Variables: { brand: BrandDefinition; user: User | null };
 }
 
 export interface AppOptions {
@@ -119,6 +126,17 @@ export interface AppOptions {
    * then only the checks the document can answer gate publishing.
    */
   measure?: Measure;
+  /**
+   * Whether a request must be signed in, and may only act as a chain it
+   * is a member of. 'off' (the default) is the laptop: the brand header
+   * alone decides, as it always has. See `auth.ts`.
+   */
+  auth?: AuthMode;
+  /**
+   * A deployment that serves real chains. Refuses to build the app with
+   * Eksempeltal or with sign-in off — see `production.ts`.
+   */
+  production?: boolean;
 }
 
 /** The chain a Tjek offers file names on its rows, when it names one. */
@@ -140,7 +158,10 @@ export function createApp(store: Store, options: AppOptions = {}) {
   const app = new Hono<Scope>();
   const labels = options.labels ?? EMPTY_LABEL_DICTIONARY;
   const prices = options.prices ?? standInPrices;
+  const auth = options.auth ?? 'off';
+  if (options.production) assertProductionReady({ prices, auth });
   const commit = makeCommit(store, prices);
+  const throttle = new LoginThrottle();
   /*
    * A store per chain, made where the chain is known.
    *
@@ -172,9 +193,56 @@ export function createApp(store: Store, options: AppOptions = {}) {
   const uploadsFor = (brandId: string) =>
     (options.assetDir ? uploadStore(options.assetDir, brandId) : null);
 
-  app.use('/api/*', cors({ origin: '*', allowHeaders: ['content-type', BRAND_HEADER, KEY_HEADER] }));
+  app.use('/api/*', cors({ origin: '*', allowHeaders: ['content-type', 'authorization', BRAND_HEADER, KEY_HEADER] }));
+
+  /*
+   * Who is asking, read once per request: the session cookie the studio
+   * carries, or a bearer token for a script. Unknown or expired reads as
+   * signed out — the routes below decide whether that matters.
+   */
+  app.use('/api/*', async (c, next) => {
+    const bearer = /^Bearer (.+)$/.exec(c.req.header('authorization') ?? '')?.[1];
+    const token = bearer ?? getCookie(c, SESSION_COOKIE) ?? '';
+    c.set('user', auth === 'on' && token ? store.accounts.session(token) : null);
+    await next();
+  });
 
   app.get('/api/health', (c) => c.json({ ok: true }));
+
+  /** Whether sign-in is on, and who is signed in. The studio asks this first. */
+  app.get('/api/auth/me', (c) => c.json({ auth, user: c.get('user') }));
+
+  app.post('/api/auth/login', async (c) => {
+    if (auth !== 'on') return c.json({ error: 'login er slået fra på denne server' }, 404);
+    const parsed = z.object({ email: z.string().trim().min(3).max(200), password: z.string().min(1).max(500) })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'skriv e-mail og adgangskode' }, 422);
+    const { email, password } = parsed.data;
+    const client = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'lokal';
+    const keys = [`email:${email.toLowerCase()}`, `client:${client}`];
+    if (throttle.blocked(...keys)) return c.json({ error: 'for mange forsøg — prøv igen om et kvarter' }, 429);
+    const session = store.accounts.login(email, password);
+    if (!session) {
+      throttle.failed(...keys);
+      return c.json({ error: 'forkert e-mail eller adgangskode' }, 401);
+    }
+    throttle.cleared(...keys);
+    setCookie(c, SESSION_COOKIE, session.token, {
+      httpOnly: true,
+      sameSite: 'Lax',
+      secure: options.production === true,
+      path: '/api',
+      maxAge: Math.floor(SESSION_MS / 1000),
+    });
+    return c.json({ user: session.user, expiresAt: session.expiresAt });
+  });
+
+  app.post('/api/auth/logout', (c) => {
+    const token = getCookie(c, SESSION_COOKIE);
+    if (token) store.accounts.logout(token);
+    deleteCookie(c, SESSION_COOKIE, { path: '/api' });
+    return c.json({ ok: true });
+  });
 
   /*
    * The chain's product photographs, through this server's disk cache —
@@ -195,7 +263,14 @@ export function createApp(store: Store, options: AppOptions = {}) {
   });
 
   /** The chains this deployment serves. The only unscoped route. */
-  app.get('/api/brands', (c) => c.json({ brands: listBrands() }));
+  app.get('/api/brands', (c) => {
+    if (auth === 'off') return c.json({ brands: listBrands() });
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'log ind' }, 401);
+    // Only the chains this person works for — the others are not theirs to see.
+    const mine = new Set(user.brands.map((m) => m.brandId));
+    return c.json({ brands: listBrands().filter((brand) => mine.has(brand.id)) });
+  });
 
   /*
    * Everything below is scoped to one chain.
@@ -206,6 +281,12 @@ export function createApp(store: Store, options: AppOptions = {}) {
    */
   app.use('/api/brand/*', async (c, next) => {
     const id = c.req.header(BRAND_HEADER) ?? '';
+    if (auth === 'on') {
+      const user = c.get('user');
+      if (!user) return c.json({ error: 'log ind' }, 401);
+      // The header names the chain; the membership is what allows it.
+      if (!user.brands.some((m) => m.brandId === id)) return c.json({ error: 'ikke din kæde' }, 403);
+    }
     const definition = findBrand(id);
     if (!definition) {
       return c.json(
