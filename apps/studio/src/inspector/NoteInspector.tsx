@@ -1,4 +1,4 @@
-import { useStudio } from '../state.js';
+import { useStudio, useStudioPick } from '../state.js';
 import { Measure } from '../Measure.js';
 import { noteToBox } from '../box.js';
 
@@ -12,7 +12,7 @@ const NOTE_BACKINGS: [string | null, string][] = [
 ];
 
 export function NoteInspector({ noteId }: { noteId: string }) {
-  const { document, updateNote, removeNote, selectNote, endGesture } = useStudio();
+  const { document, updateNote, removeNote, selectNote, endGesture } = useStudioPick('document', 'updateNote', 'removeNote', 'selectNote', 'endGesture');
   const page = document?.pages.find((entry) => (entry.notes ?? []).some((n) => n.id === noteId));
   const note = page?.notes.find((n) => n.id === noteId);
   if (!page || !note) return null;

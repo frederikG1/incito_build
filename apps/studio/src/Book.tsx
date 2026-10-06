@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { isImagePage, type CatalogPage, type PageTemplate } from '@incitio/schema';
 import { resolveTemplate } from '@incitio/brands';
 import { ImagePage, ImageSize, PageView } from '@incitio/renderer';
-import { THUMB_PX, departmentOfPage, useStudio } from './state.js';
+import { THUMB_PX, departmentOfPage, useStudio, useStudioPick } from './state.js';
 import type { Finding } from './findings.js';
 import { OFFER_MIME, droppedOffers } from './Tray.js';
 import { DEPARTMENT_NAMES } from '@incitio/compose';
@@ -236,7 +236,10 @@ function BookSums() {
 function AddPages() {
   const open = useStudio((s) => s.addPagesOpen);
   const setOpen = useStudio((s) => s.setAddPagesOpen);
-  const s = useStudio();
+  const s = useStudioPick(
+    'build', 'busy', 'curationReady', 'decorReady', 'document', 'feed', 'setReproduceOpen',
+    'setSectionsOpen', 'togglePanel'
+  );
   // Leftward keeps it inside the window at the end of a long book; on
   // an empty book the card is the first thing and left is off-screen.
   const [right, setRight] = useState(false);
@@ -384,7 +387,7 @@ function ThemeButton() {
 }
 
 function EmptyBook() {
-  const s = useStudio();
+  const s = useStudioPick('build', 'feed', 'feedOffers', 'setSectionsOpen', 'togglePanel');
   const sections = useStudio((state) => state.sections.length);
   return (
     <div className="empty">

@@ -1,6 +1,6 @@
 import { packLimits, packOverride, packTouched } from '@incitio/schema';
 import type { Offer, PlacementOverrides } from '@incitio/schema';
-import { useStudio } from '../state.js';
+import { useStudio, useStudioPick } from '../state.js';
 
 /**
  * Every product's depth in one cluster, so "in front" means in front of
@@ -15,7 +15,7 @@ function packDepths(overrides: PlacementOverrides, count: number): number[] {
 
 /** The products in a cluster tile, and the one in hand. */
 export function PackPanel({ offer, overrides }: { offer: Offer; overrides: PlacementOverrides }) {
-  const { selectedPack, selectPackItem, setPackItemHidden, resetPackItem, updatePackItem, endGesture } = useStudio();
+  const { selectedPack, selectPackItem, setPackItemHidden, resetPackItem, updatePackItem, endGesture } = useStudioPick('selectedPack', 'selectPackItem', 'setPackItemHidden', 'resetPackItem', 'updatePackItem', 'endGesture');
   return (
     <>
       {/*

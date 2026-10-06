@@ -1,4 +1,4 @@
-import { useStudio } from "../state.js";
+import { useStudio, useStudioPick } from "../state.js";
 import { DecorBar } from "../DecorBar.js";
 import { Ways } from "../Ways.js";
 import { Pictures } from "../Pictures.js";
@@ -13,7 +13,7 @@ import { Pictures } from "../Pictures.js";
  * and the page it is about has to stay readable behind it.
  */
 export function Panel() {
-  const s = useStudio();
+  const s = useStudioPick('closePanel', 'panel');
   if (!s.panel) return null;
   return (
     <div className={s.panel === "stemning" ? "panel panel--side" : "panel"}>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { DEPARTMENT_NAMES, departmentOf } from '@incitio/compose';
 import { TILE_PART_NAMES } from '@incitio/schema';
 import type { TilePart } from '@incitio/schema';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 import { PageGround } from './inspector/PageGround.js';
 import { DecorInspector } from './inspector/DecorInspector.js';
 import { NoteInspector } from './inspector/NoteInspector.js';
@@ -33,10 +33,7 @@ const INSPECTOR_TABS: [InspectorTab, string][] = [
  * rewrite. Both write the same overrides, so neither is the "real" one.
  */
 export function Inspector() {
-  const {
-    document, selectedOfferId, selectedPart, select, selectedPack,
-    selectedDecorId, selectedNoteId, selectedIncito,
-  } = useStudio();
+  const { document, selectedOfferId, selectedPart, select, selectedPack, selectedDecorId, selectedNoteId, selectedIncito } = useStudioPick('document', 'selectedOfferId', 'selectedPart', 'select', 'selectedPack', 'selectedDecorId', 'selectedNoteId', 'selectedIncito');
   const [tab, setTab] = useState<InspectorTab>('indhold');
   /*
    * The tab follows the hand. Clicking a box on the sheet, or a product

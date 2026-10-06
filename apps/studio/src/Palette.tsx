@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { DEPARTMENT_NAMES } from '@incitio/compose';
 import type { Offer } from '@incitio/schema';
 import { formatPrice } from '@incitio/renderer';
-import { departmentOfPage, useStudio } from './state.js';
+import { departmentOfPage, useStudio, useStudioPick } from './state.js';
 import { instructEdit, type InstructReply } from './api.js';
 
 /**
@@ -54,7 +54,12 @@ export function Palette() {
   const [at, setAt] = useState(0);
   const [ask, setAsk] = useState<Ask | null>(null);
   const input = useRef<HTMLInputElement>(null);
-  const s = useStudio();
+  const s = useStudioPick(
+    'activePageId', 'applyEdits', 'brandId', 'carryWeek', 'document', 'downloadPdf', 'feedOffers',
+    'findings', 'goToOffer', 'librarySelection', 'openPage', 'openPageId', 'save', 'selectedOfferId',
+    'setDesignsOpen', 'setFindingsOpen', 'setLibrarySearch', 'setRulesOpen', 'setSectionsOpen',
+    'toggleLibraryPick'
+  );
 
   // ⌘K / ctrl+K from anywhere — even with the caret in a field.
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { PAGE_PARTS, PAGE_PART_NAMES, pageGround, pageTextLimits, pageTextOverride, pageTextTouched } from '@incitio/schema';
 import type { CatalogPage, PagePart } from '@incitio/schema';
-import { useStudio } from '../state.js';
+import { useStudio, useStudioPick } from '../state.js';
 
 /**
  * The page's own two lines: the heading, and the theme line under it.
@@ -16,10 +16,7 @@ import { useStudio } from '../state.js';
  * string, so none of them can drift from the others.
  */
 function PageTexts({ page }: { page: CatalogPage }) {
-  const {
-    selectedText, selectPageText, updatePageText, resetPageText, setPageTextHidden,
-    setPageTitle, setPageSubtitle, endGesture,
-  } = useStudio();
+  const { selectedText, selectPageText, updatePageText, resetPageText, setPageTextHidden, setPageTitle, setPageSubtitle, endGesture } = useStudioPick('selectedText', 'selectPageText', 'updatePageText', 'resetPageText', 'setPageTextHidden', 'setPageTitle', 'setPageSubtitle', 'endGesture');
 
   const held: PagePart | null = selectedText?.pageId === page.id ? selectedText.part : null;
   const limits = pageTextLimits();
@@ -169,10 +166,7 @@ const eyeDropper = (): EyeDropperApi | null =>
  * decides, which is what every ordinary page does.
  */
 export function PageGround() {
-  const {
-    document, brand, selectedOfferId, selectedText, setPageGround, setPageBackground,
-    spreadBackground,
-  } = useStudio();
+  const { document, brand, selectedOfferId, selectedText, setPageGround, setPageBackground, spreadBackground } = useStudioPick('document', 'brand', 'selectedOfferId', 'selectedText', 'setPageGround', 'setPageBackground', 'spreadBackground');
   const [dropping, setDropping] = useState(false);
 
   if (!document || !brand || document.pages.length === 0) return null;

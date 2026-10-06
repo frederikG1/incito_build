@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { slotAssignmentOrder } from '@incitio/schema';
 import { resolveTemplate } from '@incitio/brands';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 import { gridRects } from './LayoutEditor.js';
 import { isCrowded } from './findings.js';
 
@@ -29,7 +29,7 @@ function besides(a: Rect, b: Rect): boolean {
  * the page by hand.
  */
 export function Crowded({ pageId, slotId, offerId }: { pageId: string; slotId: string; offerId: string }) {
-  const s = useStudio();
+  const s = useStudioPick('brand', 'document', 'focusOffer', 'ownLayout', 'selectedOfferId', 'setLayoutEdit', 'updateOverrides');
   const [open, setOpen] = useState(false);
   const probe = useRef<HTMLSpanElement>(null);
   /*

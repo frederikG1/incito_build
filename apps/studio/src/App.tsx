@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useStudio } from "./state.js";
+import { useStudio, useStudioPick } from "./state.js";
 import { startRouting } from "./route.js";
 import { Reproduce } from "./Reproduce.js";
 import { OfferRulesPanel } from "./OfferRules.js";
@@ -23,7 +23,7 @@ import { Toast } from "./app/Toast.js";
 import { Canvas } from "./app/Canvas.js";
 
 export function App() {
-  const s = useStudio();
+  const s = useStudioPick('brand', 'busy', 'curationReady', 'decorReady', 'error', 'note', 'view');
 
   // Start from the address bar, and keep it up to date — see `route.ts`.
   useEffect(() => startRouting(), []);

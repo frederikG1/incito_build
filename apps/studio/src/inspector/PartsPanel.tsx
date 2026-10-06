@@ -1,6 +1,6 @@
 import { TILE_PARTS, TILE_PART_NAMES, partLimits, partOverride, partTouched } from '@incitio/schema';
 import type { CatalogPage, Offer, PlacementOverrides, TilePart } from '@incitio/schema';
-import { useStudio } from '../state.js';
+import { useStudio, useStudioPick } from '../state.js';
 import { Measure } from '../Measure.js';
 
 /**
@@ -58,7 +58,7 @@ function PartMeasure({ pageId, slotId, offerId, part }: { pageId: string; slotId
 
 /** The boxes the tile is built from, and the sliders for the one in hand. */
 export function PartsPanel({ offer, overrides, onPage, slotId, held }: { offer: Offer; overrides: PlacementOverrides; onPage: CatalogPage | undefined; slotId: string; held: TilePart }) {
-  const { selectedPart, selectPart, setPartHidden, resetTile, resetPart, updatePart } = useStudio();
+  const { selectedPart, selectPart, setPartHidden, resetTile, resetPart, updatePart } = useStudioPick('selectedPart', 'selectPart', 'setPartHidden', 'resetTile', 'resetPart', 'updatePart');
   const geometry = partOverride(overrides, held);
   const limits = partLimits(held);
   const arranged = TILE_PARTS.some((part) => partTouched(overrides, part));

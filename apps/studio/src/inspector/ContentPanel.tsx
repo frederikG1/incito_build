@@ -1,10 +1,10 @@
 import type { CatalogPage, Offer, PlacementOverrides } from '@incitio/schema';
-import { useStudio } from '../state.js';
+import { useStudio, useStudioPick } from '../state.js';
 import { TilePrice } from './TilePrice.js';
 
 /** What the tile says: its price, its words, and where it stands on the page. */
 export function ContentPanel({ offer, overrides, onPage, leads }: { offer: Offer; overrides: PlacementOverrides; onPage: CatalogPage | undefined; leads: boolean }) {
-  const { updateOverrides, focusOffer, removeOfferFromPage } = useStudio();
+  const { updateOverrides, focusOffer, removeOfferFromPage } = useStudioPick('updateOverrides', 'focusOffer', 'removeOfferFromPage');
   return (
     <>
       <TilePrice key={offer.id} offer={offer} />

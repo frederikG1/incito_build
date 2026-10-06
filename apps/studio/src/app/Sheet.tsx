@@ -1,6 +1,6 @@
 import { ImagePage, PageView, incitoSlotOf } from "@incitio/renderer";
 import { resolveTemplate } from "@incitio/brands";
-import { useStudio } from "../state.js";
+import { useStudio, useStudioPick } from "../state.js";
 import { TileEditor } from "../TileEditor.js";
 import { EmptyCells } from "../EmptyCells.js";
 import { LayoutEditor } from "../LayoutEditor.js";
@@ -11,7 +11,13 @@ import type { CatalogPage, Offer } from "@incitio/schema";
 
 /** One page of the avis on the canvas, with everything that edits it. */
 export function Sheet({ page, offers }: { page: CatalogPage; offers: Map<string, Offer> }) {
-  const s = useStudio();
+  const s = useStudioPick(
+    'activePageId', 'addPageImage', 'brand', 'document', 'endGesture', 'fillSlot', 'ghosts',
+    'layoutEditPageId', 'librarySelection', 'moveIncito', 'movePage', 'removePage', 'replaceImagePage',
+    'reproductions', 'select', 'selectIncito', 'selectNote', 'selectedDecorId', 'selectedIncito',
+    'selectedNoteId', 'selectedOfferId', 'selectedPart', 'setActivePage', 'setPageSubtitle',
+    'setPageTitle', 'updateNote', 'updatePageImage'
+  );
   const document = s.document!;
   const index = document.pages.findIndex((entry) => entry.id === page.id);
   const brand = s.brand!;

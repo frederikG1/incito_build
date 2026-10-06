@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { weekRange } from '@incitio/schema';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 import { ReadyPill } from './Checklist.js';
 import { SearchButton } from './Palette.js';
 import { EditionNote, EditionPicker, SectionUpdates } from './Editions.js';
@@ -52,7 +52,7 @@ function SignoffCount() {
  * you to the front page.
  */
 function Document() {
-  const s = useStudio();
+  const s = useStudioPick('brand', 'document', 'openHome', 'variantBase', 'view', 'week');
   const document = s.variantBase ?? s.document;
   const week = document?.week ?? s.week;
   const pages = document?.pages.length ?? 0;
@@ -94,7 +94,7 @@ function Document() {
  * screen; the bar under them keeps only the shape.
  */
 function PageHead() {
-  const s = useStudio();
+  const s = useStudioPick('document', 'openPageId', 'stepPage');
   const pages = s.document?.pages ?? [];
   const index = pages.findIndex((page) => page.id === s.openPageId);
   const page = pages[index];
@@ -129,7 +129,7 @@ function PageHead() {
  * — so the file on the printer's desk says which version it is.
  */
 function PdfButton() {
-  const s = useStudio();
+  const s = useStudioPick('busy', 'document', 'downloadPdf');
   const [open, setOpen] = useState(false);
   usePopover(open, () => setOpen(false));
   const off = !s.document || Boolean(s.busy);
@@ -173,7 +173,7 @@ function chainName(name: string): { name: string; note: string } {
  * the foot of the front page.
  */
 function ChainSwitch() {
-  const s = useStudio();
+  const s = useStudioPick('brand', 'brandId', 'brands', 'busy', 'signInAs');
   const [open, setOpen] = useState(false);
   usePopover(open, () => setOpen(false));
   const current = s.brands.find((brand) => brand.id === s.brandId);
@@ -230,7 +230,10 @@ function ChainSwitch() {
 /* ---------------------------------------------------------- the top */
 
 export function Top() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'document', 'future', 'openBoard', 'openEditions', 'openGoods', 'openHome', 'openPage', 'past',
+    'redo', 'undo', 'variantBase', 'view'
+  );
   const document = s.variantBase ?? s.document;
   // The avis's own tools only while an avis is what is on screen.
   const inAvis = Boolean(s.document) && s.view !== 'hjem' && s.view !== 'varedesigns';

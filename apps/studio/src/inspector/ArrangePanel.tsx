@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import type { Offer } from '@incitio/schema';
 import { PLACE_PROMPTS, placePrompt } from '@incitio/curator/place-prompt';
-import { useStudio } from '../state.js';
+import { useStudio, useStudioPick } from '../state.js';
 import { priceOf, saidPrice } from '../price.js';
 
 /** Standing a cluster's products up — by AI, or from a picture of your own. */
 export function ArrangePanel({ offer }: { offer: Offer }) {
-  const { busy, decorReady, splitAndStandUp, standUpOneCluster, clusterWay, setClusterWay, clusterImageModel, setClusterImageModel, clusterRun, clusterPlaceModel, setClusterPlaceModel, clusterPrompt, setClusterPrompt, promptRuns, placeStrict, setPlaceStrict, clusterPromptId, setClusterPromptId, ghosts, toggleGhost, applyClusterLayout, setTileImage } = useStudio();
+  const { busy, decorReady, splitAndStandUp, standUpOneCluster, clusterWay, setClusterWay, clusterImageModel, setClusterImageModel, clusterRun, clusterPlaceModel, setClusterPlaceModel, clusterPrompt, setClusterPrompt, promptRuns, placeStrict, setPlaceStrict, clusterPromptId, setClusterPromptId, ghosts, toggleGhost, applyClusterLayout, setTileImage } = useStudioPick('busy', 'decorReady', 'splitAndStandUp', 'standUpOneCluster', 'clusterWay', 'setClusterWay', 'clusterImageModel', 'setClusterImageModel', 'clusterRun', 'clusterPlaceModel', 'setClusterPlaceModel', 'clusterPrompt', 'setClusterPrompt', 'promptRuns', 'placeStrict', 'setPlaceStrict', 'clusterPromptId', 'setClusterPromptId', 'ghosts', 'toggleGhost', 'applyClusterLayout', 'setTileImage');
   // Shut by default: the prompt is three hundred words, and most
   // sessions never open it.
   const [showPrompt, setShowPrompt] = useState(false);

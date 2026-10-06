@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { sectionsBehind, variantSummary } from '@incitio/edit/core';
 import { checkEditions, DIFF_FIELD_NAMES, type EditionCheck } from '@incitio/compose';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 import { Chevron } from './Chevron.js';
 import { usePopover } from './popover.js';
 
@@ -16,7 +16,7 @@ import { usePopover } from './popover.js';
  * "Alle butikker", an edit reaches every store at once.
  */
 export function EditionPicker() {
-  const s = useStudio();
+  const s = useStudioPick('addVariant', 'brand', 'document', 'openVariant', 'removeVariant', 'storedDocument', 'variantBase', 'variantId');
   const [open, setOpen] = useState(false);
   usePopover(open, () => setOpen(false));
   const [name, setName] = useState('');
@@ -103,7 +103,7 @@ export function EditionPicker() {
 
 /** Under the top bar while a store's edition is open: whose pages these are, and what did not carry. */
 export function EditionNote() {
-  const s = useStudio();
+  const s = useStudioPick('openVariant', 'variantBase', 'variantId', 'variantNotes');
   const current = (s.variantBase?.variants ?? []).find((v) => v.id === s.variantId);
   if (!current) return null;
   return (
@@ -127,7 +127,7 @@ export function EditionNote() {
  * behind anyone's back: a page may have been changed on purpose.
  */
 export function SectionUpdates() {
-  const s = useStudio();
+  const s = useStudioPick('document', 'pullSections', 'sections');
   const behind = useMemo(
     () => (s.document ? sectionsBehind(s.document, s.sections) : []),
     [s.document, s.sections],
@@ -161,7 +161,7 @@ const kr = (value: unknown) => (typeof value === 'number' ? value.toFixed(2).rep
  * of them leave as the one merged feed the platform reads.
  */
 export function EditionsBoard() {
-  const s = useStudio();
+  const s = useStudioPick('addVariant', 'brand', 'document', 'downloadMergedFeed', 'feed', 'feedOffers', 'loadMergedFeed', 'variantBase');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<EditionFilter>('alle');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -269,7 +269,7 @@ function EditionRow({ check, open, onToggle, numberOf, feeds }: {
   /** Whether any edition has a feed — the column is left out when none does. */
   feeds: boolean;
 }) {
-  const s = useStudio();
+  const s = useStudioPick('openVariant', 'removeVariant', 'setEditionFeed', 'setVariantStores', 'uploadFeed');
   const file = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [stores, setStores] = useState(check.stores.join(', '));

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Brand, CatalogDocument, CatalogPage, PageTemplate } from '@incitio/schema';
 import { resolveTemplate } from '@incitio/brands';
 import { ImageSize, PageView } from '@incitio/renderer';
-import { THUMB_PX, layoutKey, pageInLayout, useStudio, withTemplates } from './state.js';
+import { THUMB_PX, layoutKey, pageInLayout, useStudio, useStudioPick, withTemplates } from './state.js';
 import { STANDARD_COUNTS, standardLayouts } from './layouts.js';
 
 /** A layout drawn small: its cells as blocks on a sheet. */
@@ -101,7 +101,7 @@ function LivePreview({
 export function LayoutGallery({
   page, template, spare, index,
 }: { page: CatalogPage; template: PageTemplate; spare: number; index: number }) {
-  const s = useStudio();
+  const s = useStudioPick('applyLayout', 'brand', 'document');
   const [open, setOpen] = useState(false);
   const [others, setOthers] = useState(false);
   const brand = s.brand;

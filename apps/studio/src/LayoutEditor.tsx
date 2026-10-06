@@ -1,7 +1,7 @@
 import { pagedSheet } from '@incitio/renderer';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { CatalogPage, PageTemplate } from '@incitio/schema';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Edge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'move';
@@ -79,7 +79,7 @@ function catchTo(v: number, targets: number[]): number | null {
  * a page shaped by hand still lines up.
  */
 export function LayoutEditor({ page, template }: { page: CatalogPage; template: PageTemplate }) {
-  const s = useStudio();
+  const s = useStudioPick('document', 'endGesture', 'ownLayout', 'removeCell', 'setCellRect');
   const root = useRef<HTMLDivElement>(null);
   const [held, setHeld] = useState<string | null>(null);
 

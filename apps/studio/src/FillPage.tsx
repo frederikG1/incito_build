@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { measureRoom, readPageBoxes, type Room } from './fill.js';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 import { usePopover } from './popover.js';
 
 /**
@@ -10,7 +10,7 @@ import { usePopover } from './popover.js';
  * the choice is then made from, so what it says is what it does.
  */
 export function FillPageButton({ pageId }: { pageId: string }) {
-  const s = useStudio();
+  const s = useStudioPick('emptySlots', 'fillEmptySlots', 'fillPage');
   const [room, setRoom] = useState<Room | null | 'closed'>('closed');
   const [empty, setEmpty] = useState(0);
   const open = room !== 'closed';

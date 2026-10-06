@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { THEME_PLACES, Theme, type ThemePiece, type ThemePlace } from '@incitio/schema';
 import * as api from './api.js';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 import { usePopover } from './popover.js';
 
 /**
@@ -28,7 +28,7 @@ const slug = (name: string) => name.toLowerCase().replace(/æ/g, 'ae').replace(/
   .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tema';
 
 export function ThemesPanel() {
-  const s = useStudio();
+  const s = useStudioPick('applyTheme', 'brandId', 'document', 'saveThemes', 'setThemesOpen', 'themes', 'themesOpen', 'variantBase');
   const [editing, setEditing] = useState<Theme | null>(null);
   const [library, setLibrary] = useState<api.LibraryImage[]>([]);
   const close = () => { s.setThemesOpen(false); setEditing(null); };
@@ -128,7 +128,7 @@ function ThemeEditor({ theme, library, onLibrary, onSave, onDelete, known }: {
   onDelete: () => Promise<void>;
   known: boolean;
 }) {
-  const s = useStudio();
+  const s = useStudioPick('brandId', 'document');
   const [draft, setDraft] = useState(theme);
   const [uploading, setUploading] = useState(false);
   const piece = (index: number, patch: Partial<ThemePiece>) =>

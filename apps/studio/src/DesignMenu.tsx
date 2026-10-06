@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { brandCssVars, designTags, type Offer } from '@incitio/schema';
 import { DesignTile, ImageSize, designChoices } from '@incitio/renderer';
-import { THUMB_PX, useStudio } from './state.js';
+import { THUMB_PX, useStudio, useStudioPick } from './state.js';
 import { usePopover } from './popover.js';
 import { templateOf } from './inventory.js';
 import { blankDesign, freeTag } from './design-new.js';
@@ -21,7 +21,7 @@ import { newDesignId } from './design-parts.js';
 export type DesignScope = { kind: 'tile'; pageId: string; offerId: string } | { kind: 'page'; pageId: string };
 
 export function DesignMenu({ scope, anchor, onClose }: { scope: DesignScope; anchor: DOMRect; onClose: () => void }) {
-  const s = useStudio();
+  const s = useStudioPick('brand', 'document', 'setDesignsOpen', 'setOfferDesigns', 'setPageDesignTag', 'setRulesOpen', 'updateOverrides');
   usePopover(true, onClose);
   const box = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({ left: anchor.left, top: anchor.bottom + 6, visibility: 'hidden' });

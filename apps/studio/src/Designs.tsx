@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { designTags, forCms, readIncitoDesigns, type Offer, type OfferDesign } from '@incitio/schema';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 import { blankDesign, freeTag } from './design-new.js';
 import { Preview, TYPE_WORDS, newDesignId } from './design-parts.js';
 import { DesignEditor } from './DesignEditor.js';
@@ -31,7 +31,10 @@ function useExamples(): Offer[] {
 }
 
 export function DesignsPanel() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'brand', 'designEditing', 'designsFromRules', 'designsReturn', 'designsSaving', 'document',
+    'setDesignEditing', 'setDesignsOpen', 'setOfferDesigns', 'setRulesOpen'
+  );
   const [query, setQuery] = useState('');
   const [importing, setImporting] = useState(false);
   const [pasted, setPasted] = useState('');

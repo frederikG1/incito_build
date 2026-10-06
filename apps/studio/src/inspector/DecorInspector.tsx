@@ -1,4 +1,4 @@
-import { useStudio } from '../state.js';
+import { useStudio, useStudioPick } from '../state.js';
 import { Measure } from '../Measure.js';
 import { decorToBox } from '../box.js';
 
@@ -18,9 +18,7 @@ const CORNERS = [
 ] as const;
 
 export function DecorInspector({ decorId }: { decorId: string }) {
-  const {
-    document, updatePageImage, removePageImage, selectDecor, endGesture,
-  } = useStudio();
+  const { document, updatePageImage, removePageImage, selectDecor, endGesture } = useStudioPick('document', 'updatePageImage', 'removePageImage', 'selectDecor', 'endGesture');
   const page = document?.pages.find((entry) => entry.decorations.some((d) => d.id === decorId));
   const decor = page?.decorations.find((d) => d.id === decorId);
   if (!page || !decor) return null;

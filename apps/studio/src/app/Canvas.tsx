@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { ImageSize } from "@incitio/renderer";
-import { EDITOR_PX, useStudio } from "../state.js";
+import { EDITOR_PX, useStudio, useStudioPick } from "../state.js";
 import { Inspector } from "../Inspector.js";
 import { Tray } from "../Tray.js";
 import { Sheet } from "./Sheet.js";
@@ -11,7 +11,10 @@ import { InsertImage, PageTools } from "./PageTools.js";
  * inspector for whatever is in hand.
  */
 export function Canvas() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'brand', 'clearScrollTo', 'document', 'feed', 'scrollToPageId', 'seePage', 'select', 'selectDecor',
+    'selectNote', 'view'
+  );
   const canvasRef = useRef<HTMLElement>(null);
 
   /*

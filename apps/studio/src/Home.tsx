@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { APPROVAL_ROLE_NAMES, nextWeek, weekOf, weekRange, type CatalogWeek } from '@incitio/schema';
 import type { CatalogStatus, CatalogSummary } from './api.js';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 import { usePopover } from './popover.js';
 import { Cover } from './Cover.js';
 import { avisTitle } from './names.js';
@@ -39,7 +39,7 @@ function lately(iso: string): string {
 const SHORT_LIST = 5;
 
 export function Home() {
-  const s = useStudio();
+  const s = useStudioPick('brand', 'brandId', 'brands', 'catalogues', 'document', 'variantBase');
   const [all, setAll] = useState(false);
   const [making, setMaking] = useState<CatalogWeek | null>(null);
   const today = weekOf(new Date());
@@ -117,7 +117,10 @@ export function Home() {
  * and what it is for.
  */
 function Chain() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'brand', 'busy', 'document', 'openPage', 'sections', 'setDesignsOpen', 'setRulesOpen',
+    'setSectionsOpen', 'setThemesOpen', 'themes'
+  );
   const designs = s.brand?.offerDesigns.length ?? 0;
   const tags = new Set((s.brand?.offerDesigns ?? []).map((design) => design.tag)).size;
   const rules = s.brand?.offerRules.length ?? 0;
@@ -178,7 +181,7 @@ function WeekCard({ label, week, avis, away, from, openId, onMake }: {
   openId: string | null;
   onMake: () => void;
 }) {
-  const s = useStudio();
+  const s = useStudioPick('brand', 'busy', 'setCatalogueMeta');
   const open = avis?.id === openId;
   if (!avis) {
     return (
@@ -199,7 +202,7 @@ function WeekCard({ label, week, avis, away, from, openId, onMake }: {
   }
   return (
     <section className={`home__week${open ? ' is-open' : ''}`}>
-      <button className="home__cover" onClick={() => void openAvis(s, avis, open)} title={`Åbn ${avis.name}`} disabled={Boolean(s.busy)}>
+      <button className="home__cover" onClick={() => void openAvis(avis, open)} title={`Åbn ${avis.name}`} disabled={Boolean(s.busy)}>
         <Cover id={avis.id} updatedAt={avis.updatedAt} size="hero" />
       </button>
       <div className="home__info">
@@ -225,7 +228,7 @@ function WeekCard({ label, week, avis, away, from, openId, onMake }: {
  * Each one opens the screen it is about.
  */
 function WeekProgress({ avis }: { avis: CatalogSummary }) {
-  const s = useStudio();
+  const s = useStudioPick('busy', 'document', 'openBoard', 'openCatalogue', 'variantBase');
   // Only signatures that still hold — one with changes since is shown as such, never counted.
   const signed = new Set(avis.approvals ?? []);
   const stale = new Set(avis.stale ?? []);
@@ -261,30 +264,32 @@ function WeekProgress({ avis }: { avis: CatalogSummary }) {
 }
 
 /** Open an avis — or, when it is already the open one, go back into it. */
-async function openAvis(s: ReturnType<typeof useStudio.getState>, item: CatalogSummary, open: boolean) {
+/** Read at the click, so the buttons that open an avis need not subscribe to the store for it. */
+async function openAvis(item: CatalogSummary, open: boolean) {
+  const s = useStudio.getState();
   if (!open) await s.openCatalogue(item.id);
   s.openPage(null);
 }
 
 function OpenButton({ item, open, primary }: { item: CatalogSummary; open: boolean; primary?: boolean }) {
-  const s = useStudio();
+  const s = useStudioPick('busy');
   return (
     <button
       className={primary ? 'go' : 'thin'}
       disabled={Boolean(s.busy)}
-      onClick={() => void openAvis(s, item, open)}
+      onClick={() => void openAvis(item, open)}
     >{open ? 'Fortsæt' : 'Åbn'}</button>
   );
 }
 
 /** One saved avis on the front page: its cover, its name, when — the cover opens it. */
 function Tile({ item, openId }: { item: CatalogSummary; openId: string | null }) {
-  const s = useStudio();
+  const s = useStudioPick('brand', 'busy');
   const open = item.id === openId;
   const title = avisTitle(item.name, s.brand?.name);
   return (
     <div className={`home__tile${open ? ' is-open' : ''}${item.status === 'skjult' ? ' is-away' : ''}`}>
-      <button className="home__cover" onClick={() => void openAvis(s, item, open)} title={`Åbn ${item.name}`} disabled={Boolean(s.busy)}>
+      <button className="home__cover" onClick={() => void openAvis(item, open)} title={`Åbn ${item.name}`} disabled={Boolean(s.busy)}>
         <Cover id={item.id} updatedAt={item.updatedAt} />
         {open && <span className="home__now">Åben nu</span>}
       </button>
@@ -306,7 +311,7 @@ function Tile({ item, openId }: { item: CatalogSummary; openId: string | null })
 
 /** Rename, status, put away — asked for, not shown on every row. */
 function RowMenu({ item }: { item: CatalogSummary }) {
-  const s = useStudio();
+  const s = useStudioPick('setCatalogueMeta');
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState<string | null>(null);
   usePopover(open, () => { setOpen(false); setNaming(null); });
@@ -351,7 +356,7 @@ function RowMenu({ item }: { item: CatalogSummary }) {
  * avisen", so choosing is free.
  */
 function NewAvis({ week, from, onClose }: { week: CatalogWeek; from: CatalogSummary | null; onClose: () => void }) {
-  const s = useStudio();
+  const s = useStudioPick('busy', 'feed', 'sources', 'startWeek', 'themes');
   const [reuse, setReuse] = useState(Boolean(from));
   /*
    * This week's file is often already in — uploaded on Varer this

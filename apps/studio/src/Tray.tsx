@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { Offer } from '@incitio/schema';
 import { DEPARTMENTS, DEPARTMENT_NAMES, byImportance, departmentOf, type Department } from '@incitio/compose';
 import { formatPrice, incitoSlotOf, pageBlocks, sizedImage } from '@incitio/renderer';
-import { THUMB_PX, count, isVariantPiece, useStudio } from './state.js';
+import { THUMB_PX, count, isVariantPiece, useStudio, useStudioPick } from './state.js';
 
 /**
  * What has not been placed, on a shelf beside the page.
@@ -50,7 +50,13 @@ function rememberedWidth(): number {
 }
 
 /** A product as a card on the shelf. */
-function Good({ offer, where, must }: { offer: Offer; where?: string; must?: boolean }) {
+/*
+ * Memoised: the shelf holds the whole feed, and without it every product
+ * in it was drawn again on every change anywhere — 4,800 of the 6,000
+ * component renders ten arrow-key nudges caused. Its props are the offer
+ * (the same object while the feed is) and two primitives.
+ */
+const Good = memo(function Good({ offer, where, must }: { offer: Offer; where?: string; must?: boolean }) {
   const picked = useStudio((s) => s.librarySelection.includes(offer.id));
   const toggle = useStudio((s) => s.toggleLibraryPick);
 
@@ -81,10 +87,14 @@ function Good({ offer, where, must }: { offer: Offer; where?: string; must?: boo
       <b className="good__price">{formatPrice(offer.price, offer.currency)}</b>
     </button>
   );
-}
+});
 
 export function Tray() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'addOffersToPage', 'brand', 'busy', 'clearLibraryPicks', 'composeSlot', 'decorReady', 'fillSlot',
+    'librarySearch', 'librarySelection', 'openPageId', 'pageSlots', 'selectedIncito', 'selectedOfferId',
+    'setLibrarySearch', 'setTrayFilter', 'trayFilter'
+  );
   const feedOffers = useStudio((state) => state.feedOffers);
   const document = useStudio((state) => state.document);
   const placedAt = useStudio((state) => state.placedAt);

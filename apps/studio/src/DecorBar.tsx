@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { STYLE_LIMIT } from '@incitio/decor/prompt';
 import { backdropPrompt, DEFAULT_BACKDROP_STYLE } from '@incitio/decor/backdrop';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 
 /**
  * The mood-artwork controls, as a panel the toolbar folds out.
@@ -33,7 +33,7 @@ import { useStudio } from './state.js';
  * keys apart, useless to a shoulder.
  */
 function KeyField() {
-  const s = useStudio();
+  const s = useStudioPick('imageKeyTail', 'serverKey', 'setImageKey');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -102,7 +102,10 @@ function KeyField() {
 }
 
 export function DecorBar() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'activePageId', 'brand', 'busy', 'decorModel', 'decorNote', 'decorReady', 'decorStyle', 'decorate',
+    'document', 'drawBackdrops', 'setDecorNote', 'setDecorStyle'
+  );
   const [tuning, setTuning] = useState(false);
   const [open, setOpen] = useState(false);
   const pageNumber = useStudio((state) => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as api from './api.js';
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 import { usePopover } from './popover.js';
 
 /**
@@ -29,7 +29,7 @@ const labelOf = (label: string) => (label.startsWith('gendannet fra ')
   : LABELS[label] ?? (label || 'Gemt'));
 
 export function SaveStatus() {
-  const s = useStudio();
+  const s = useStudioPick('document', 'historyOpen', 'saveState', 'savedAt', 'setHistoryOpen');
   usePopover(s.historyOpen, () => s.setHistoryOpen(false));
   const said = {
     saved: s.savedAt ? `Gemt ${clock(s.savedAt)}` : 'Gemt',
@@ -55,7 +55,7 @@ export function SaveStatus() {
 }
 
 function History() {
-  const s = useStudio();
+  const s = useStudioPick('brandId', 'document', 'restoreVersion', 'save', 'saveState', 'savedAt', 'setHistoryOpen', 'variantBase');
   const [versions, setVersions] = useState<api.CatalogueVersion[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const id = (s.variantBase ?? s.document)?.id;
@@ -103,7 +103,7 @@ function History() {
 
 /** Under the header when somebody else saved the same avis in between. */
 export function ConflictNote() {
-  const s = useStudio();
+  const s = useStudioPick('resolveConflict', 'saveState');
   if (s.saveState !== 'conflict') return null;
   return (
     <div className="edition-note edition-note--conflict" role="alert">

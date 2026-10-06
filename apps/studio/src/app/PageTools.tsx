@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useStudio } from "../state.js";
+import { useStudio, useStudioPick } from "../state.js";
 import { DesignButton } from "../DesignMenu.js";
 import { SaveSection } from "../Weekly.js";
 import { FillPageButton } from "../FillPage.js";
@@ -139,7 +139,11 @@ function StandUp({ pageId }: { pageId: string }) {
  * stays put while you scroll, saying which page it is acting on.
  */
 export function PageTools() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'activePageId', 'addCell', 'addNote', 'brand', 'clearPage', 'document', 'layoutEditPageId',
+    'openPageId', 'removePageImage', 'selectDecor', 'selectedDecorId', 'setActivePage', 'setLayoutEdit',
+    'togglePanel'
+  );
   const pageId = s.activePageId ?? s.openPageId;
   const document = s.document;
   const index = document?.pages.findIndex((entry) => entry.id === pageId) ?? -1;

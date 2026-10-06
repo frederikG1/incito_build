@@ -62,3 +62,23 @@ test.describe('signed in', () => {
     await expect(undo).toBeDisabled();
   });
 });
+
+test.describe('saving', () => {
+  test('an edit is saved by itself and is there after a reload', async ({ page }) => {
+    const { catalogId, pages } = seeded();
+    await page.goto(`/#/superbrugsen/${catalogId}/side/${pages[0]}`);
+    await page.locator('.sheet [data-slot-id]').first().click();
+    const headline = page.getByLabel('Overskrift på flisen');
+    const wording = `E2E ${Date.now()}`;
+    await headline.fill(wording);
+    // Autosave: dirty, then saved, with no button pressed.
+    await expect(page.locator('.saving__state--saved')).toBeVisible({ timeout: 15_000 });
+    const stored = await (await page.request.get(`/api/brand/catalogs/${catalogId}`, { headers: { 'x-incitio-brand': 'superbrugsen' } })).json() as {
+      document: { pages: { placements: { overrides?: { displayName?: string | null } }[] }[] };
+    };
+    expect(stored.document.pages.flatMap((p) => p.placements).some((p) => p.overrides?.displayName === wording)).toBe(true);
+    await page.reload();
+    await page.locator('.sheet [data-slot-id]').first().click();
+    await expect(page.getByLabel('Overskrift på flisen')).toHaveValue(wording);
+  });
+});

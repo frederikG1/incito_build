@@ -1,4 +1,4 @@
-import { useStudio } from './state.js';
+import { useStudio, useStudioPick } from './state.js';
 
 /**
  * Every way a page can come into being, in one place.
@@ -34,7 +34,13 @@ import { useStudio } from './state.js';
  */
 
 export function Ways() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'brand', 'build', 'busy', 'closePanel', 'curationReady', 'decorReady', 'document', 'feed',
+    'generateLayout', 'importPublication', 'layoutAppend', 'layoutCells', 'layoutNote', 'maxPages',
+    'publicationAppend', 'publicationPages', 'publicationUrl', 'publicationWithOffers',
+    'setLayoutAppend', 'setLayoutCells', 'setLayoutNote', 'setMaxPages', 'setPublicationAppend',
+    'setPublicationPages', 'setPublicationUrl', 'setPublicationWithOffers', 'setReproduceOpen'
+  );
 
   if (!s.brand) return null;
   const busy = Boolean(s.busy);

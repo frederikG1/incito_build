@@ -1,5 +1,5 @@
 import {
-  MAX_REFERENCE_PAGES, count, pageNumbers, referenceJobs, useStudio, wholeDocument,
+  MAX_REFERENCE_PAGES, count, pageNumbers, referenceJobs, useStudio, useStudioPick, wholeDocument,
   type PageRun,
 } from './state.js';
 
@@ -18,7 +18,11 @@ import {
  * being disabled for reasons the screen does not give.
  */
 export function Reproduce() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'addReferences', 'brand', 'busy', 'clearReferences', 'curationReady', 'document', 'feed',
+    'moveReference', 'references', 'removeReference', 'reproduce', 'reproduceAppend', 'reproduceNote',
+    'reproduceOpen', 'setReferencePages', 'setReproduceAppend', 'setReproduceNote', 'setReproduceOpen'
+  );
   if (!s.reproduceOpen) return null;
 
   const hasKey = s.curationReady;
@@ -260,7 +264,7 @@ export function Reproduce() {
  * page five is not the reference for page one.
  */
 export function Comparison({ run }: { run: PageRun }) {
-  const s = useStudio();
+  const s = useStudioPick('document');
 
   const names = new Map((s.document?.offers ?? []).map((o) => [o.id, o.name]));
   const cost = (run.usage.inputTokens * 5 + run.usage.outputTokens * 25) / 1e6;

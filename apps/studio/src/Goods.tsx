@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Offer } from '@incitio/schema';
 import { DEPARTMENTS, DEPARTMENT_NAMES, departmentOf, offerImportance, type Department } from '@incitio/compose';
 import { formatPrice, sizedImage } from '@incitio/renderer';
-import { THUMB_PX, count, isVariantPiece, useStudio } from './state.js';
+import { THUMB_PX, count, isVariantPiece, useStudio, useStudioPick } from './state.js';
 
 /**
  * Varer — the whole week's products on one screen.
@@ -39,7 +39,10 @@ interface Row {
 }
 
 export function GoodsBoard() {
-  const s = useStudio();
+  const s = useStudioPick(
+    'addOffersToPage', 'brand', 'document', 'feed', 'feedOffers', 'goToOffer', 'goodsShow', 'openPage',
+    'setMustInclude', 'uploadFeed'
+  );
   const [show, setShow] = useState<Show>('alle');
   const [department, setDepartment] = useState<Department | ''>('');
   const [query, setQuery] = useState('');
