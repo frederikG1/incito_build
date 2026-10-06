@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Keyboar
 import { incitoSheet } from '@incitio/renderer';
 import { useStudio } from './state.js';
 import { PAGE_PX, marginsOf, sameBox, withField, type Box, type Field, type PagePx } from './box.js';
+import styles from './Measure.module.css';
 
 /**
  * "Mål" — the box in hand as numbers, in the CMS's pixels.
@@ -189,7 +190,7 @@ export function PxFields({ box, frame, frameSaid, free, fixedHeight, unlocked, o
     commit(field, Math.round(shown[field]) + step);
   };
   const input = (field: Field, label: string, disabled = false) => (
-    <label className="measure__field">
+    <label className={styles.measure__field}>
       <span>{label}</span>
       <input
         inputMode="decimal"
@@ -204,16 +205,16 @@ export function PxFields({ box, frame, frameSaid, free, fixedHeight, unlocked, o
   );
 
   return (
-    <section className="measure">
+    <section className={styles.measure}>
       <h4>
         Mål
         <small>{frameSaid} er {Math.round(frame.w)} × {Math.round(frame.h)} px</small>
       </h4>
-      <div className={`measure__row${free ? '' : ' measure__row--two'}`}>
+      <div className={free ? styles.measure__row : `${styles.measure__row} ${styles['measure__row--two']}`}>
         {input('w', 'Bredde')}
         {free && (
           <button
-            className={`measure__lock${locked ? ' is-on' : ''}`}
+            className={locked ? `${styles.measure__lock} ${styles.on}` : styles.measure__lock}
             title={locked ? 'Bredde og højde følges ad' : 'Bredde og højde hver for sig'}
             aria-pressed={locked}
             onClick={() => setLocked(!locked)}
@@ -221,8 +222,8 @@ export function PxFields({ box, frame, frameSaid, free, fixedHeight, unlocked, o
         )}
         {input('h', 'Højde', fixedHeight)}
       </div>
-      <p className="measure__sub">Afstand til kanten</p>
-      <div className="measure__grid">
+      <p className={styles.measure__sub}>Afstand til kanten</p>
+      <div className={styles.measure__grid}>
         {input('y', 'Top')}
         {input('x', 'Venstre')}
         {input('right', 'Højre')}

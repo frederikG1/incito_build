@@ -122,3 +122,18 @@ test.describe('the week\'s file', () => {
     await expect(verdict).toHaveCount(0);
   });
 });
+
+test.describe('the design menu', () => {
+  test('opens on top of the top bar, heading readable', async ({ page }) => {
+    const { catalogId, pages } = seeded();
+    await page.goto(`/#/superbrugsen/${catalogId}/side/${pages[0]}`);
+    await page.locator('.sheet [data-slot-id]').first().click();
+    await page.getByRole('button', { name: 'Skift ▾' }).click();
+    const menu = page.getByRole('dialog', { name: 'Design for varen' });
+    const box = (await menu.getByText('Design for varen').boundingBox())!;
+    // Whatever is drawn at the heading belongs to the menu, not to the bar above it.
+    const onTop = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[role=dialog]') !== null,
+      { x: box.x + 5, y: box.y + box.height / 2 });
+    expect(onTop).toBe(true);
+  });
+});

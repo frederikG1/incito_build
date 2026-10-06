@@ -7,6 +7,7 @@ import { usePopover } from './popover.js';
 import { templateOf } from './inventory.js';
 import { blankDesign, freeTag } from './design-new.js';
 import { newDesignId } from './design-parts.js';
+import styles from './DesignMenu.module.css';
 
 /**
  * "Which design" — asked where the product is, answered with pictures.
@@ -93,35 +94,35 @@ export function DesignMenu({ scope, anchor, onClose }: { scope: DesignScope; anc
   const cell = (tag: string) => {
     const design = designs.find((d) => d.tag === tag)!;
     return (
-      <span className="dmenu__cell" style={brandCssVars(brand) as CSSProperties}>
+      <span className={styles.dmenu__cell} style={brandCssVars(brand) as CSSProperties}>
         {example && <ImageSize.Provider value={THUMB_PX}><DesignTile design={design} offer={example} aspect={1} /></ImageSize.Provider>}
       </span>
     );
   };
 
   return createPortal(
-    <div ref={box} className="dmenu" role="dialog" aria-label={scope.kind === 'tile' ? 'Design for varen' : 'Design for siden'} style={place}
+    <div ref={box} className={styles.dmenu} role="dialog" aria-label={scope.kind === 'tile' ? 'Design for varen' : 'Design for siden'} style={place}
       // A portal still bubbles through React: the page under it must not take this click as "deselect".
       onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-      <header className="dmenu__head">
+      <header className={styles.dmenu__head}>
         <b>{scope.kind === 'tile' ? 'Design for varen' : 'Design for siden'}</b>
         <span>{scope.kind === 'tile'
           ? 'Gælder kun denne vare — ellers bestemmer reglerne og siden.'
           : 'Varer uden en regel eller eget valg tegnes sådan.'}</span>
       </header>
       {designs.length === 0 ? (
-        <p className="dmenu__empty">Kæden har ingen varedesigns endnu.</p>
+        <p className={styles.dmenu__empty}>Kæden har ingen varedesigns endnu.</p>
       ) : (
-        <div className="dmenu__grid">
-          <button className={`dmenu__item${chosen === null ? ' is-on' : ''}`} onClick={() => choose(null)}
+        <div className={styles.dmenu__grid}>
+          <button className={[styles.dmenu__item, chosen === null && styles.on].filter(Boolean).join(' ')} onClick={() => choose(null)}
             title={scope.kind === 'tile' ? 'Som reglerne og siden siger' : 'Kædens standard'}>
             {scope.kind === 'tile' && drawn && chosen === null
               ? cell(drawn.design.tag)
-              : pageTag ? cell(scope.kind === 'tile' ? pageTag : (brand.designTag ?? pageTag)) : <span className="dmenu__cell" />}
+              : pageTag ? cell(scope.kind === 'tile' ? pageTag : (brand.designTag ?? pageTag)) : <span className={styles.dmenu__cell} />}
             <small>{scope.kind === 'tile' ? 'Automatisk' : `Kædens (${brand.designTag ?? tags[0]})`}</small>
           </button>
           {tags.map((tag) => (
-            <button key={tag} className={`dmenu__item${chosen === tag ? ' is-on' : ''}${chosen === null && onTag === tag ? ' is-auto' : ''}`}
+            <button key={tag} className={[styles.dmenu__item, chosen === tag && styles.on, chosen === null && onTag === tag && styles.auto].filter(Boolean).join(' ')}
               onClick={() => choose(tag)} title={tag}>
               {cell(tag)}
               <small>{tag}</small>
@@ -129,7 +130,7 @@ export function DesignMenu({ scope, anchor, onClose }: { scope: DesignScope; anc
           ))}
         </div>
       )}
-      <footer className="dmenu__foot">
+      <footer className={styles.dmenu__foot}>
         <button className="go" disabled={!editable} onClick={() => { onClose(); s.setDesignsOpen(true, { designId: editable?.id ?? null }); }}>
           ✎ Ret {editable ? `«${editable.tag}»` : 'designet'}
         </button>
