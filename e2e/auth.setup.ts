@@ -1,4 +1,4 @@
-import { expect, test as setup } from '@playwright/test';
+import { expect, test as setup } from './fixtures.js';
 import { seeded } from './account.js';
 
 /** Sign in once through the real form; every studio test starts with this session. */

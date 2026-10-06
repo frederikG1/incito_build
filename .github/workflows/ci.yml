@@ -1,0 +1,55 @@
+# Every push to main and every pull request: the same checks a person
+# runs before committing, so a broken mapping or a red test is seen on
+# GitHub, not on print day.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, tests, schema, feeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run
+      - name: JSON Schema matches the zod schemas
+        run: npm run schema -- --check
+      # Every chain feed in data/feeds — not the demo CSV, whose three
+      # bad rows are there on purpose to show what a drop looks like.
+      - name: Feed health
+        run: npm run feed-health -- $(ls data/feeds/* | grep -v sample-offers.csv)
+
+  e2e:
+    name: Studio in a browser
+    runs-on: ubuntu-latest
+    needs: checks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+        env:
+          CI: '1'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

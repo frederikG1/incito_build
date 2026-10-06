@@ -26,6 +26,9 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${STUDIO}`,
     trace: 'retain-on-failure',
+    // Product photos would go through the image service worker; blocked so
+    // `fixtures.ts` can refuse them — see there.
+    serviceWorkers: 'block',
     screenshot: 'only-on-failure',
   },
   projects: [

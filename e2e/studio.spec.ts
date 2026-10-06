@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.js';
 import { seeded } from './account.js';
 
 const feed = (name: string) => fileURLToPath(new URL(`../data/feeds/${name}`, import.meta.url));
