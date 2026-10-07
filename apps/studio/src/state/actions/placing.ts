@@ -10,6 +10,7 @@ import { count, type StudioState } from '../model.js';
 import { message, reachable } from '../cluster.js';
 import { FRESH, reseat } from '../layout.js';
 import type { StoreContext } from '../context.js';
+import { printedOffers, sameShown } from '../twins.js';
 
 /** Varer sat på sider og i celler. */
 export function placingActions(ctx: StoreContext): Pick<StudioState, 'addOffersToPage' | 'removeOfferFromPage' | 'fillSlot' | 'composeSlot' | 'testCluster' | 'pageSlots'> {
@@ -32,7 +33,11 @@ export function placingActions(ctx: StoreContext): Pick<StudioState, 'addOffersT
        * caller can get round it.
        */
       const already = get().placedAt();
-      const wanted = [...new Set(offerIds)].filter((id) => !already.has(id));
+      // Nor the same product under another id — a publication's copy of a feed offer. See `sameShown`.
+      const printed = printedOffers(document);
+      const offerOf = (id: string) => document.offers.find((o) => o.id === id) ?? feedOffers.find((o) => o.id === id);
+      const twin = (id: string) => { const offer = offerOf(id); return Boolean(offer && printed.some((p) => sameShown(offer, p))); };
+      const wanted = [...new Set(offerIds)].filter((id) => !already.has(id) && !twin(id));
       if (wanted.length === 0) {
         const where = [...new Set(offerIds.map((id) => already.get(id)).filter(Boolean))];
         set({
@@ -260,7 +265,7 @@ export function placingActions(ctx: StoreContext): Pick<StudioState, 'addOffersT
        * be edited product by product.
        */
       if (options.compose && seated.length > 1) {
-        set({ busy: 'Billedmodellen sætter varerne op…', error: null, note: null });
+        set({ busy: 'AI sætter varerne op…', error: null, note: null });
         try {
           const drawn = await api.composeCluster(get().brandId!, {
             offers: seated,
@@ -341,26 +346,14 @@ export function placingActions(ctx: StoreContext): Pick<StudioState, 'addOffersT
       });
 
       /*
-       * The model's opinion, fetched behind the finished tile.
-       *
-       * Not awaited and never load-bearing: the cell is filled, the
-       * page prints, and if this never comes back the tile keeps the
-       * order it was picked in. Skipped for a composed tile, whose
-       * pack is one photograph, and for the compose path, where the
-       * placement call decides the positions a moment later and only
-       * the wording is worth having.
+       * No model here. A plain fill — "Saml i pladsen", or a drop of
+       * several products — used to ask the AI for the order and two
+       * lines of text behind the finished tile, which no button said and
+       * the house rule forbids (model calls only on an explicit action).
+       * The products stand in the order they were picked, in the chain's
+       * own arrangement; "Saml og stil pænt op" (`composeSlot`) is the
+       * AI way, and says so.
        */
-      if (seated.length > 1 && !options.compose) {
-        /*
-         * The model's order and wording finish THIS step: left open as
-         * the current gesture, they land in the same history entry as
-         * the fill, so one ⌘Z takes the whole cluster back. Anything
-         * the editor does in between closes it, and then the answer is
-         * a step of its own.
-         */
-        live.gesture = `settle/${assembled.id}`;
-        void settleGroup(pageId, slotId, assembled.id, options.arrange !== false);
-      }
     },
 
     async composeSlot(pageId, slotId, offerIds) {
@@ -472,7 +465,7 @@ export function placingActions(ctx: StoreContext): Pick<StudioState, 'addOffersT
 
       const slot = get().pageSlots(page.id)[0];
       if (!slot) {
-        set({ error: 'siden har ingen pladser' });
+        set({ error: 'Siden har ingen pladser at fylde. Vælg et layout til siden først.' });
         return;
       }
 

@@ -181,6 +181,13 @@ export const TemplateSlot = z.object({
    * cell when the page was read.
    */
   paper: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  /**
+   * The offer design tag this cell draws in, when the layout says so —
+   * a CMS section design names one per offer box ("Avis priskasse lang
+   * prio" for the lead, "Avis priskasse 2" for the rest). Above the
+   * chain's rules and the page's tag; below a choice made on the tile.
+   */
+  design: z.string().max(120).optional(),
 });
 export type TemplateSlot = z.infer<typeof TemplateSlot>;
 

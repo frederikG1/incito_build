@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TILE_ARRANGEMENTS, TILE_PARTS } from './tile.js';
+import { ImageAdjust } from './adjust.js';
 
 /**
  * Every edit a person or an agent can make to a catalogue, as data.
@@ -55,6 +56,29 @@ export const EditOp = z.discriminatedUnion('op', [
     offerId: Id,
     arrangement: z.enum(TILE_ARRANGEMENTS).nullable(),
   }).describe('How a several-product tile stands its products: row, stagger, grid or fan; null lets the page decide.'),
+  z.object({
+    op: z.literal('pack'),
+    offerId: Id,
+    index: z.number().int().min(0).max(7).describe('Which product of the cluster, 0 first, as the offer lists them.'),
+    offsetX: z.number().optional(),
+    offsetY: z.number().optional(),
+    scale: z.number().optional(),
+    rotate: z.number().optional(),
+    depth: z.number().int().optional(),
+    hidden: z.boolean().optional(),
+  }).describe('Move, size, turn, restack or hide one product inside a several-product tile. Offsets ±100 page %, scale 0.2–3, rotate ±180°, depth −4 (back) to 4 (front).'),
+  z.object({
+    op: z.literal('adjust'),
+    offerId: Id,
+    index: z.number().int().min(0).max(7).optional().describe('One product of a cluster; absent means the whole artwork.'),
+    adjust: ImageAdjust.nullable().describe('Merged over what is there; a key set to null-ish (0, false, "normal") is removed. null clears everything.'),
+  }).describe('Develop a tile\'s photograph: exposure (stops ±3), brightness/contrast/saturation/lightness (±1), hue (±180°), levels, curves, sharpen (0–3), blur (0–0.05 of width), edges, blend mode, skew (±45°), crop and mask. Never changes the image file.'),
+  z.object({
+    op: z.literal('adjustDecor'),
+    pageId: Id,
+    decorId: Id,
+    adjust: ImageAdjust.nullable(),
+  }).describe('Develop a picture on the page, as `adjust` does a tile\'s.'),
   z.object({ op: z.literal('pin'), offerId: Id, pinned: z.boolean() })
     .describe('Lock a tile in its slot: a new week and a re-layout leave it where it is.'),
   z.object({

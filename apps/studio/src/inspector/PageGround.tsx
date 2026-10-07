@@ -348,14 +348,17 @@ export function PageGround() {
             * tuned on this one — and it is one undo step.
             */}
           <div className="inspector__spread">
+            <span>Samme baggrund på</span>
             <button
               className="inspector__link"
+              title="Siderne efter denne får samme baggrund — ⌘Z fortryder"
               onClick={() => spreadBackground(page.id, 'resten')}
-            >Brug på resten af avisen</button>
+            >sider herefter</button>
             <button
               className="inspector__link"
+              title="Alle avisens varesider får samme baggrund — ⌘Z fortryder"
               onClick={() => spreadBackground(page.id, 'alle')}
-            >på alle sider</button>
+            >alle sider</button>
           </div>
         </>
       )}

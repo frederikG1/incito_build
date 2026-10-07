@@ -208,6 +208,14 @@ export interface DesignChoice {
  * of the same tag, it always answers the same — or null when the tag has
  * no design at all.
  */
+/** Whether a design has a place for this offer's picture: a packshot box, or — for a photograph — a background box. */
+export function drawsPicture(design: OfferDesign, offer: Offer): boolean {
+  if (!offer.imageUrl) return true;
+  const shown = design.layers.filter((l) => !l.is_hidden);
+  if (shown.some((l) => l.type === 'offer_image')) return true;
+  return offer.imageKind === 'lifestyle' && shown.some((l) => l.type === 'offer_bg_image');
+}
+
 export function chooseDesign(
   designs: readonly OfferDesign[],
   tag: string,
@@ -222,7 +230,16 @@ export function chooseDesign(
   const byType = typed.length > 0 ? typed : untyped.length > 0 ? untyped : pool;
   const wanted = options.a ? 'a' : 'b';
   const prioritised = byType.filter((d) => (d.offer_priority ?? 'b') === wanted);
-  const candidates = prioritised.length > 0 ? prioritised : byType;
+  const ranked = prioritised.length > 0 ? prioritised : byType;
+  /*
+   * Of the variants left, the ones that can draw THIS picture. A tag
+   * often holds one variant with a packshot box and one that lays a
+   * photograph under the whole cell (SuperBrugsen's "Sort, sort, hvid");
+   * taking turns blindly gave a packshot the photo variant, and the cell
+   * printed with no product in it. Turns still rotate among those that fit.
+   */
+  const fitting = ranked.filter((d) => drawsPicture(d, offer));
+  const candidates = fitting.length > 0 ? fitting : ranked;
   const design = candidates[((options.turn % candidates.length) + candidates.length) % candidates.length]!;
   const why = [
     `«${tag}»`,

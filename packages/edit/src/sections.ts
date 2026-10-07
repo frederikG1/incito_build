@@ -69,6 +69,7 @@ export function applySection(
     title: design.title,
     subtitle: design.subtitle,
     ground: design.ground,
+    ...(design.motif !== undefined ? { motif: design.motif } : {}),
     background: design.background,
     decorations: design.decorations.filter((d) => !d.offerId),
     notes: design.notes,
@@ -80,8 +81,9 @@ export function applySection(
   delete updated.layout;
   delete updated.layouts;
 
-  const templates = next && !brand.templates.some((t) => t.id === next.id) && !document.templates.some((t) => t.id === next.id)
-    ? [...document.templates, next]
+  // The section's own layout replaces the copy an earlier version left in the document — a re-imported CMS design keeps its id.
+  const templates = next && !brand.templates.some((t) => t.id === next.id)
+    ? [...document.templates.filter((t) => t.id !== next.id), next]
     : document.templates;
   return {
     document: { ...document, templates, pages: document.pages.map((p) => (p.id === pageId ? updated : p)) },

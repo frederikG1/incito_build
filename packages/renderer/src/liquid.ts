@@ -73,6 +73,12 @@ const savingWords = (text: string): string => text.replace(/\d{1,3}(?:\.\d{3})*(
   return value > WHOLE_FROM && figure.includes(',') ? figure.slice(0, figure.indexOf(',')) : figure;
 });
 
+/** "fra" on the line over a lowest-of-several price, after the pack word when there is one. */
+function fromSaid(from: boolean, head: string): string {
+  if (!from) return head;
+  return head ? `${head} fra` : 'fra';
+}
+
 export function incitoVars(offer: Offer, words: { name?: string | null; description?: string | null } = {}): Record<string, unknown> {
   const saving = offer.savings !== null && offer.savings > 0 ? offer.savings
     : offer.prePrice !== null && offer.prePrice > offer.price ? Math.round((offer.prePrice - offer.price) * 100) / 100 : null;
@@ -99,7 +105,13 @@ export function incitoVars(offer: Offer, words: { name?: string | null; descript
     offerMembershipPrice: member,
     offerMembershipSavings: savingSaid(memberSaving),
     offerMembershipRelativeSavings: memberSaving !== null ? Math.round((memberSaving / offer.price) * 100) : null,
-    offerCommentLabel1: blank(offer.pack || (member !== null ? 'Medlemspris' : '')),
+    /*
+     * The line over the figure — "1 pakke", or "fra" when the products
+     * under one price cost different amounts and the figure is the
+     * lowest. The chain's designs print `offerFromPrice` as a bare
+     * number, so without the word a "fra" price reads as everyone's.
+     */
+    offerCommentLabel1: blank(fromSaid(offer.priceFrom, offer.pack || (member !== null ? 'Medlemspris' : ''))),
     offerCommentLabel2: blank(said('multibuy')),
     offerCommentLabel3: blank(savingWords(said('saving'))),
     offerCustomLabel1: blank(tags.join(', ')),

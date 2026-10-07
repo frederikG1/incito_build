@@ -48,6 +48,12 @@ export async function patchCatalogue(
  * and is an ordinary document afterwards — and without a way to list
  * them the only route back to yesterday's work was to pay for it again.
  */
+/** Delete an avis for good — the server refuses a published one. */
+export async function deleteCatalogue(brandId: string, id: string): Promise<void> {
+  const response = await fetch(`${BASE}/brand/catalogs/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers(brandId) });
+  if (!response.ok) await fail(response);
+}
+
 export async function fetchCatalogues(brandId: string): Promise<CatalogSummary[]> {
   const response = await fetch(`${BASE}/brand/catalogs`, { headers: headers(brandId) });
   if (!response.ok) await fail(response);

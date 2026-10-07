@@ -1,0 +1,73 @@
+/*
+ * Live's own parts — see Live.tsx. The phone and its marks stay in
+ * boards.css; everything here is the side column: the state of the
+ * avis, its numbers, and one row per product with its two acts.
+ */
+.hint { margin: 0; font-size: var(--t-xs); color: var(--muted); }
+
+/* What the avis is right now, and its numbers. */
+.status {
+  display: flex; flex-direction: column; gap: var(--b-4);
+  padding: var(--b-4); background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  border-top: 4px solid var(--line-strong);
+}
+.status.on { border-top-color: #2f9e5b; }
+.state { display: flex; align-items: center; gap: var(--b-3); }
+.state > div { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.state b { font-size: var(--t-lg); font-weight: 650; letter-spacing: -0.01em; }
+.state small { font-size: var(--t-sm); color: var(--muted); }
+.pulse { width: 12px; height: 12px; border-radius: 50%; background: var(--line-dashed); flex: none; }
+.on .pulse { background: #2f9e5b; box-shadow: 0 0 0 0 rgb(47 158 91 / 0.5); animation: pulse 2s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 10px rgb(47 158 91 / 0); } 100% { box-shadow: 0 0 0 0 rgb(47 158 91 / 0); } }
+@media (prefers-reduced-motion: reduce) { .on .pulse { animation: none; } }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--b-2); margin: 0; }
+.stats > div { padding: 10px 12px; border-radius: 10px; background: var(--paper); display: flex; flex-direction: column-reverse; gap: 2px; }
+.stats dt { font-size: var(--t-xs); color: var(--muted); }
+.stats dd { margin: 0; font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stats .hot { background: #fbe9e3; }
+.stats .hot dd { color: var(--stop); }
+
+.search { width: 200px; margin-left: auto; }
+
+/* The products, page by page. */
+.rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.page {
+  position: sticky; top: 0; z-index: 1; padding: 12px 4px 6px; background: var(--surface);
+  font-size: var(--t-sm); font-weight: 600; color: var(--ink-2);
+}
+.none { padding: 12px 4px; font-size: var(--t-sm); color: var(--muted); }
+.row { border-radius: 10px; }
+.row + .row { border-top: 1px solid var(--line-soft); }
+.row.open { background: var(--paper); border-top-color: transparent; }
+.row.open + .row { border-top-color: transparent; }
+.line {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px; text-align: left;
+  font: inherit; color: inherit; border: none; background: none; border-radius: 10px; cursor: pointer;
+}
+.line:hover { background: var(--surface-hover); }
+.open .line:hover { background: none; }
+.thumb { width: 40px; height: 40px; flex: none; border-radius: 8px; background: var(--paper); display: grid; place-items: center; overflow: hidden; }
+.thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.out .thumb img { filter: grayscale(1); opacity: 0.5; }
+.name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.name b { font-weight: 600; font-size: var(--t-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.name small { font-size: var(--t-xs); color: var(--muted); }
+.out .name b { text-decoration: line-through; color: var(--muted); }
+.price { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--ink); color: #fff; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.chipOut { background: var(--stop); }
+
+/* The two acts, under the open row. */
+.acts { display: flex; flex-direction: column; gap: 8px; padding: 4px 8px 12px 60px; }
+.act { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 10px; align-items: center; margin: 0; font-size: var(--t-sm); color: var(--ink-2); }
+.act select, .act input {
+  font: inherit; font-size: var(--t-sm); width: 100%; padding: 6px 8px;
+  border: 1px solid var(--line-field); border-radius: 6px; background: var(--surface); color: var(--ink);
+}
+.act > button { min-width: 120px; }
+.kr { position: relative; display: block; }
+.kr input { padding-right: 34px; font-variant-numeric: tabular-nums; }
+.kr i { position: absolute; right: 10px; top: 50%; translate: 0 -50%; font-style: normal; font-size: var(--t-xs); color: var(--muted); pointer-events: none; }
+.danger:not(:disabled) { color: var(--stop); border-color: currentColor; }
+.note { margin: 2px 0 0; font-size: var(--t-xs); color: var(--muted); }

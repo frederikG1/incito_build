@@ -1,6 +1,7 @@
 import { useStudio, useStudioPick } from '../state.js';
 import { Measure } from '../Measure.js';
 import { decorToBox } from '../box.js';
+import { QuickAdjust } from '../darkroom/QuickAdjust.js';
 
 /*
  * A picture on the page, in hand — the chain's own or a drawn motif.
@@ -110,6 +111,8 @@ export function DecorInspector({ decorId }: { decorId: string }) {
           title="Tilbage i hjørnet, uden drejning"
         >Nulstil placering</button>
       </div>
+      <QuickAdjust target={{ kind: 'decor', pageId: page.id, decorId: decor.id }} title={decor.subject || 'Billede på siden'} />
+
       <button className="inspector__drop" onClick={() => removePageImage(page.id, decor.id)}>
         Tag af siden
       </button>

@@ -1,0 +1,5 @@
+/* What the open page is printed on, shown in the button that changes it — see PageTools. */
+.pagebar__bgthumb {
+  display: inline-block; width: 14px; height: 19px; margin-right: 6px; vertical-align: -5px;
+  border-radius: 2px; background: center / cover no-repeat var(--paper-sunken); outline: 1px solid var(--line-strong);
+}

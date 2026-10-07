@@ -293,6 +293,7 @@ const KEYS: [string, [string, string][]][] = [
     ['0', 'Tilbage hvor det stod'],
     ['⌫', 'Tag det af siden'],
     ['Dobbeltklik', 'Ret teksten der hvor den står'],
+    ['G', 'AI stiller varerne i den valgte flise op igen'],
     ['Esc', 'Slip — og tilbage til oversigten'],
   ]],
 ];

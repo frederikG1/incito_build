@@ -13,3 +13,4 @@ export * from './types.js';
 export * from './sections.js';
 export * from './editions.js';
 export * from './catalog.js';
+export * from './section-templates.js';

@@ -375,6 +375,8 @@ export interface StudioState {
   goodsShow: string | null;
   /** Mark products as "skal med" in the open avis — or take the mark off. */
   setMustInclude: (offerIds: string[], on: boolean) => void;
+  /** Let print checks go, or take them back — see `CatalogDocument.ignored`. */
+  setIgnored: (findingIds: string[], on: boolean) => void;
   /** The front page: this week, next week, and everything before. */
   openHome: () => void;
   /** Pladser, Live or Godkend — the avis read as inventory, as a live feed, as a sign-off. */
@@ -408,6 +410,8 @@ export interface StudioState {
   ) => Promise<void>;
   /** Rename an avis or change its status — the open one by editing it, any other on the server. */
   setCatalogueMeta: (id: string, patch: { name?: string; status?: api.CatalogStatus }) => Promise<void>;
+  /** Delete an avis for good — the open one is closed first, so nothing saves it back. */
+  deleteCatalogue: (id: string) => Promise<void>;
   /**
    * A new week's avis: last week's (`fromId`) carried onto the new week's
    * file, or — with no `fromId` — an empty one waiting for its pages.
@@ -683,6 +687,8 @@ export interface StudioState {
    */
   ownLayout: (pageId: string, rects: Record<string, { x: number; y: number; w: number; h: number }>) => void;
   setCellRect: (pageId: string, slotId: string, rect: { x: number; y: number; w: number; h: number }, gesture?: string) => void;
+  /** Several cells in one step — a dragged edge and the neighbours that share it. */
+  setCellRects: (pageId: string, rects: Record<string, { x: number; y: number; w: number; h: number }>, gesture?: string) => void;
   /** A new empty cell on the page, where there is room. */
   addCell: (pageId: string, rect: { x: number; y: number; w: number; h: number }) => void;
   /** Take a cell off the page; its product goes to the reserve. */
@@ -893,6 +899,15 @@ export interface StudioState {
    * then asked would be asking too late.
    */
   placeFromLibrary: (pageId: string, ref: string, hvor: 'baggrund' | 'på siden') => void;
+  /**
+   * One picture under several pages at once, as one undo step — or, with
+   * `null`, their backgrounds taken off. Measured once, like
+   * `placeFromLibrary`, so every page gets the same fit and strength.
+   * Image pages are skipped: their background is their artwork.
+   */
+  backgroundPages: (pageIds: string[], ref: string | null) => Promise<void>;
+  /** A file from the computer: into the chain's library, then under these pages. */
+  uploadBackground: (pageIds: string[], file: File) => Promise<void>;
   /** Which page the next products land on. */
   setActivePage: (pageId: string | null) => void;
   /**
@@ -1246,6 +1261,13 @@ export interface StudioState {
   saveSection: (pageId: string, name: string, tags: string[]) => Promise<void>;
   /** Every page of the open avis as a section — how a library starts. */
   saveAllSections: () => Promise<void>;
+  /**
+   * Section designs pasted from the Tjek CMS (Design templates →
+   * Sections → Clipboard → Copy) saved as the chain's sections, one per
+   * design. The same design pasted again updates its section. Says what
+   * it could not carry, and which offer designs the chain still lacks.
+   */
+  importCmsSections: (text: string) => Promise<{ saved: number; missing: string[]; left: string[] } | null>;
   removeSection: (id: string) => Promise<void>;
   /** A section as a new page, its cells dealt from the reserve by tag. */
   insertSection: (id: string, at?: number, batch?: string) => void;
@@ -1270,7 +1292,8 @@ export interface StudioState {
   feedChanges: FeedDiff | null;
   clearFeedChanges: () => void;
   /** Next week's avis, from this one's design and the new feed. */
-  carryWeek: () => void;
+  /** `forWeek`: the week asked for — it wins over the dates in the file. */
+  carryWeek: (forWeek?: CatalogWeek) => void;
   carryReport: (CarryReport & { from: string }) | null;
   dismissCarryReport: () => void;
   /** Let the last note go — the toast calls it when its time is up. */

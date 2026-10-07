@@ -100,6 +100,26 @@ describe('local variants', () => {
     expect(replay.offers.find((o) => o.id === '262023')!.price).toBe(7.9);
   });
 
+  it('keeps a store\'s own placing of the products inside a cluster, and leaves the base alone', () => {
+    const shown = resolveVariant(base, 'holbaek', brand).document;
+    const worked = applyOps(shown, [
+      { op: 'pack', offerId: '841334', index: 2, offsetX: 4.5, offsetY: -3, scale: 1.2, rotate: -8, depth: 2 },
+      { op: 'pack', offerId: '841334', index: 0, hidden: true },
+    ], brand).document;
+
+    const { variant, unrepresented } = recordVariant(base, base.variants![1]!, worked, brand);
+    expect(unrepresented).toEqual([]);
+    const replay = resolveVariant({ ...base, variants: [variant] }, 'holbaek', brand).document;
+    const pack = (d: CatalogDocument) => d.pages.flatMap((p) => p.placements).find((p) => p.offerId === '841334')!.overrides.pack;
+    expect(pack(replay)).toEqual(pack(worked));
+    expect(pack(replay)['2']).toMatchObject({ offsetX: 4.5, scale: 1.2, rotate: -8, depth: 2 });
+    expect(pack(resolveVariant(base, 'naestved', brand).document)).toEqual({});
+
+    // Put back where it was, it leaves no key behind.
+    const back = applyOps(worked, [{ op: 'pack', offerId: '841334', index: 0, hidden: false }], brand).document;
+    expect(Object.keys(pack(back))).toEqual(['2']);
+  });
+
   it('says what the ops cannot express instead of dropping it', () => {
     const after = { ...base, pages: [...base.pages, page('extra', 'sb/duo-2', [])] };
     expect(diffToOps(base, after, brand).unrepresented).toEqual(['page extra was added']);

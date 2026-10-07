@@ -71,6 +71,15 @@ export interface WriteVerdict {
  * change, so the log stays the whole answer to "what did the shopper
  * see" however the change arrived.
  */
+/**
+ * The price rules, minus what someone let go while the history is made up.
+ * With real price history nothing is let go: the law is the law.
+ */
+function priceStops(doc: CatalogDocument, prices: PriceSource) {
+  const found = priceRuleFindings(doc, prices);
+  return prices.demo ? heeded(doc, found) : found;
+}
+
 export function checkWrite(
   before: CatalogDocument,
   after: CatalogDocument,
@@ -80,9 +89,9 @@ export function checkWrite(
   const refused = newStops(bookingFindings(before), bookingFindings(after));
   const logged: WriteVerdict['logged'] = [];
   if (before.status === 'udgivet') {
-    refused.push(...newStops(priceRuleFindings(before, prices), priceRuleFindings(after, prices)));
+    refused.push(...newStops(priceStops(before, prices), priceStops(after, prices)));
     // Nor a hole in what readers already have: an emptied place, a product without a price or picture.
-    if (options.brand) refused.push(...newStops(printFindings(before, options.brand), printFindings(after, options.brand)));
+    if (options.brand) refused.push(...newStops(printFindings(before, options.brand), heeded(after, printFindings(after, options.brand))));
     const then = new Map(before.offers.map((offer) => [offer.id, offer.price]));
     for (const offer of after.offers) {
       const was = then.get(offer.id);
@@ -94,6 +103,16 @@ export function checkWrite(
 }
 
 export interface Blocker { id: string; said: string }
+
+/**
+ * The print checks left once what someone ignored is taken out — see
+ * `CatalogDocument.ignored`. Print checks only; the caller never passes
+ * price-rule or sold-place findings through this.
+ */
+export function heeded<F extends { id: string }>(document: CatalogDocument, findings: F[]): F[] {
+  const ignored = new Set(document.ignored ?? []);
+  return ignored.size ? findings.filter((finding) => !ignored.has(finding.id)) : findings;
+}
 
 /**
  * Why an avis may not be published yet — empty when it may.
@@ -119,7 +138,7 @@ export function publishBlockers(
     }
   }
   const stops = (doc: CatalogDocument) => [
-    ...priceRuleFindings(doc, prices), ...bookingFindings(doc), ...(brand ? printFindings(doc, brand) : []),
+    ...priceStops(doc, prices), ...bookingFindings(doc), ...(brand ? heeded(doc, printFindings(doc, brand)) : []),
   ].filter((stop) => stop.weight === 'stop');
   const seen = new Set<string>();
   for (const stop of stops(document)) {

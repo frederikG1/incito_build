@@ -224,6 +224,20 @@ describe('the print checks gate publishing', () => {
     expect(stored().status).not.toBe('udgivet');
   });
 
+  it('but a check someone let go does not — the empty place and the drawn one alike', async () => {
+    app = createApp(store, {
+      measure: async () => [{ id: 'p1:ost:tekst-klippet', kind: 'tekst', said: 'Side 1: teksten er klippet af', pageId: 'p1', pageNumber: 1, offerId: 'ost', weight: 'stop' }],
+    });
+    await put({ ...stored(), pages: [{ ...stored().pages[0]!, placements: [{ slotId: 'a', offerId: 'ost' }] }] } as CatalogDocument);
+    await put({ ...stored(), ignored: ['p1:tomme-pladser'] });
+    await signAll();
+    const still = await act('/publish', { who: 'Mette' });
+    expect(still.body.error).toBe('Side 1: teksten er klippet af');
+    await put({ ...stored(), ignored: ['p1:tomme-pladser', 'p1:ost:tekst-klippet'] });
+    await signAll();
+    expect((await act('/publish', { who: 'Mette' })).status).toBe(200);
+  });
+
   it('and a page that cannot be drawn is not published unmeasured', async () => {
     app = createApp(store, { measure: async () => { throw new Error('Chromium mangler'); } });
     await signAll();
@@ -266,5 +280,18 @@ describe('a published avis', () => {
     expect((await act('/live', { kind: 'tilbage', offerId: 'ost' })).status).toBe(200);
     expect(stored().pages[0]!.placements.find((p) => p.slotId === 'a')!.offerId).toBe('ost');
     expect((await act('/live', { kind: 'tilbage', offerId: 'ost' })).status).toBe(422);
+  });
+});
+
+describe('deleting an avis', () => {
+  it('deletes a draft, and refuses one that is published', async () => {
+    const del = () => app.request('/api/brand/catalogs/u36', { method: 'DELETE', headers: json });
+    store.save('superbrugsen', { ...stored(), status: 'udgivet' });
+    const refused = await del();
+    expect(refused.status).toBe(409);
+    expect(store.get('superbrugsen', 'u36')).not.toBeNull();
+    store.save('superbrugsen', { ...stored(), status: 'kladde' });
+    expect((await del()).status).toBe(200);
+    expect(store.get('superbrugsen', 'u36')).toBeNull();
   });
 });

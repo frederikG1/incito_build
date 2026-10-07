@@ -10,9 +10,10 @@ import { WEEK_KEY, count, type StudioState } from '../model.js';
 import { message } from '../cluster.js';
 import { sameAvis, rememberCells, sectionNaming, sectionOf, feedWeek } from '../layout.js';
 import type { StoreContext } from '../context.js';
+import { readCmsSectionDesigns, sectionTemplate } from '@incitio/cms/section-templates';
 
 /** Sektioner, temaer og ugens feed lagt over sidste uges avis. */
-export function sectionsActions(ctx: StoreContext): Pick<StudioState, 'setSectionsOpen' | 'setSectionsAt' | 'setThemesOpen' | 'saveThemes' | 'applyTheme' | 'refreshSections' | 'saveSection' | 'saveAllSections' | 'updateSectionFromPage' | 'pullSections' | 'removeSection' | 'insertSections' | 'insertSection' | 'dismissFeedArrival' | 'applyFeedChanges' | 'clearFeedChanges' | 'carryWeek' | 'dismissCarryReport' | 'clearNote' | 'startOver'> {
+export function sectionsActions(ctx: StoreContext): Pick<StudioState, 'setSectionsOpen' | 'setSectionsAt' | 'setThemesOpen' | 'saveThemes' | 'applyTheme' | 'refreshSections' | 'saveSection' | 'saveAllSections' | 'importCmsSections' | 'updateSectionFromPage' | 'pullSections' | 'removeSection' | 'insertSections' | 'insertSection' | 'dismissFeedArrival' | 'applyFeedChanges' | 'clearFeedChanges' | 'carryWeek' | 'dismissCarryReport' | 'clearNote' | 'startOver'> {
   const { set, get, reserveFor, mutate, clearUnderText, weekId, live } = ctx;
   return {
     setSectionsOpen: (sectionsOpen, at) => {
@@ -100,6 +101,66 @@ export function sectionsActions(ctx: StoreContext): Pick<StudioState, 'setSectio
         await get().refreshSections();
       } catch (error) {
         set({ busy: null, error: message(error) });
+      }
+    },
+
+    async importCmsSections(text) {
+      const { brandId, brand } = get();
+      if (!brandId) return null;
+      let designs;
+      try {
+        designs = readCmsSectionDesigns(text);
+      } catch (error) {
+        set({ error: `Kunne ikke læses: ${message(error)}` });
+        return null;
+      }
+      if (designs.length === 0) {
+        set({ error: 'Fandt ingen sektionsdesigns — kopiér fra Design templates → Sections i CMS’et.' });
+        return null;
+      }
+      set({ busy: `Henter ${count(designs.length, 'sektion', 'sektioner')} fra CMS’et…`, error: null });
+      const known = new Set((brand?.offerDesigns ?? []).map((d) => d.tag));
+      const missing = new Set<string>();
+      const left = new Set<string>();
+      // Several designs may share a tag — the CMS uses them in turn — so the second is "(2)".
+      const named = new Map<string, number>();
+      let saved = 0;
+      try {
+        for (const design of designs) {
+          const made = sectionTemplate(design);
+          for (const slot of made.template.slots) if (slot.design && !known.has(slot.design)) missing.add(slot.design);
+          for (const line of made.left) left.add(line);
+          const n = (named.get(made.name) ?? 0) + 1;
+          named.set(made.name, n);
+          const lower = made.name.toLowerCase();
+          await api.saveSection(brandId, {
+            // Stable per CMS design: pasting it again updates the section, and pages made from it follow.
+            id: `cms-${design.id}`.slice(0, 80),
+            name: n > 1 ? `${made.name} (${n})` : made.name,
+            tags: [
+              'cms',
+              ...(/overflow/.test(lower) ? ['overflow'] : []),
+              ...(/intro|forside|cover/.test(lower) ? ['forside'] : []),
+              ...(/outro|bagside/.test(lower) ? ['bagside'] : []),
+            ],
+            page: made.page,
+            template: made.template,
+            preview: [],
+            createdAt: '',
+          });
+          saved += 1;
+        }
+        set({
+          busy: null,
+          note: `${count(saved, 'sektion', 'sektioner')} hentet fra CMS’et`
+            + (missing.size ? ` · mangler varedesigns: ${[...missing].join(', ')}` : ''),
+        });
+        await get().refreshSections();
+        return { saved, missing: [...missing], left: [...left] };
+      } catch (error) {
+        set({ busy: null, error: message(error) });
+        await get().refreshSections();
+        return null;
       }
     },
 
@@ -268,9 +329,9 @@ export function sectionsActions(ctx: StoreContext): Pick<StudioState, 'setSectio
         scrollToPageId: pageId,
         activePageId: pageId,
         note: `${section.name} lagt ind som side ${where + 1}`
-          + (cells.length ? ` · ${placements.length} af ${cells.length} pladser fyldt fra reserven` : '')
+          + (cells.length ? ` · ${placements.length} af ${cells.length} pladser fyldt med ikke placerede varer` : '')
           + (cells.length > placements.length && wanted.length
-            ? ` — reserven har ikke flere ${wanted.map((tag) => DEPARTMENT_NAMES[tag].toLowerCase()).join('/')}-varer`
+            ? ` — der er ikke flere ikke placerede ${wanted.map((tag) => DEPARTMENT_NAMES[tag].toLowerCase()).join('/')}-varer`
             : ''),
       });
       if (!batch) clearUnderText([pageId]);
@@ -293,7 +354,7 @@ export function sectionsActions(ctx: StoreContext): Pick<StudioState, 'setSectio
           `${arrival.name} lagt ind`,
           count(changed.length, 'ændring', 'ændringer'),
           `${removed.length} udgået`,
-          `${added.length} nye i reserven`,
+          `${added.length} nye under Ikke placeret`,
         ].join(' · '),
       });
       get().refreshFindings();
@@ -304,13 +365,13 @@ export function sectionsActions(ctx: StoreContext): Pick<StudioState, 'setSectio
       get().refreshFindings();
     },
 
-    carryWeek() {
+    carryWeek(forWeek) {
       const { document, brand, brandId, feedOffers, past } = get();
       if (!document || !brand || !brandId || feedOffers.length === 0) return;
 
-      // The week the file is FOR, read off its own dates; next week when
-      // it does not say.
-      const week = feedWeek(feedOffers) ?? (document.week ? nextWeek(document.week) : get().week);
+      // The week asked for; else the week the file is FOR, read off its
+      // own dates; next week when it does not say.
+      const week = forWeek ?? feedWeek(feedOffers) ?? (document.week ? nextWeek(document.week) : get().week);
       let id = week ? weekId(brandId, week) : `${brandId}-${Date.now().toString(36)}`;
       // Never onto an avis that already exists: saving would write the new week over it.
       if (id === document.id || get().catalogues.some((saved) => saved.id === id)) id = `${id}-${Date.now().toString(36)}`;

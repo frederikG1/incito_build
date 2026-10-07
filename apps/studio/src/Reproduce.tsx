@@ -50,7 +50,7 @@ export function Reproduce() {
       <header className="repro__head">
         <h2>Genskab sider</h2>
         <p>
-          Giv systemet de sider, en kæde har trykt. Claude læser hver sides
+          Giv systemet de sider, en kæde har trykt. AI læser hver sides
           gitter, caster denne uges varer ind i det, og du får siderne tilbage
           i editoren som helt almindelige sider — til at rette, gemme og printe.
         </p>
@@ -273,10 +273,18 @@ export function Comparison({ run }: { run: PageRun }) {
     <div className="compare">
       <figure className="compare__ref">
         <img src={run.reference} alt={`Den side du gav os: ${run.referenceName}`} />
-        <figcaption>{run.referenceName}, som modellen så den</figcaption>
+        <figcaption>{run.referenceName} — siden blev bygget efter den</figcaption>
       </figure>
 
       <div className="compare__read">
+        {run.rejected > 0 && (
+          <p className="compare__dropped">
+            {count(run.rejected, 'plads', 'pladser')} blev ikke fyldt: AI foreslog en vare, som varefilen ikke har.
+          </p>
+        )}
+        {/* How the page was read, and what it cost — for whoever tunes the reading, not for the week's avis. */}
+        <details className="way__more">
+        <summary>Avanceret</summary>
         <h3>Sådan blev den læst</h3>
         <dl>
           <dt>Gitter</dt>
@@ -327,12 +335,7 @@ export function Comparison({ run }: { run: PageRun }) {
             </li>
           ))}
         </ul>
-        {run.rejected > 0 && (
-          <p className="compare__dropped">
-            {count(run.rejected, 'plads', 'pladser')} blev udeladt: modellen satte en vare
-            der, som feedet ikke har.
-          </p>
-        )}
+        </details>
       </div>
     </div>
   );

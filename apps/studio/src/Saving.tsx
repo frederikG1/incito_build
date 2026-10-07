@@ -25,7 +25,7 @@ const LABELS: Record<string, string> = {
   ops: 'Rettet udefra',
 };
 const labelOf = (label: string) => (label.startsWith('gendannet fra ')
-  ? `Gendannet fra udgave ${label.slice('gendannet fra '.length)}`
+  ? `Gendannet fra version ${label.slice('gendannet fra '.length)}`
   : LABELS[label] ?? (label || 'Gemt'));
 
 export function SaveStatus() {
@@ -79,7 +79,7 @@ function History() {
           <b>Historik</b>
           <button className="thin" onClick={() => void s.save()} disabled={s.saveState === 'saving'}>Gem nu</button>
         </div>
-        <p className="saving__hint">Avisen gemmes af sig selv, mens du arbejder. Hent en tidligere udgave tilbage her — ⌘Z fortryder det igen.</p>
+        <p className="saving__hint">Avisen gemmes af sig selv, mens du arbejder. Hent en tidligere version tilbage her — ⌘Z fortryder det igen.</p>
         {failed && <p className="saving__hint">Historikken kunne ikke hentes: {failed}</p>}
         {!versions && !failed && <p className="saving__hint">Henter…</p>}
         {versions?.length === 0 && <p className="saving__hint">Avisen er ikke gemt endnu.</p>}
@@ -88,7 +88,7 @@ function History() {
             <li key={version.version}>
               <span>
                 <b>{labelOf(version.label)}</b>
-                <small>{day(version.createdAt)} kl. {clock(version.createdAt)} · udgave {version.version}</small>
+                <small>{day(version.createdAt)} kl. {clock(version.createdAt)} · version {version.version}</small>
               </span>
               {index === 0
                 ? <i>den du ser</i>
@@ -108,7 +108,7 @@ export function ConflictNote() {
   return (
     <div className="edition-note edition-note--conflict" role="alert">
       <span>
-        <b>En anden har gemt avisen, mens du arbejdede.</b> Intet er overskrevet — vælg hvilken udgave der gælder.
+        <b>En anden har gemt avisen, mens du arbejdede.</b> Intet er overskrevet — vælg hvilken version der gælder.
       </span>
       <span className="edition-note__do">
         <button className="thin" onClick={() => void s.resolveConflict('theirs')}>Åbn deres</button>

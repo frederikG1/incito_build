@@ -1,0 +1,210 @@
+/*
+ * The image workshop — see Darkroom.tsx.
+ *
+ * Dark chrome round a neutral grey stage, for one reason: colour is
+ * judged against its surround, and the studio's warm paper would make
+ * every photograph look cooler than it prints. The grey is neutral
+ * (equal R, G and B); the tool chrome borrows the studio's own dark
+ * tokens, and the one colour of its own is each channel's, on the curve.
+ */
+.sheet {
+  --stage: #45464a;
+  --panel: var(--chrome, #16181d);
+  --panel-2: #1e2026;
+  --line: var(--chrome-line, #2c3038);
+  --ink: var(--chrome-ink, #e8eaed);
+  --ink-2: var(--chrome-ink-2, #b8c0cc);
+  --ink-3: var(--chrome-ink-3, #9aa0a8);
+  --accent: var(--hot, #2d6cdf);
+  --ch-r: #ef5a5f;
+  --ch-g: #3fb37f;
+  --ch-b: #5b83f0;
+
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 320px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    "bar bar bar"
+    "options options panel"
+    "tools stage panel";
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.sheet button,
+.sheet select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.sheet button:hover:not(:disabled) { border-color: var(--ink-3); }
+.sheet button:disabled { opacity: 0.45; cursor: default; }
+.sheet button:focus-visible,
+.sheet select:focus-visible,
+.sheet input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sheet .isOn { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.bar h2 { margin: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barActions { margin-left: auto; display: flex; gap: 8px; }
+.sheet .done { background: var(--ink); color: var(--panel); border-color: var(--ink); font-weight: 600; }
+.sheet .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.options {
+  grid-area: options;
+  /* One row, always: a bar that wraps when a selection appears moves the photograph under the pointer. */
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  height: 46px;
+  overflow-x: auto;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.segment { display: inline-flex; }
+.segment button { border-radius: 0; margin-left: -1px; }
+.segment button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.segment button:last-child { border-radius: 0 6px 6px 0; }
+.inline { display: inline-flex; align-items: center; gap: 8px; }
+.inline input[type='range'] { width: 120px; accent-color: var(--accent); }
+.inline output { min-width: 2.5em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.rule { flex: none; width: 1px; height: 24px; background: var(--line); }
+.options > * { flex: none; }
+.hint { color: var(--ink-3); }
+
+.tools {
+  grid-area: tools;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--line);
+}
+.tools button {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 8px 2px 6px;
+  font-size: 10.5px;
+  color: var(--ink-2);
+  background: transparent;
+  border-color: transparent;
+}
+.tools button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.tools button.isOn { color: #fff; }
+
+.stage {
+  grid-area: stage;
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--stage);
+}
+.frame {
+  position: relative;
+  touch-action: none;
+  /* Transparency, as Photoshop shows it: the cut-out's empty ground is not white. */
+  background: repeating-conic-gradient(#d9d9d9 0 25%, #f2f2f2 0 50%) 0 0 / 16px 16px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+.frame > img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; }
+.tool_rect, .tool_ellipse, .tool_crop { cursor: crosshair; }
+.tool_wand { cursor: cell; }
+.overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.ants, .antsUnder, .cropEdge { fill: none; vector-effect: non-scaling-stroke; }
+.antsUnder { stroke: #fff; stroke-width: 1.5; }
+.ants { stroke: #000; stroke-width: 1.5; stroke-dasharray: 5 5; animation: march 0.6s linear infinite; }
+.cropShade { fill: rgb(0 0 0 / 0.55); }
+.cropEdge { stroke: #fff; stroke-width: 1.5; }
+@keyframes march { to { stroke-dashoffset: -10; } }
+@media (prefers-reduced-motion: reduce) { .ants { animation: none; } }
+.note { position: absolute; bottom: 16px; left: 16px; right: 16px; margin: 0; color: var(--ink-2); text-align: center; }
+
+.panel {
+  grid-area: panel;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  padding: 4px 16px 24px;
+}
+.panel section { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.panel section:last-child { border-bottom: 0; }
+.panel h3 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.panelHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.panelHead h3 { margin: 0; }
+.channels { display: inline-flex; gap: 4px; }
+.channels button { padding: 2px 8px; font-size: 11px; font-weight: 600; }
+.ch_r { color: var(--ch-r) !important; }
+.ch_g { color: var(--ch-g) !important; }
+.ch_b { color: var(--ch-b) !important; }
+.channels .isOn { color: #fff !important; }
+.channels .isOn.ch_r { background: var(--ch-r); border-color: var(--ch-r); }
+.channels .isOn.ch_g { background: var(--ch-g); border-color: var(--ch-g); }
+.channels .isOn.ch_b { background: var(--ch-b); border-color: var(--ch-b); }
+
+.curve {
+  --tint: var(--ink);
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  background: #0f1014;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  touch-action: none;
+  cursor: crosshair;
+  overflow: visible;
+}
+.curve_r { --tint: var(--ch-r); }
+.curve_g { --tint: var(--ch-g); }
+.curve_b { --tint: var(--ch-b); }
+.curveGrid line { stroke: #2a2d34; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.histBefore { fill: none; stroke: var(--ink-3); stroke-width: 1; stroke-opacity: 0.5; vector-effect: non-scaling-stroke; }
+.histAfter { fill: var(--tint); fill-opacity: 0.3; }
+.curveDiagonal { stroke: #3a3e47; stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.curveLine { fill: none; stroke: var(--tint); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.curvePoint { fill: #0f1014; stroke: var(--tint); stroke-width: 2; vector-effect: non-scaling-stroke; cursor: grab; }
+.curvePoint.isHeld, .curvePoint:hover { fill: var(--tint); }
+
+.row { display: flex; gap: 8px; margin-top: 10px; }
+.slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-bottom: 8px;
+  color: var(--ink-2);
+}
+.slider output { font-variant-numeric: tabular-nums; color: var(--ink); font-size: 12px; }
+.slider output.isZero { color: var(--ink-3); }
+.slider input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent); }
+.check { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.select { display: grid; gap: 6px; color: var(--ink-2); }
+.say { margin: 8px 0 0; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
+
+@media (max-width: 760px) {
+  .sheet {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto minmax(240px, 1fr) minmax(0, 40%);
+    grid-template-areas: "bar" "options" "tools" "stage" "panel";
+  }
+  .tools { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .panel { border-left: 0; border-top: 1px solid var(--line); }
+}

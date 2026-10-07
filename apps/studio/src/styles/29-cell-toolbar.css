@@ -1,33 +1,5 @@
 /* ------------------------------------------------------ cell toolbar */
 
-.celltool {
-  position: absolute;
-  left: 0;
-  top: -40px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px;
-  background: var(--chrome, #16181d);
-  border-radius: 9px;
-  box-shadow: 0 8px 22px rgb(0 0 0 / 0.3);
-  white-space: nowrap;
-  cursor: default;
-}
-.celltool button {
-  font: inherit;
-  font-size: 12px;
-  padding: 4px 9px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #b8c0cc;
-  cursor: pointer;
-}
-.celltool button:hover,
-.celltool button.is-on { background: #2b3038; color: #fff; }
-
 /*
  * The page's empty cells, laid over the sheet by `EmptyCells`. The grid
  * tracks are copied off the printed page at runtime; nothing here

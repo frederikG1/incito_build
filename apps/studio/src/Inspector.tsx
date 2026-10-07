@@ -12,6 +12,7 @@ import { PackPanel } from './inspector/PackPanel.js';
 import { ArrangePanel } from './inspector/ArrangePanel.js';
 import { ContentPanel } from './inspector/ContentPanel.js';
 import { PartsPanel } from './inspector/PartsPanel.js';
+import { QuickAdjust } from './darkroom/QuickAdjust.js';
 
 type InspectorTab = 'indhold' | 'billede' | 'bokse';
 const INSPECTOR_TABS: [InspectorTab, string][] = [
@@ -138,6 +139,16 @@ export function Inspector() {
       {tab === 'billede' && (
         <>
           <PackPanel offer={offer} overrides={overrides} />
+          {/* The product in hand when one is, else the whole artwork. */}
+          <QuickAdjust
+            key={selectedPack ?? 'all'}
+            target={selectedPack !== null && offer.imagePack.length > 1
+              ? { kind: 'pack', offerId: offer.id, index: selectedPack }
+              : { kind: 'tile', offerId: offer.id }}
+            title={selectedPack !== null && offer.imagePack.length > 1
+              ? `${overrides.displayName ?? offer.name} · vare ${selectedPack + 1}`
+              : overrides.displayName ?? offer.name}
+          />
           <ArrangePanel offer={offer} />
           {/* The SHEET's own settings, at the foot of a panel about a vare.
               They are reachable from here because a page has no other panel

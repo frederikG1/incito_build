@@ -230,7 +230,7 @@ export function Ways() {
             <button
               className="ways__go"
               disabled={busy || !s.feed}
-              title={s.feed ? '' : 'Hent ugens varer fra fil først — i menuen øverst til venstre'}
+              title={s.feed ? '' : 'Hent ugens varer først — under Varer'}
               onClick={() => void s.build({ fresh: true })}
             >
               Byg udkast

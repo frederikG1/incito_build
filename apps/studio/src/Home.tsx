@@ -1,11 +1,13 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { APPROVAL_ROLE_NAMES, nextWeek, weekOf, weekRange, type CatalogWeek } from '@incitio/schema';
-import type { CatalogStatus, CatalogSummary } from './api.js';
+import { checkFeed, type CatalogStatus, type CatalogSummary } from './api.js';
+import type { FeedHealth } from '@incitio/brands';
 import { useStudio, useStudioPick } from './state.js';
 import { usePopover } from './popover.js';
 import { Cover } from './Cover.js';
 import { avisTitle } from './names.js';
-import { FeedCheck } from './FeedCheck.js';
+import { FeedHealthReport } from './FeedCheck.js';
+import { SectionGallery } from './Weekly.js';
 
 /**
  * Forsiden — where a week's work starts.
@@ -37,6 +39,8 @@ function lately(iso: string): string {
 }
 
 const SHORT_LIST = 5;
+/** How many weeks after next the front page offers to plan. */
+const AHEAD = 6;
 
 export function Home() {
   const s = useStudioPick('brand', 'brandId', 'brands', 'catalogues', 'document', 'variantBase');
@@ -44,18 +48,27 @@ export function Home() {
   const [making, setMaking] = useState<CatalogWeek | null>(null);
   const today = weekOf(new Date());
   const coming = nextWeek(today);
+  // Further out than next week: an avis is often planned three or four weeks ahead.
+  const ahead = useMemo(() => {
+    const weeks: CatalogWeek[] = [];
+    let week = coming;
+    for (let i = 0; i < AHEAD; i += 1) { week = nextWeek(week); weeks.push(week); }
+    return weeks;
+  }, [coming.week, coming.year]);
   const openId = (s.variantBase ?? s.document)?.id ?? null;
 
-  const { thisWeek, nextOne, others, latest, awayFor } = useMemo(() => {
+  const { thisWeek, nextOne, later, others, latest, awayFor } = useMemo(() => {
     const visible = s.catalogues.filter((c) => c.status !== 'skjult');
     const dated = visible.filter((c) => c.week).sort((a, b) => order(b.week) - order(a.week) || b.updatedAt.localeCompare(a.updatedAt));
     const mine = visible.filter((c) => sameWeek(c.week, today));
     const next = visible.filter((c) => sameWeek(c.week, coming));
-    const shown = new Set([mine[0]?.id, next[0]?.id]);
+    const later = ahead.map((week) => visible.find((c) => sameWeek(c.week, week)) ?? null);
+    const shown = new Set([mine[0]?.id, next[0]?.id, ...later.map((c) => c?.id)]);
     const away = s.catalogues.filter((c) => c.status === 'skjult');
     return {
       thisWeek: mine,
       nextOne: next,
+      later,
       // A week whose avis was put away says so, rather than "no avis".
       awayFor: (week: CatalogWeek) => away.find((c) => sameWeek(c.week, week)) ?? null,
       // Everything else, newest first; the put-away ones only when the whole list is asked for.
@@ -65,7 +78,7 @@ export function Home() {
       // What a new week is made from: the newest avis with a week before it.
       latest: (week: CatalogWeek) => dated.find((c) => order(c.week) < order(week)) ?? null,
     };
-  }, [s.catalogues, today.week, today.year]);
+  }, [s.catalogues, today.week, today.year, ahead]);
 
   const listed = others.filter((c) => all || c.status !== 'skjult');
   const shortList = all ? listed : listed.slice(0, SHORT_LIST);
@@ -84,6 +97,25 @@ export function Home() {
         <WeekCard label="Denne uge" week={today} avis={thisWeek[0] ?? null} away={awayFor(today)} openId={openId} from={latest(today)} onMake={() => setMaking(today)} />
         <WeekCard label="Næste uge" week={coming} avis={nextOne[0] ?? null} away={awayFor(coming)} openId={openId} from={latest(coming)} onMake={() => setMaking(coming)} />
       </div>
+
+      <section className="home__ahead" aria-label="Længere frem">
+        <span className="home__muted">Længere frem</span>
+        {ahead.map((week, i) => {
+          const avis = later[i];
+          return avis ? (
+            <div key={week.week} className="ahead__wrap">
+              <button className="ahead ahead--made" onClick={() => void openAvis(avis, avis.id === openId)} title={`Åbn ${avis.name}`}>
+                <b>Uge {week.week}</b><span>{weekRange(week)}</span><i>Åbn</i>
+              </button>
+              <RowMenu item={avis} />
+            </div>
+          ) : (
+            <button key={week.week} className="ahead" onClick={() => setMaking(week)} title={`Lav avisen for uge ${week.week}`}>
+              <b>Uge {week.week}</b><span>{weekRange(week)}</span><i>Lav</i>
+            </button>
+          );
+        })}
+      </section>
 
       {listed.length > 0 && (
         <section className="home__archive">
@@ -104,6 +136,8 @@ export function Home() {
       <Chain />
 
       {making && <NewAvis week={making} from={latest(making)} onClose={() => setMaking(null)} />}
+      {/* The chain's sections, reachable before any avis is open — to look through them, or bring them in from the CMS. */}
+      {!s.document && <SectionGallery />}
     </main>
   );
 }
@@ -146,8 +180,8 @@ function Chain() {
     {
       key: 'sections', glyph: '▤', title: 'Sektioner',
       count: s.sections.length ? `${s.sections.length} gemte sider` : 'ingen endnu',
-      said: s.document ? 'Gemte sidedesigns, fyldt med ugens varer' : 'Bruges når en avis er åben',
-      run: s.document ? () => { s.openPage(null); s.setSectionsOpen(true); } : null,
+      said: s.document ? 'Gemte sidedesigns, fyldt med ugens varer' : 'Gemte sidedesigns — eller hent dem fra CMS’et',
+      run: () => { if (s.document) s.openPage(null); s.setSectionsOpen(true); },
     },
   ];
   return (
@@ -164,7 +198,6 @@ function Chain() {
             </span>
           </button>
         ))}
-        <FeedCheck />
       </div>
     </section>
   );
@@ -186,11 +219,12 @@ function WeekCard({ label, week, avis, away, from, openId, onMake }: {
   if (!avis) {
     return (
       <section className="home__week home__week--empty">
-        <span className="home__label">{label} · uge {week.week}</span>
-        <p className="home__muted">Ingen avis endnu</p>
-        <button className="go home__make" disabled={Boolean(s.busy)} onClick={onMake}>+ Lav uge {week.week}</button>
+        <span className="home__label">{label}</span>
+        <b className="home__title">Uge {week.week}</b>
+        <p className="home__muted">Ingen avis endnu · {weekRange(week)}</p>
+        <button className="go home__make" disabled={Boolean(s.busy)} onClick={onMake}>Lav avisen for uge {week.week}</button>
         {from && !away && (
-          <span className="home__muted home__from">ud fra {from.week ? `uge ${from.week.week}` : from.name}</span>
+          <span className="home__muted home__from">Bygger videre på {from.week ? `uge ${from.week.week}` : from.name}</span>
         )}
         {away && (
           <button className="linkish home__toggle" onClick={() => void s.setCatalogueMeta(away.id, { status: 'kladde' })}>
@@ -206,12 +240,12 @@ function WeekCard({ label, week, avis, away, from, openId, onMake }: {
         <Cover id={avis.id} updatedAt={avis.updatedAt} size="hero" />
       </button>
       <div className="home__info">
-      <span className="home__label">{label} · uge {week.week}</span>
+      <span className="home__label">{label}</span>
       <b className="home__title">{avisTitle(avis.name, s.brand?.name)}</b>
       <span className="home__meta">
         {avis.pages} {avis.pages === 1 ? 'side' : 'sider'} · rettet {lately(avis.updatedAt)}
-        {avis.status !== 'kladde' && <i className={`home__pill home__pill--${avis.status}`}>{STATUS_WORDS[avis.status]}</i>}
       </span>
+      {avis.status !== 'kladde' && <i className={`home__pill home__pill--${avis.status}`}>{STATUS_WORDS[avis.status]}</i>}
       <WeekProgress avis={avis} />
       <div className="home__acts">
         <OpenButton item={avis} open={open} primary />
@@ -311,7 +345,7 @@ function Tile({ item, openId }: { item: CatalogSummary; openId: string | null })
 
 /** Rename, status, put away — asked for, not shown on every row. */
 function RowMenu({ item }: { item: CatalogSummary }) {
-  const s = useStudioPick('setCatalogueMeta');
+  const s = useStudioPick('deleteCatalogue', 'setCatalogueMeta');
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState<string | null>(null);
   usePopover(open, () => { setOpen(false); setNaming(null); });
@@ -319,7 +353,7 @@ function RowMenu({ item }: { item: CatalogSummary }) {
 
   return (
     <div className="home__more">
-      <button className="home__dots" aria-label={`Mere om ${item.name}`} aria-expanded={open} onClick={() => setOpen(!open)}>⋯</button>
+      <button className="home__dots" aria-label={`Omdøb, skift status eller slet ${item.name}`} title="Omdøb, status, slet" aria-expanded={open} onClick={() => setOpen(!open)}>⋯</button>
       {open && (
         <>
           <div className="sheetaway" onPointerDown={() => setOpen(false)} />
@@ -332,14 +366,31 @@ function RowMenu({ item }: { item: CatalogSummary }) {
               </form>
             )}
             <span className="home__menuhead">Status</span>
-            {(['kladde', 'klar', 'udgivet'] as const).map((status) => (
-              <button key={status} className={`docmenu__do${item.status === status ? ' is-on' : ''}`} onClick={() => set({ status })}>
-                {item.status === status ? '✓ ' : ''}{STATUS_WORDS[status]}
-              </button>
-            ))}
-            <button className="docmenu__do" onClick={() => set({ status: item.status === 'skjult' ? 'kladde' : 'skjult' })}>
-              {item.status === 'skjult' ? 'Hent frem igen' : 'Læg væk'}
-            </button>
+            {/* Publishing is signed off on Godkend, and the server refuses it anywhere else — so it is a way there, not a status to pick. */}
+            {item.status === 'udgivet' ? (
+              <span className="docmenu__note">Udgivet — trækkes tilbage under Godkend</span>
+            ) : (
+              <>
+                {(['kladde', 'klar'] as const).map((status) => (
+                  <button key={status} className={`docmenu__do${item.status === status ? ' is-on' : ''}`} onClick={() => set({ status })}>
+                    {item.status === status ? '✓ ' : ''}{STATUS_WORDS[status]}
+                  </button>
+                ))}
+                <button className="docmenu__do" onClick={() => { setOpen(false); void openAvis(item, false).then(() => useStudio.getState().openBoard('godkend')); }}>
+                  Udgiv… <small>under Godkend</small>
+                </button>
+                <button className="docmenu__do" onClick={() => set({ status: item.status === 'skjult' ? 'kladde' : 'skjult' })}>
+                  {item.status === 'skjult' ? 'Hent frem igen' : 'Læg væk'}
+                </button>
+                <button
+                  className="docmenu__do docmenu__do--danger"
+                  onClick={() => {
+                    setOpen(false);
+                    if (window.confirm(`Slet «${item.name}» for altid? Den kan ikke hentes tilbage.`)) void s.deleteCatalogue(item.id);
+                  }}
+                >Slet avisen…</button>
+              </>
+            )}
           </div>
         </>
       )}
@@ -356,7 +407,7 @@ function RowMenu({ item }: { item: CatalogSummary }) {
  * avisen", so choosing is free.
  */
 function NewAvis({ week, from, onClose }: { week: CatalogWeek; from: CatalogSummary | null; onClose: () => void }) {
-  const s = useStudioPick('busy', 'feed', 'sources', 'startWeek', 'themes');
+  const s = useStudioPick('brandId', 'busy', 'feed', 'sections', 'sources', 'startWeek', 'themes');
   const [reuse, setReuse] = useState(Boolean(from));
   /*
    * This week's file is often already in — uploaded on Varer this
@@ -373,6 +424,19 @@ function NewAvis({ week, from, onClose }: { week: CatalogWeek; from: CatalogSumm
   const [over, setOver] = useState(false);
   const [themeId, setThemeId] = useState<string | null | undefined>(undefined);
   const input = useRef<HTMLInputElement>(null);
+  /*
+   * The file judged as soon as it is chosen — the same verdict as
+   * Feedtjek — so a file that drops rows or lacks pictures is seen here,
+   * before the week is built from it.
+   */
+  const [health, setHealth] = useState<FeedHealth | null>(null);
+  useEffect(() => {
+    setHealth(null);
+    if (!file || !s.brandId) return;
+    let live = true;
+    void checkFeed(s.brandId, file).then((verdict) => { if (live) setHealth(verdict); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [file, s.brandId]);
   usePopover(true, onClose);
 
   return (
@@ -398,7 +462,9 @@ function NewAvis({ week, from, onClose }: { week: CatalogWeek; from: CatalogSumm
               )}
               <button className={`newavis__way${!reuse ? ' is-on' : ''}`} onClick={() => setReuse(false)}>
                 <b>Start fra bunden</b>
-                <span>Byg siderne op fra kædens sektioner.</span>
+                <span>{s.sections.length > 0
+                  ? 'Byg siderne op fra kædens sektioner.'
+                  : 'Kæden har ingen gemte sektioner endnu — du vælger bagefter, hvordan siderne laves.'}</span>
               </button>
             </div>
           </div>
@@ -420,6 +486,7 @@ function NewAvis({ week, from, onClose }: { week: CatalogWeek; from: CatalogSumm
                 ? <><b>{file.name}</b><span>{file === loaded ? 'Den indlæste varefil · klik for at vælge en anden' : 'Klik for at vælge en anden fil'}</span></>
                 : <><b>Vælg varefilen</b><span>eller træk den hertil</span></>}
             </button>
+            {health && (health.verdict !== 'ok' || health.noImage.count > 0) && <FeedHealthReport health={health} />}
           </div>
 
           {reuse && s.themes.length > 0 && (
@@ -443,6 +510,7 @@ function NewAvis({ week, from, onClose }: { week: CatalogWeek; from: CatalogSumm
           <button
             className="go"
             disabled={!file || Boolean(s.busy)}
+            title={file ? '' : 'Vælg ugens varefil først'}
             onClick={() => {
               if (!file) return;
               onClose();

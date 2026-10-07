@@ -14,7 +14,8 @@ import type { Finding } from './findings.js';
 export type QuickFix =
   | { kind: 'uge'; label: string; detail: string; pageId: string; lines: { from: string; to: string }[] }
   | { kind: 'plads'; label: string; detail: string; pageId: string }
-  | { kind: 'billede'; label: string; detail: string; offerId: string; imageUrl: string };
+  | { kind: 'billede'; label: string; detail: string; offerId: string; imageUrl: string }
+  | { kind: 'førpris'; label: string; detail: string; offerId: string; prePrice: number | null; savings: number };
 
 /** The lines on a page that name another week, with what they become. */
 export function staleLinesOf(document: CatalogDocument, pageId: string): { from: string; to: string }[] {
@@ -44,12 +45,34 @@ function spanOf(text: string, year: number): string {
   return low === high ? say(low) : `${say(low)}–${say(high)}`;
 }
 
+const cents = (value: number) => Math.round(value * 100) / 100;
+
 export function quickFixOf(
   document: CatalogDocument,
   finding: Finding,
   feed: Offer[],
   emptyOn: (pageId: string) => number,
 ): QuickFix | null {
+  if (finding.kind === 'førpris' && finding.offerId) {
+    const offer = document.offers.find((entry) => entry.id === finding.offerId);
+    if (!offer) return null;
+    // A saving that disagrees with its two prices: make it the difference.
+    if (finding.id.startsWith('spar:') && offer.prePrice !== null && offer.prePrice > offer.price) {
+      const savings = cents(offer.prePrice - offer.price);
+      return {
+        kind: 'førpris', label: 'Ret spar-beløbet', detail: `Spar ${savings.toFixed(2).replace('.', ',')} i stedet for ${offer.savings}`,
+        offerId: offer.id, prePrice: offer.prePrice, savings,
+      };
+    }
+    // Everything else: no before-price, no claim to check.
+    if (finding.id.startsWith('førpris:') || finding.id.startsWith('førlav:') || finding.id.startsWith('spar:')) {
+      return {
+        kind: 'førpris', label: 'Fjern førpris', detail: `${offer.name} vises kun med sin pris, uden førpris og spar`,
+        offerId: offer.id, prePrice: null, savings: 0,
+      };
+    }
+    return null;
+  }
   if (!finding.pageId) return null;
   if (finding.kind === 'uge') {
     const lines = staleLinesOf(document, finding.pageId);
@@ -94,6 +117,14 @@ export function applyQuickFix(document: CatalogDocument, fix: QuickFix): Catalog
     return {
       ...document,
       offers: document.offers.map((offer) => (offer.id === fix.offerId ? { ...offer, imageUrl: fix.imageUrl } : offer)),
+    };
+  }
+  if (fix.kind === 'førpris') {
+    return {
+      ...document,
+      offers: document.offers.map((offer) => (offer.id === fix.offerId
+        ? { ...offer, prePrice: fix.prePrice, savings: fix.savings, ...(fix.prePrice === null ? { savingsPercent: null, savingsMax: null } : {}) }
+        : offer)),
     };
   }
   if (fix.kind === 'uge') {

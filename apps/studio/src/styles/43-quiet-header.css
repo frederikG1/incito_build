@@ -1,0 +1,140 @@
+/* ------------------------------------------------- the quiet header (2026) */
+/*
+ * Fewer boxes. The header said everything at once — chain, avis, edition,
+ * six tabs in a grey tray, search with its shortcut, a pill, save status,
+ * undo, redo, PDF — each in its own border. What is left keeps the same
+ * jobs with less chrome: tabs are text, search is an icon, "Gemt" sits
+ * under the avis's name, undo/redo only on a page, the edition only when
+ * there are editions.
+ */
+.top { min-height: 60px; padding: 0 20px; gap: 6px; background: var(--surface); box-shadow: none; }
+
+/* The avis: name, and under it the dates and whether it is saved. */
+.top > .docwrap--doc { display: flex; align-items: center; gap: 0; flex: 0 1 auto; }
+.docwrap--doc .doc { border: 0; padding: 6px 8px; }
+.docwrap--doc .doc:hover { background: var(--paper); }
+.docwrap--doc .doc__name { font-size: 14px; font-weight: 650; }
+.docwrap--doc .saving { align-self: flex-end; margin: 0 0 7px -4px; }
+.docwrap--doc .top__save {
+  border: 0; background: none; padding: 2px 6px; border-radius: 6px;
+  font-size: 11.5px; font-weight: 500; color: var(--muted);
+}
+.docwrap--doc .top__save:hover:not(:disabled) { color: var(--ink-2); background: var(--paper); }
+.docwrap--doc .saving__dot { width: 6px; height: 6px; }
+
+/* Screens: text tabs, the one you are on lifted a little. */
+.navtabs { display: flex; align-items: center; gap: 2px; margin-left: 24px; }
+.navtabs button {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; font-size: 13.5px; font-weight: 500; white-space: nowrap;
+  padding: 7px 11px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer;
+  transition: color 120ms, background 120ms;
+}
+.navtabs button:hover { color: var(--ink); background: var(--paper); }
+.navtabs button.is-on { color: var(--ink); font-weight: 600; background: var(--paper); }
+.navtabs button.is-on::after {
+  content: ''; position: absolute; left: 11px; right: 11px; bottom: -11px; height: 2px; border-radius: 2px; background: var(--ink);
+}
+.navtabs .seg__count {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  display: inline-grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 600;
+  background: var(--paper-sunken); color: var(--ink-2);
+}
+.navtabs button.is-on .seg__count { background: var(--ink); color: #fff; }
+
+/* Search: an icon; ⌘K is in its title and still works. */
+.top .find { min-width: 0; width: 34px; height: 34px; padding: 0; justify-content: center; border-color: transparent; background: none; }
+.top .find:hover { background: var(--paper); border-color: transparent; }
+.top .find .find__word, .top .find kbd { display: none; }
+
+/* The print verdict stays a pill — it is the one status that asks for action. */
+.top .ready { padding: 5px 11px 5px 7px; font-size: 12.5px; }
+
+/* Undo/redo, on a page. */
+.top .top__history .quiet { width: 30px; height: 30px; border-radius: 8px; }
+.top .top__history .quiet:hover:not(:disabled) { background: var(--paper); }
+
+/* Who is signed in: initials, with the way out behind them. */
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%; border: 0; cursor: pointer;
+  display: grid; place-items: center; font: 600 12px var(--ui-font); letter-spacing: 0.02em;
+  background: var(--ink); color: #fff;
+}
+.avatar:hover { box-shadow: 0 0 0 3px var(--paper-sunken); }
+.avatar__menu { display: grid; gap: 2px; min-width: 220px; padding: 12px; }
+.avatar__menu small { color: var(--muted); margin-bottom: 8px; }
+.top .avatar__menu .top__signout { justify-self: start; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ------------------------------------------- the avis's own tools, quietly */
+.booktools { flex: none; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+.tool {
+  display: inline-flex; align-items: center; gap: 7px;
+  font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap;
+  padding: 6px 10px; border: 0; border-radius: 7px; background: none; color: var(--ink-2); cursor: pointer;
+}
+.tool:hover { background: var(--paper); color: var(--ink); }
+.tool__icon { font-size: 13px; color: var(--muted); width: 14px; text-align: center; }
+.tool:hover .tool__icon { color: var(--ink-2); }
+.tool__n { font-style: normal; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tool--on { color: #9d174d; }
+.tool--on .tool__icon { color: #db2777; }
+.seg--small button { font-size: 12.5px; padding: 5px 10px; }
+
+/* Narrow (down to the studio's 1024): the same things, closer together. */
+@media (max-width: 1280px) {
+  .top { padding: 0 12px; gap: 4px; }
+  .navtabs { margin-left: 8px; gap: 0; }
+  .navtabs button { padding: 7px 8px; font-size: 13px; }
+  .navtabs button.is-on::after { left: 8px; right: 8px; }
+  .top .docwrap--doc .doc__said { display: block; }
+  .top .docwrap--doc .saving__said { display: inline; }
+  .docwrap--doc .doc { padding: 6px 6px; }
+}
+
+/* Inside a page: back to the avis, and which page — text, not boxes. */
+.top .top__back { border-color: transparent; background: none; box-shadow: none; color: var(--muted); font-weight: 500; margin-left: 16px; }
+.top .top__back:hover { background: var(--paper); color: var(--ink); }
+.top .top__rule { display: none; }
+.top .pagestep { gap: 4px; }
+.top .pagestep .thin { border-color: transparent; background: none; box-shadow: none; width: 28px; height: 28px; padding: 0; border-radius: 8px; }
+.top .pagestep .thin:hover:not(:disabled) { background: var(--paper); }
+.top--side .docwrap { flex: 0 1 auto; }
+.aiask.aiask--inline { position: static; flex-basis: 100%; margin-top: 8px; box-shadow: none; }
+.docmenu__note { display: block; padding: 8px 12px; font-size: 12.5px; color: var(--muted); }
+.banner--error { display: flex; align-items: flex-start; gap: 12px; } .banner--error > span { flex: 1; } .banner__x { border: 0; background: none; font: inherit; font-size: 18px; line-height: 1; color: inherit; cursor: pointer; padding: 0 4px; }
+.pdf__caveat { display: block; margin-top: 4px; font-size: 12px; color: var(--stop-ink); font-weight: 600; }
+
+/* ---------------------------------------- weeks further out, on the front page */
+.home__ahead { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 16px 0 4px; }
+.home__ahead > .home__muted { grid-column: 1 / -1; font-size: 12.5px; }
+.ahead {
+  display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 8px; text-align: left;
+  font: inherit; font-size: 13px; cursor: pointer; min-width: 0;
+  padding: 9px 12px; border: 1px dashed var(--line-dashed); border-radius: 10px; background: none; color: var(--ink-2);
+}
+.ahead:hover { border-color: var(--hot); color: var(--ink); background: var(--surface); }
+.ahead b { font-weight: 600; }
+.ahead span { grid-column: 1 / -1; grid-row: 2; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ahead i { font-style: normal; font-size: 12px; font-weight: 600; color: var(--hot); }
+.ahead--made { border-style: solid; border-color: var(--line); background: var(--surface); }
+.ahead__wrap { position: relative; display: grid; min-width: 0; }
+.ahead__wrap > .ahead { padding-right: 36px; }
+.ahead__wrap > .home__more { position: absolute; top: 0; bottom: 0; right: 4px; display: flex; align-items: center; }
+/* Lifted while its menu is open, so the avis covers under it do not paint over the menu. */
+.ahead__wrap:has(.home__menu) { z-index: 50; }
+.docmenu__do--danger { color: var(--stop-ink); }
+
+/* The avis menu on the front page: rows, not a stack of bordered buttons. */
+.home__menu { padding: 6px; display: grid; gap: 1px; }
+.home__menu .docmenu__do {
+  border: 0; border-radius: 7px; background: none; text-align: left;
+  font-size: 13px; padding: 7px 10px; color: var(--ink);
+}
+.home__menu .docmenu__do:hover:not(:disabled) { background: var(--paper); color: var(--ink); }
+.home__menu .docmenu__do.is-on { font-weight: 600; }
+.home__menu .docmenu__do small { color: var(--muted); margin-left: 4px; }
+.home__menu .docmenu__do--danger, .home__menu .docmenu__do--danger:hover:not(:disabled) { color: var(--stop-ink); }
+.home__menu .home__menuhead { margin: 8px 10px 2px; }
+.home__menu .docmenu__do--danger { margin-top: 4px; border-top: 1px solid var(--line-soft); border-radius: 0 0 7px 7px; padding-top: 9px; }
+.rule__warn { font-weight: 600; color: var(--warn-ink); }

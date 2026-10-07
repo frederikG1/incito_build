@@ -1,0 +1,10 @@
+/* Section designs from the CMS, in the Sektioner gallery — the paste box Varedesigns already has. */
+.secgal__import { margin: 0 20px 12px; }
+.secgal__said { margin: 0 20px 12px; padding: 10px 14px; list-style: none; border-radius: 8px; background: var(--ok); color: var(--ok-ink); font-size: 13px; line-height: 1.5; }
+.secgal__said li + li { color: var(--ink-2); }
+
+/* Where a never-printed section's offers will stand, over its thumbnail. */
+.sec__cells { position: absolute; top: 0; left: 0; width: 100%; pointer-events: none; }
+/* Sized like the page drawn under it, which keeps its own shape and is cropped by the card. */
+.sec__cells i { position: absolute; box-sizing: border-box; border: 1.5px dashed rgb(45 108 223 / 0.75); border-radius: 3px; background: rgb(255 255 255 / 0.25); }
+.sec__cells b { position: absolute; left: 6px; top: 6px; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 600; background: rgb(22 24 29 / 0.78); color: #fff; }

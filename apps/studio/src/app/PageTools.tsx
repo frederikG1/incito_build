@@ -43,15 +43,21 @@ export function InsertImage({ at }: { at: number }) {
  * deleting are the overview's work (drag, ＋, ×) and Slet side already
  * sits in the bar, so repeating them here was a second, slower door.
  */
-function PageMore({ pageId }: { pageId: string }) {
+function PageMore({ pageId, offers }: { pageId: string; offers: boolean }) {
   const [open, setOpen] = useState(false);
   usePopover(open, () => setOpen(false));
   const [saving, setSaving] = useState(false);
   const removePage = useStudio((s) => s.removePage);
+  const clearPage = useStudio((s) => s.clearPage);
 
   return (
     <div className="more">
-      <button onClick={() => { setOpen(!open); setSaving(false); }} aria-expanded={open} title="Mere">
+      <button
+        onClick={() => { setOpen(!open); setSaving(false); }}
+        aria-expanded={open}
+        aria-label="Flere handlinger for siden"
+        title="Gem som sektion, tøm eller slet siden"
+      >
         ⋯
       </button>
       {open && (
@@ -63,6 +69,12 @@ function PageMore({ pageId }: { pageId: string }) {
             ) : (
               <button onClick={(event) => { event.stopPropagation(); setSaving(true); }}>
                 ☆ Gem som sektion…
+              </button>
+            )}
+            {/* Out of the bar, like Slet: emptying a page is not an everyday click. */}
+            {offers && (
+              <button onClick={() => clearPage(pageId)} title="Varerne går tilbage på listen; designet bliver — ⌘Z fortryder">
+                Tøm siden for varer
               </button>
             )}
             {/* Out of the bar: a red word beside everyday buttons invites the wrong click. */}
@@ -165,11 +177,18 @@ export function PageTools() {
           title="Billeder på siden, baggrund og kædens billedbibliotek"
           onClick={() => { s.setActivePage(page.id); s.togglePanel("stemning"); }}
         >
-          Billeder og baggrund
+          {page.background && (
+            <i
+              className="pagebar__bgthumb"
+              aria-hidden="true"
+              style={{ backgroundImage: `url("${page.background.imageUrl}")` }}
+            />
+          )}
+          {page.background ? "Baggrund og billeder" : "+ Baggrund og billeder"}
         </button>
         <button
           className={`pagebar__pics${editing ? " is-editing" : ""}`}
-          title="Træk i felterne for at gøre dem større, mindre eller flytte dem (Esc er færdig)"
+          title="Træk i pladserne for at gøre dem større, mindre eller flytte dem (Esc er færdig)"
           onClick={() => s.setLayoutEdit(editing ? null : page.id)}
         >
           {editing ? "Færdig" : "Rediger layout"}
@@ -177,22 +196,13 @@ export function PageTools() {
         {editing && (
           <button
             className="pagebar__pics"
-            title="Et nyt, tomt felt midt på siden"
+            title="En ny, tom plads midt på siden"
             onClick={() => s.addCell(page.id, { x: 0.3, y: 0.4, w: 0.4, h: 0.25 })}
           >
-            + Felt
+            + Plads
           </button>
         )}
         {page.kind === "offers" && <FillPageButton pageId={page.id} />}
-        {page.kind === "offers" && (
-          <button
-            className="pagebar__pics"
-            onClick={() => s.clearPage(page.id)}
-            title="Tag alle varer af siden og behold designet — ⌘Z fortryder"
-          >
-            Tøm siden
-          </button>
-        )}
         <button
           className="pagebar__pics"
           title="Læg en tekst på siden — flyt den med musen, skriv den i panelet til højre"
@@ -240,7 +250,7 @@ export function PageTools() {
         </div>
       )}
       <div className="tools__gap" />
-      <PageMore pageId={page.id} />
+      <PageMore pageId={page.id} offers={page.kind === "offers"} />
     </div>
   );
 }

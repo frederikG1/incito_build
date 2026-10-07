@@ -9,7 +9,7 @@ import type { StoreContext } from '../context.js';
 
 /** Start, feed, bygning, gem, historik og PDF — avisen som fil. */
 export function catalogueActions(ctx: StoreContext): Pick<StudioState, 'start' | 'signInAs' | 'uploadFeed' | 'build' | 'save' | 'persist' | 'setHistoryOpen' | 'restoreVersion' | 'resolveConflict' | 'refreshCatalogues' | 'openCatalogue' | 'downloadPdf'> {
-  const { set, get, loadFeed, mutate, askingWeek, forWeek, live } = ctx;
+  const { set, get, replacing, loadFeed, mutate, askingWeek, forWeek, live } = ctx;
   return {
     async start(asked) {
       /*
@@ -276,13 +276,12 @@ export function catalogueActions(ctx: StoreContext): Pick<StudioState, 'start' |
         const notes = [
           reply.source.name,
           `${reply.document.pages.length} sider af ${reply.offerCount} tilbud`,
-          'kategorisortering — ingen model',
           // The number that says the file is the wrong week's.
           ...(reply.outsideWeek > 0
             ? [`${reply.outsideWeek} gælder ikke i ugen og kom ikke med`] : []),
           ...(reply.dropped > 0 ? [`${reply.dropped} tilbud kunne ikke være med`] : []),
           ...(reply.substitutions.length > 0
-            ? [`${reply.substitutions.length} sider fik en anden skabelon`]
+            ? [`${reply.substitutions.length} sider fik et andet layout`]
             : []),
         ];
 
@@ -308,10 +307,10 @@ export function catalogueActions(ctx: StoreContext): Pick<StudioState, 'start' |
         }
 
         const document = forWeek(reply.document);
+        const before = get().document?.pages.length ? get().document : null;
         set({
           document,
-          past: [],
-          future: [],
+          ...replacing(before),
           // The library deals onto a page, and a fresh document needs
           // one named or the first click would have nowhere to land.
           activePageId: document.pages[0]?.id ?? null,
@@ -323,7 +322,7 @@ export function catalogueActions(ctx: StoreContext): Pick<StudioState, 'start' |
           // The canvas now shows a plain draft, not rebuilt pages, so
           // the comparison strips have nothing left to compare.
           reproductions: [],
-          note: notes.join(' · '),
+          note: [...notes, ...(before ? ['de forrige sider er ét ⌘Z væk'] : [])].join(' · '),
           /*
            * The feed is another week's.
            *
@@ -336,9 +335,9 @@ export function catalogueActions(ctx: StoreContext): Pick<StudioState, 'start' |
            */
           ...(reply.inWeek === 0
             ? {
-              error: `Ingen varer i feedet gælder i uge ${week?.week}`
-                + ' — siderne er bygget på hele filen. Upload ugens feed,'
-                + ' eller ret ugen i bjælken.',
+              error: `Ingen varer i varefilen gælder i uge ${week?.week}`
+                + ' — siderne er bygget på hele filen. Hent uge'
+                + ` ${week?.week}s varefil under Varer.`,
             }
             : reply.curationError ? { error: reply.curationError } : {}),
         });
@@ -420,7 +419,7 @@ export function catalogueActions(ctx: StoreContext): Pick<StudioState, 'start' |
       get().openVariant(null);
       const current = get().document;
       if (!brandId || !current) return;
-      set({ busy: 'Henter den tidligere udgave…', error: null });
+      set({ busy: 'Henter den tidligere version…', error: null });
       try {
         const earlier = await api.fetchVersion(brandId, current.id, version);
         live.gesture = null;
@@ -440,7 +439,7 @@ export function catalogueActions(ctx: StoreContext): Pick<StudioState, 'start' |
       const current = get().storedDocument();
       if (!brandId || !current) return;
       if (keep === 'mine') {
-        if (await get().persist('manuel', true)) set({ note: 'Din udgave er gemt — kollegaens ligger i historikken' });
+        if (await get().persist('manuel', true)) set({ note: 'Din version er gemt — kollegaens ligger i historikken' });
         return;
       }
       get().openVariant(null);
@@ -448,7 +447,7 @@ export function catalogueActions(ctx: StoreContext): Pick<StudioState, 'start' |
       await get().openCatalogue(current.id);
       // Yours one undo step back — ⌘Z brings it back if theirs was the wrong choice.
       if (mine && get().document?.id === mine.id) set({ past: [mine] });
-      set({ note: 'Kollegaens udgave er åbnet — ⌘Z henter din tilbage' });
+      set({ note: 'Kollegaens version er åbnet — ⌘Z henter din tilbage' });
     },
 
     async refreshCatalogues() {
@@ -538,8 +537,8 @@ export function catalogueActions(ctx: StoreContext): Pick<StudioState, 'start' |
           set({
             busy: null,
             error: get().saveState === 'conflict'
-              ? 'Avisen er gemt af en anden imens — vælg hvilken udgave der gælder, før du printer.'
-              : 'Avisen kunne ikke gemmes, så PDF\'en ville vise den gamle udgave. Prøv igen om lidt.',
+              ? 'Avisen er gemt af en anden imens — vælg hvilken version der gælder, før du printer.'
+              : 'Avisen kunne ikke gemmes, så PDF\'en ville vise den gamle version. Prøv igen om lidt.',
           });
           return;
         }

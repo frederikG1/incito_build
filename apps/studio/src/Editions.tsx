@@ -138,7 +138,7 @@ export function SectionUpdates() {
   return (
     <div className="edition-note edition-note--sections" role="status">
       <span>
-        {behind.length === 1 ? 'Én side' : `${behind.length} sider`} bruger en ældre udgave af {names.length === 1 ? `sektionen «${names[0]}»` : `${names.length} sektioner`}
+        {behind.length === 1 ? 'Én side' : `${behind.length} sider`} bruger en ældre version af {names.length === 1 ? `sektionen «${names[0]}»` : `${names.length} sektioner`}
         {' '}(side {behind.map((b) => numberOf.get(b.pageId)).join(', ')}).
         {' '}<button className="linkish" onClick={() => s.pullSections()}>Hent det nye design</button>
         <span className="edition-note__muted"> — varerne bliver stående</span>
@@ -308,7 +308,7 @@ function EditionRow({ check, open, onToggle, numberOf, feeds }: {
           <div className="editions__actions">
             <input ref={file} type="file" hidden onChange={(event) => { const picked = event.target.files?.[0]; event.target.value = ''; void take(picked); }} />
             <button className="thin" onClick={() => file.current?.click()}>
-              {id ? (check.feed ? 'Nyt feed til udgaven' : 'Upload udgavens feed') : 'Nyt ugefeed'}
+              {id ? (check.feed ? 'Ny varefil til udgaven' : 'Hent udgavens varefil') : 'Ny varefil'}
             </button>
             {id && <button className="thin" onClick={() => { s.openVariant(id); useStudio.setState({ view: 'bog' }); }}>Åbn udgaven</button>}
             {id && (
@@ -336,7 +336,7 @@ function EditionRow({ check, open, onToggle, numberOf, feeds }: {
 
           {!check.feed && (
             <p className="editions__muted">
-              {id ? 'Ingen egen fil — udgaven sælger det samme som alle butikker, plus det der er rettet i den.' : 'Intet ugefeed indlæst.'}
+              {id ? 'Ingen egen fil — udgaven sælger det samme som alle butikker, plus det der er rettet i den.' : 'Ingen varefil indlæst.'}
             </p>
           )}
           <Findings title="På siderne, men ikke i feedet" items={check.missing.map((m) => `${m.offer.name} · side ${numberOf.get(m.pageId) ?? '?'}`)} bad />

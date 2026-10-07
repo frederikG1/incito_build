@@ -1,6 +1,6 @@
 import { applyOps, newVariant, recordVariant, resolveVariant } from '@incitio/edit/core';
 import type { CatalogDocument } from '@incitio/schema';
-import { mergeCatalogDocuments } from '@incitio/schema';
+import { mergeCatalogDocuments, withTheme } from '@incitio/schema';
 import { APPROVAL_ROLE_NAMES } from '@incitio/schema';
 import { weekName, OfferFeed } from '@incitio/schema';
 import * as api from '../../api.js';
@@ -8,12 +8,12 @@ import { BASE_EDITION, feedToEdition, mergeEditionFeeds, splitMergedFeed } from 
 import { pageNumbers, count, type StudioState } from '../model.js';
 import { message, cellCount, withTemplates } from '../cluster.js';
 import { feedWeek } from '../layout.js';
-import { work, rememberStamp } from '../saving.js';
+import { work, rememberStamp, WORK_KEY } from '../saving.js';
 import type { StoreContext } from '../context.js';
 
 /** Udgivelser, udgaver, godkendelse, live og priser. */
-export function editionsActions(ctx: StoreContext): Pick<StudioState, 'setPublicationUrl' | 'setPublicationPages' | 'setPublicationAppend' | 'setPublicationWithOffers' | 'importPublication' | 'storedDocument' | 'openVariant' | 'addVariant' | 'openEditions' | 'openBoard' | 'approve' | 'unapprove' | 'bookSlot' | 'releaseSlot' | 'liveChange' | 'publish' | 'unpublish' | 'workflowAct' | 'openHome' | 'setCatalogueMeta' | 'startWeek' | 'setMustInclude' | 'openGoods' | 'setEditionFeed' | 'loadMergedFeed' | 'setVariantStores' | 'downloadMergedFeed' | 'removeVariant' | 'applyEdits' | 'setOfferPrice' | 'correctPrice' | 'uncorrectPrice'> {
-  const { set, get, mutate, askingWeek, forWeek, withWeek, live } = ctx;
+export function editionsActions(ctx: StoreContext): Pick<StudioState, 'setPublicationUrl' | 'setPublicationPages' | 'setPublicationAppend' | 'setPublicationWithOffers' | 'importPublication' | 'storedDocument' | 'openVariant' | 'addVariant' | 'openEditions' | 'openBoard' | 'approve' | 'unapprove' | 'bookSlot' | 'releaseSlot' | 'liveChange' | 'publish' | 'unpublish' | 'workflowAct' | 'openHome' | 'setCatalogueMeta' | 'deleteCatalogue' | 'startWeek' | 'setMustInclude' | 'setIgnored' | 'openGoods' | 'setEditionFeed' | 'loadMergedFeed' | 'setVariantStores' | 'downloadMergedFeed' | 'removeVariant' | 'applyEdits' | 'setOfferPrice' | 'correctPrice' | 'uncorrectPrice'> {
+  const { set, get, replacing, mutate, askingWeek, forWeek, withWeek, live } = ctx;
   return {
     setPublicationUrl: (url) => set({ publicationUrl: url }),
     setPublicationPages: (spec) => set({ publicationPages: spec }),
@@ -49,6 +49,7 @@ export function editionsActions(ctx: StoreContext): Pick<StudioState, 'setPublic
          * a rebuild does: adding six pages to an avis is the same avis.
          */
         const base = publicationAppend ? get().document : null;
+        const before = get().document?.pages.length ? get().document : null;
         const document = base
           ? withWeek(mergeCatalogDocuments(
             [base, reply.document], { id: base.id, name: base.name },
@@ -63,8 +64,7 @@ export function editionsActions(ctx: StoreContext): Pick<StudioState, 'setPublic
           brand: get().brand ? withTemplates(get().brand!, document.templates) : get().brand,
           // The pages arrived whole; there is nothing to compare them
           // against, so the reproduction strip stays as it was.
-          past: [],
-          future: [],
+          ...replacing(before),
           activePageId: document.pages[0]?.id ?? null,
           // Done: the panel that asked for the link has nothing left to
           // say, and it was covering the pages that just arrived.
@@ -81,7 +81,6 @@ export function editionsActions(ctx: StoreContext): Pick<StudioState, 'setPublic
             reply.publication.paged
               ? (reply.publication.known ? 'varer og pladser fra Tjek' : `${cellCount(document)} pladser fundet i billederne`)
               : '',
-            'ingen modelkald',
           ].filter(Boolean).join(' · '),
         });
         // A catalogue from another chain than the one being worked in is
@@ -289,27 +288,66 @@ export function editionsActions(ctx: StoreContext): Pick<StudioState, 'setPublic
       await get().refreshCatalogues();
     },
 
+    async deleteCatalogue(id) {
+      const { brandId } = get();
+      if (!brandId) return;
+      const open = (get().variantBase ?? get().document)?.id === id;
+      try {
+        await api.deleteCatalogue(brandId, id);
+      } catch (error) {
+        set({ error: message(error) });
+        return;
+      }
+      if (open) {
+        /*
+         * Closed without a save: the autosave and the copy parked in the
+         * browser would otherwise write the avis straight back.
+         */
+        window.clearTimeout(work.autosaveTimer);
+        work.clean = { document: null, base: null };
+        try { window.localStorage.removeItem(WORK_KEY(brandId)); } catch { /* private window */ }
+        set({
+          document: null, variantBase: null, variantId: null, variantNotes: [], past: [], future: [],
+          openPageId: null, activePageId: null, selectedOfferId: null, view: 'hjem', saveState: 'saved',
+        });
+      }
+      await get().refreshCatalogues();
+      set({ note: 'Avisen er slettet' });
+    },
+
     async startWeek(fromId, file, week, themeId) {
       const text = await file.text();
+      /*
+       * A file whose dates are another week's is said, not refused: the
+       * avis is for the week that was chosen, and a file for it can be
+       * read in later under Varer. Planning three weeks out is normal.
+       */
+      const mentionOtherWeek = () => {
+        const said = feedWeek(get().feedOffers);
+        if (!said || (said.year === week.year && said.week === week.week)) return;
+        set({ note: `Uge ${week.week} er lavet med varer fra ${file.name}, som er uge ${said.week}s — hent uge ${week.week}s varefil under Varer, når den er klar.` });
+      };
       if (fromId) {
         await get().openCatalogue(fromId);
         if (get().document?.id !== fromId) return;
         await get().uploadFeed(file.name, text);
         if (get().feedOffers.length === 0) return;
-        // A file for another week than the one asked for is a wrong file, not a new week.
-        const said = feedWeek(get().feedOffers);
-        if (said && (said.year !== week.year || said.week !== week.week)) {
-          set({
-            feedArrival: null,
-            error: `${file.name} har varer for uge ${said.week}, ikke uge ${week.week}. Vælg uge ${week.week}s fil.`,
-          });
-          return;
-        }
-        set({ week });
+        set({ week, feedArrival: null });
         // The new week, from last week's pages: see `carryWeek` and the report it leaves.
-        get().carryWeek();
-        // Chosen up front: last week's theme comes off, this week's goes on — or none, when asked.
-        if (themeId !== undefined) get().applyTheme(themeId);
+        // Made for the week asked for, whatever the file's dates say — planning weeks ahead
+        // often means building on a file that is not that week's yet.
+        get().carryWeek(week);
+        /*
+         * Chosen up front: last week's theme comes off, this week's goes on
+         * — or none, when asked. Part of the new week, not a step of its
+         * own, so the report's one "Fortryd" takes both back.
+         */
+        mentionOtherWeek();
+        if (themeId !== undefined) {
+          const theme = themeId ? get().themes.find((entry) => entry.id === themeId) ?? null : null;
+          const carried = get().document;
+          if (carried && (theme || themeId === null)) set({ document: withTheme(carried, theme) });
+        }
         return;
       }
       // From the bottom: the week's products, then straight to the chain's sections to pick pages from.
@@ -318,7 +356,9 @@ export function editionsActions(ctx: StoreContext): Pick<StudioState, 'setPublic
       await get().uploadFeed(file.name, text);
       if (get().feedOffers.length === 0) return;
       set({ view: 'bog', note: null });
-      get().setSectionsOpen(true, 0);
+      mentionOtherWeek();
+      // To the chain's sections when it has any; with none, the empty avis offers the other ways in.
+      if (get().sections.length > 0) get().setSectionsOpen(true, 0);
     },
 
     setMustInclude(offerIds, on) {
@@ -328,6 +368,17 @@ export function editionsActions(ctx: StoreContext): Pick<StudioState, 'setPublic
         const now = new Set(doc.mustInclude ?? []);
         for (const id of offerIds) { if (on) now.add(id); else now.delete(id); }
         return { ...doc, mustInclude: [...now] };
+      });
+      get().refreshFindings();
+    },
+
+    setIgnored(findingIds, on) {
+      get().openVariant(null);
+      live.gesture = null;
+      mutate((doc) => {
+        const now = new Set(doc.ignored ?? []);
+        for (const id of findingIds) { if (on) now.add(id); else now.delete(id); }
+        return { ...doc, ignored: [...now] };
       });
       get().refreshFindings();
     },

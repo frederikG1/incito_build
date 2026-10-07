@@ -43,3 +43,20 @@ describe('quick fixes', () => {
     expect(quickFixOf(doc, finding({ kind: 'plads', id: 'p1:tomme-pladser' }), [], () => 2)!.kind).toBe('plads');
   });
 });
+
+describe('price quick fixes', () => {
+  const priced = CatalogDocument.parse({ ...doc, offers: [offer('x', { price: 45, prePrice: 89.95, savings: 44.95 })] });
+
+  it('removes the before-price and the saving it claimed', () => {
+    const fix = quickFixOf(priced, finding({ kind: 'førpris', id: 'førpris:x', offerId: 'x' }), [], () => 0)!;
+    expect(fix.label).toBe('Fjern førpris');
+    const fixed = applyQuickFix(priced, fix).offers[0]!;
+    expect([fixed.prePrice, fixed.savings]).toEqual([null, 0]);
+  });
+
+  it('makes a wrong saving the difference of the two prices', () => {
+    const wrong = CatalogDocument.parse({ ...priced, offers: [offer('x', { price: 45, prePrice: 56.75, savings: 44.95 })] });
+    const fix = quickFixOf(wrong, finding({ kind: 'førpris', id: 'spar:x', offerId: 'x' }), [], () => 0)!;
+    expect(applyQuickFix(wrong, fix).offers[0]!.savings).toBe(11.75);
+  });
+});

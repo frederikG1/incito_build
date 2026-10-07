@@ -68,6 +68,13 @@
         "type": "string"
       }
     },
+    "ignored": {
+      "description": "Print checks someone looked at and let go — finding ids, see\n`Finding.id` in `@incitio/workflow`. An empty place the chain wants\nempty, a \"Spar 20%\" tile that has no price on purpose. Only the\nprint checks: the price rules and sold places are the law and a\ncontract, and are not anyone's to ignore.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "theme": {
       "description": "The theme the avis wears — birthday, Halloween — see `withTheme`.",
       "$ref": "#/$defs/AppliedTheme"
@@ -191,6 +198,10 @@
             }
           ],
           "default": null
+        },
+        "motif": {
+          "description": "`false`: no chain motif over the ground (SuperBrugsen's petals). A\npage laid out by a CMS section design is the whole look already —\nthe CMS draws its sheet plain, and petals between its white offer\npanels read as gaps. Absent: the chain's motif, as always.",
+          "type": "boolean"
         },
         "decorations": {
           "description": "Generated mood artwork, drawn behind the offers.\n\nCapped at three because this is seasoning: a page that is mostly\nfiller has stopped being a leaflet. Defaulted to empty, so every\ncatalogue saved before this existed still parses.",
@@ -442,6 +453,10 @@
           "maximum": 1,
           "default": 0
         },
+        "adjust": {
+          "description": "The artwork developed — tone, colour, sharpness, crop, mask, blend.\nOn a cluster it reaches every product at once; one product's own\nis `pack[i].adjust`. See `ImageAdjust`.",
+          "$ref": "#/$defs/ImageAdjust"
+        },
         "parts": {
           "type": "object",
           "additionalProperties": {
@@ -467,6 +482,275 @@
         "imageOffsetY",
         "parts",
         "pack"
+      ]
+    },
+    "ImageAdjust": {
+      "type": "object",
+      "properties": {
+        "exposure": {
+          "description": "Stops of light, in linear light like a camera's: +1 is twice as bright.",
+          "type": "number",
+          "minimum": -3,
+          "maximum": 3
+        },
+        "brightness": {
+          "description": "Midtones up or down; black and white stay put. −1…1.",
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "contrast": {
+          "description": "Spread from the middle grey. −1 is flat grey, 1 is near-posterised.",
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "levels": {
+          "$ref": "#/$defs/ImageLevels"
+        },
+        "curves": {
+          "$ref": "#/$defs/ImageCurves"
+        },
+        "hue": {
+          "description": "Degrees round the colour wheel.",
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "saturation": {
+          "description": "−1 is grey, 1 is twice the colour.",
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "lightness": {
+          "description": "Towards black (−1) or white (1), after the colour.",
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "sharpen": {
+          "description": "Unsharp amount on the 3×3 neighbourhood.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "blur": {
+          "description": "Gaussian blur, as a share of the photograph's width.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.05
+        },
+        "edges": {
+          "description": "Only the outlines, dark on white — Photoshop's \"Find Edges\".",
+          "type": "boolean"
+        },
+        "blend": {
+          "description": "How the photograph mixes with what is under it on the page.",
+          "enum": [
+            "normal",
+            "multiply",
+            "screen",
+            "overlay",
+            "darken",
+            "lighten",
+            "color-dodge",
+            "color-burn",
+            "hard-light",
+            "soft-light",
+            "difference",
+            "exclusion",
+            "hue",
+            "saturation",
+            "color",
+            "luminosity"
+          ]
+        },
+        "skewX": {
+          "description": "Degrees of shear.",
+          "type": "number",
+          "minimum": -45,
+          "maximum": 45
+        },
+        "skewY": {
+          "type": "number",
+          "minimum": -45,
+          "maximum": 45
+        },
+        "crop": {
+          "$ref": "#/$defs/ImageCrop"
+        },
+        "mask": {
+          "$ref": "#/$defs/ImageMask"
+        }
+      },
+      "required": []
+    },
+    "ImageLevels": {
+      "type": "object",
+      "properties": {
+        "black": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0
+        },
+        "white": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1
+        },
+        "gamma": {
+          "description": "Midtone gamma; above 1 lightens.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 9.99,
+          "default": 1
+        },
+        "outBlack": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0
+        },
+        "outWhite": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1
+        }
+      },
+      "required": [
+        "black",
+        "white",
+        "gamma",
+        "outBlack",
+        "outWhite"
+      ]
+    },
+    "ImageCurves": {
+      "type": "object",
+      "properties": {
+        "rgb": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CurvePoint"
+          },
+          "minItems": 2,
+          "maxItems": 16
+        },
+        "r": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CurvePoint"
+          },
+          "minItems": 2,
+          "maxItems": 16
+        },
+        "g": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CurvePoint"
+          },
+          "minItems": 2,
+          "maxItems": 16
+        },
+        "b": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CurvePoint"
+          },
+          "minItems": 2,
+          "maxItems": 16
+        }
+      },
+      "required": []
+    },
+    "CurvePoint": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      ]
+    },
+    "ImageCrop": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "w": {
+          "type": "number",
+          "minimum": 0.02,
+          "maximum": 1
+        },
+        "h": {
+          "type": "number",
+          "minimum": 0.02,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ]
+    },
+    "ImageMask": {
+      "type": "object",
+      "properties": {
+        "w": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "h": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "path": {
+          "description": "SVG path data in the grid, even-odd filled; inside is what shows.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60000
+        },
+        "feather": {
+          "description": "Soft edge, as a share of the photograph's longer side.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.2,
+          "default": 0
+        },
+        "invert": {
+          "description": "Show what is OUTSIDE the outline instead.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "w",
+        "h",
+        "path",
+        "feather",
+        "invert"
       ]
     },
     "PartOverride": {
@@ -555,6 +839,10 @@
           "description": "Taken off the page. The others close up around it.",
           "type": "boolean",
           "default": false
+        },
+        "adjust": {
+          "description": "This one photograph developed on its own — see `ImageAdjust`.",
+          "$ref": "#/$defs/ImageAdjust"
         }
       },
       "required": [
@@ -648,6 +936,10 @@
         "rect": {
           "description": "Where the artwork actually sits, when it was MEASURED off a printed\npage rather than pinned to a corner.\n\n`anchor` and `scale` are right for artwork somebody generated to\nfill a corner. They cannot say \"this strip, 84% of the sheet wide,\n61pt down\" — and that is exactly what a published leaflet's own\nsection headline is: a drawing, at a stated place, which the\npublisher's designer positioned. Imported without it, the one piece\nof the page that says what the page is ABOUT was thrown away.\n\n`offsetX`/`offsetY` still apply on top, so an editor can move a\nmeasured piece by hand exactly as they move a pinned one.",
           "$ref": "#/$defs/MeasuredRect"
+        },
+        "adjust": {
+          "description": "Tone, colour, mask and blend — see `ImageAdjust`.",
+          "$ref": "#/$defs/ImageAdjust"
         }
       },
       "required": [
@@ -1179,6 +1471,11 @@
         "paper": {
           "description": "The paper under the cell, on a page that was published as a\npicture: what shows where the printed product is taken away, so a\nnew product stands on the page's own colour. Sampled around the\ncell when the page was read.",
           "type": "string"
+        },
+        "design": {
+          "description": "The offer design tag this cell draws in, when the layout says so —\na CMS section design names one per offer box (\"Avis priskasse lang\nprio\" for the lead, \"Avis priskasse 2\" for the rest). Above the\nchain's rules and the page's tag; below a choice made on the tile.",
+          "type": "string",
+          "maxLength": 120
         }
       },
       "required": [
@@ -2244,6 +2541,115 @@
             "op",
             "offerId",
             "arrangement"
+          ]
+        },
+        {
+          "description": "Move, size, turn, restack or hide one product inside a several-product tile. Offsets ±100 page %, scale 0.2–3, rotate ±180°, depth −4 (back) to 4 (front).",
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "pack"
+            },
+            "offerId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "index": {
+              "description": "Which product of the cluster, 0 first, as the offer lists them.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 7
+            },
+            "offsetX": {
+              "type": "number"
+            },
+            "offsetY": {
+              "type": "number"
+            },
+            "scale": {
+              "type": "number"
+            },
+            "rotate": {
+              "type": "number"
+            },
+            "depth": {
+              "type": "integer"
+            },
+            "hidden": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "op",
+            "offerId",
+            "index"
+          ]
+        },
+        {
+          "description": "Develop a tile's photograph: exposure (stops ±3), brightness/contrast/saturation/lightness (±1), hue (±180°), levels, curves, sharpen (0–3), blur (0–0.05 of width), edges, blend mode, skew (±45°), crop and mask. Never changes the image file.",
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "adjust"
+            },
+            "offerId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 7
+            },
+            "adjust": {
+              "description": "Merged over what is there; a key set to null-ish (0, false, \"normal\") is removed. null clears everything.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ImageAdjust"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "offerId",
+            "adjust"
+          ]
+        },
+        {
+          "description": "Develop a picture on the page, as `adjust` does a tile's.",
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "adjustDecor"
+            },
+            "pageId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "decorId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "adjust": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ImageAdjust"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "pageId",
+            "decorId",
+            "adjust"
           ]
         },
         {

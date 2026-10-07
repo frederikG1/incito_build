@@ -9,7 +9,7 @@ import { withIncitoEdit } from '../layout.js';
 import type { StoreContext } from '../context.js';
 
 /** Udgivne sider, sider, billeder, baggrunde og varelisten. */
-export function pagesActions(ctx: StoreContext): Pick<StudioState, 'selectIncito' | 'editIncito' | 'moveIncito' | 'hideIncito' | 'setPageExact' | 'clearPage' | 'removePage' | 'movePage' | 'setDrawer' | 'refreshUploads' | 'addToLibrary' | 'removeFromLibrary' | 'placeFromLibrary' | 'addPageImage' | 'updatePageImage' | 'removePageImage' | 'addPageBackground' | 'setPageBackground' | 'setPageDesignTag' | 'setPageTitle' | 'setPageSubtitle' | 'spreadBackground' | 'setPageGround' | 'setLibraryOpen' | 'setLibrarySearch' | 'placedAt' | 'toggleLibraryPick' | 'clearLibraryPicks' | 'setArrangeNote' | 'toggleLibraryGroup' | 'setActivePage'> {
+export function pagesActions(ctx: StoreContext): Pick<StudioState, 'selectIncito' | 'editIncito' | 'moveIncito' | 'hideIncito' | 'setPageExact' | 'clearPage' | 'removePage' | 'movePage' | 'setDrawer' | 'refreshUploads' | 'addToLibrary' | 'removeFromLibrary' | 'placeFromLibrary' | 'backgroundPages' | 'uploadBackground' | 'addPageImage' | 'updatePageImage' | 'removePageImage' | 'addPageBackground' | 'setPageBackground' | 'setPageDesignTag' | 'setPageTitle' | 'setPageSubtitle' | 'spreadBackground' | 'setPageGround' | 'setLibraryOpen' | 'setLibrarySearch' | 'placedAt' | 'toggleLibraryPick' | 'clearLibraryPicks' | 'setArrangeNote' | 'toggleLibraryGroup' | 'setActivePage'> {
   const { set, get, mutate, live } = ctx;
   return {
     selectIncito(pageId, path) {
@@ -81,12 +81,12 @@ export function pagesActions(ctx: StoreContext): Pick<StudioState, 'selectIncito
         ...document,
         pages: document.pages.map((page) => (page.id === pageId ? { ...page, placements: [] } : page)),
       }));
-      if (index >= 0) set({ note: `Side ${index + 1} tømt — varerne ligger i reserven · ⌘Z fortryder` });
+      if (index >= 0) set({ note: `Side ${index + 1} tømt — varerne ligger under Ikke placeret · ⌘Z fortryder` });
     },
 
     removePage(pageId) {
       const index = get().document?.pages.findIndex((page) => page.id === pageId) ?? -1;
-      if (index >= 0) set({ note: `Side ${index + 1} slettet — varerne ligger i reserven · ⌘Z fortryder` });
+      if (index >= 0) set({ note: `Side ${index + 1} slettet — varerne ligger under Ikke placeret · ⌘Z fortryder` });
       if (get().openPageId === pageId) set({ view: 'bog', openPageId: null });
       live.gesture = null;
       mutate((document) => ({
@@ -143,6 +143,63 @@ export function pagesActions(ctx: StoreContext): Pick<StudioState, 'selectIncito
         set({ uploads: get().uploads.filter((entry) => entry.ref !== ref) });
       } catch (error) {
         set({ error: message(error) });
+      }
+    },
+
+    async backgroundPages(pageIds, ref) {
+      const { document, brand } = get();
+      if (!document || pageIds.length === 0) return;
+      const targets = new Set(pageIds.filter((id) => document.pages.some((p) => p.id === id && p.kind !== 'image')));
+      if (targets.size === 0) return;
+      live.gesture = null;
+      if (ref === null) {
+        mutate((doc) => ({ ...doc, pages: doc.pages.map((p) => (targets.has(p.id) ? { ...p, background: null } : p)) }));
+        set({ note: `Baggrund taget af ${count(targets.size, 'side', 'sider')}` });
+        return;
+      }
+      const picture = get().uploads.find((entry) => entry.ref === ref);
+      const subject = picture?.name.replace(/\.[a-z0-9]+$/i, '') ?? '';
+      const measured = await measureBackdrop(
+        await fetch(ref).then((r) => r.blob()).then((b) => new File([b], subject)),
+      ).catch(() => null);
+      const chosen = measured
+        ? chooseBackdrop(measured, brand?.pageAspect ?? 0.707)
+        : { fit: 'cover' as const, opacity: 1, focusX: 50, focusY: 50, why: '' };
+      /*
+       * At full strength, whatever `chooseBackdrop` would dim it to.
+       * Here the picture was chosen from a strip that shows it whole and
+       * undimmed, so the page has to look like the tile that was picked:
+       * the chain's red key visual dimmed to 0.3 over a yellow ground
+       * printed orange. Turning it down stays one slider away.
+       */
+      const dimmed = chosen.opacity < 1;
+      mutate((doc) => ({
+        ...doc,
+        pages: doc.pages.map((p) => (targets.has(p.id)
+          ? { ...p, background: { imageUrl: ref, subject, fit: chosen.fit, opacity: 1, focusX: chosen.focusX, focusY: chosen.focusY } }
+          : p)),
+      }));
+      set({
+        note: [
+          `${subject || 'Billedet'} lagt bag ${count(targets.size, 'side', 'sider')}`,
+          dimmed ? 'kraftigt billede — skru ned under Synlighed, hvis priserne drukner' : '',
+        ].filter(Boolean).join(' · '),
+      });
+    },
+
+    async uploadBackground(pageIds, file) {
+      const { brandId } = get();
+      if (!brandId) return;
+      set({ busy: `Lægger ${file.name} i biblioteket…`, error: null });
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { url } = await api.uploadImage(brandId, toBase64(bytes), file.name);
+        if (!await reachable(url)) throw new Error(`${url} kunne ikke hentes igen`);
+        await get().refreshUploads();
+        set({ busy: null });
+        await get().backgroundPages(pageIds, url);
+      } catch (error) {
+        set({ busy: null, error: message(error) });
       }
     },
 

@@ -226,7 +226,7 @@ export function Tray() {
           className="shelf__widen"
           onClick={() => setWidth(width > (NARROW + WIDE) / 2 ? NARROW : WIDE)}
           title={width > (NARROW + WIDE) / 2 ? 'Smal liste' : 'Bred liste — flere varer på én gang'}
-        >{width > (NARROW + WIDE) / 2 ? '‹ Smal' : 'Bred ›'}</button>
+        >{width > (NARROW + WIDE) / 2 ? 'Smallere' : 'Bredere'}</button>
       </div>
       <div className="shelf__tools">
         {/* Nothing waiting and nothing asked for: search and sorting have nothing to work on. */}

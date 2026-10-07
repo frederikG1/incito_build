@@ -6,6 +6,8 @@ import { ImagePage, ImageSize, PageView } from '@incitio/renderer';
 import { THUMB_PX, departmentOfPage, useStudio, useStudioPick } from './state.js';
 import type { Finding } from './findings.js';
 import { OFFER_MIME, droppedOffers } from './Tray.js';
+import { BackgroundDock, PICTURE_MIME, carriesPicture, droppedImages } from './Backgrounds.js';
+import bg from './Backgrounds.module.css';
 import { DEPARTMENT_NAMES } from '@incitio/compose';
 import { CarryReport, FeedArrival, FeedChanges, SectionGallery } from './Weekly.js';
 import { cachedDiff, deltaSaid, usePreviousWeek } from './week-diff.js';
@@ -39,14 +41,22 @@ function verdictOf(findings: Finding[], pageId: string): Finding | null {
   return mine.find((finding) => finding.weight === 'stop') ?? mine[0] ?? null;
 }
 
-function Card({ page, index }: { page: CatalogPage; index: number }) {
+interface Choosing {
+  picked: Set<string>;
+  toggle: (pageId: string) => void;
+}
+
+function Card({ page, index, choosing }: { page: CatalogPage; index: number; choosing: Choosing | null }) {
   const brand = useStudio((s) => s.brand);
   const document = useStudio((s) => s.document);
   const findings = useStudio((s) => s.findings);
   const openPage = useStudio((s) => s.openPage);
   const removePage = useStudio((s) => s.removePage);
   const addOffersToPage = useStudio((s) => s.addOffersToPage);
+  const backgroundPages = useStudio((s) => s.backgroundPages);
+  const uploadBackground = useStudio((s) => s.uploadBackground);
   const [taking, setTaking] = useState(false);
+  const [dressing, setDressing] = useState(false);
   const offers = useMemo(
     () => new Map((document?.offers ?? []).map((offer) => [offer.id, offer])),
     [document?.offers],
@@ -67,16 +77,46 @@ function Card({ page, index }: { page: CatalogPage; index: number }) {
    * grid growing if it must — today's `Nye pladser` as a gesture.
    * Caught here and not on the leaf, whose own drop reorders pages.
    */
+  /*
+   * A picture over the card — a file from the computer or one from the
+   * library strip — becomes the page's background when it is let go.
+   * Onto a page that is one of several picked, it goes under all of them.
+   */
+  const onto = (): string[] => (choosing?.picked.has(page.id) && choosing.picked.size > 1 ? [...choosing.picked] : [page.id]);
+  const dresses = image ? {} : {
+    onDragOver: (event: DragEvent) => {
+      if (!carriesPicture(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = 'copy';
+      setDressing(true);
+    },
+    onDragLeave: () => setDressing(false),
+    onDrop: (event: DragEvent) => {
+      const kind = carriesPicture(event);
+      if (!kind) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setDressing(false);
+      if (kind === 'library') void backgroundPages(onto(), event.dataTransfer.getData(PICTURE_MIME));
+      else {
+        const [file] = droppedImages(event);
+        if (file) void uploadBackground(onto(), file);
+      }
+    },
+  };
   const takes = image ? {} : {
     onDragOver: (event: DragEvent) => {
+      if (carriesPicture(event)) return dresses.onDragOver!(event);
       if (!event.dataTransfer.types.includes(OFFER_MIME)) return;
       event.preventDefault();
       event.stopPropagation();
       event.dataTransfer.dropEffect = 'copy';
       setTaking(true);
     },
-    onDragLeave: () => setTaking(false),
+    onDragLeave: () => { setTaking(false); setDressing(false); },
     onDrop: (event: DragEvent) => {
+      if (carriesPicture(event)) return dresses.onDrop!(event);
       const dragged = event.dataTransfer.getData(OFFER_MIME);
       if (!dragged) return;
       event.preventDefault();
@@ -109,22 +149,38 @@ function Card({ page, index }: { page: CatalogPage; index: number }) {
 
   return (
     <div
-      className={`card${tone}${taking ? ' card--taking' : ''}`}
+      className={[
+        `card${tone}${taking ? ' card--taking' : ''}`,
+        dressing && bg.target,
+        choosing && !image && bg.choosing,
+        choosing?.picked.has(page.id) && bg.picked,
+      ].filter(Boolean).join(' ')}
+      data-drop-said={onto().length > 1 ? `Baggrund for ${onto().length} sider` : 'Slip for at lægge som baggrund'}
       style={{ background: groundOf(page, index) }}
       {...takes}
-      onClick={() => openPage(page.id)}
+      onClick={() => (choosing ? (!image && choosing.toggle(page.id)) : openPage(page.id))}
+      aria-pressed={choosing && !image ? choosing.picked.has(page.id) : undefined}
       title={image
         ? 'Billedside'
-        : `Side ${index + 1}${empty ? ` · ${empty} ${empty === 1 ? 'tomt felt' : 'tomme felter'}` : ''}`}
+        : `Side ${index + 1}${empty ? ` · ${empty} ${empty === 1 ? 'tom plads' : 'tomme pladser'}` : ''}`}
     >
       {/* A thumbnail's photographs are thumbnails too — see `ImageSize`. */}
       <div className="card__live" aria-hidden="true"><ImageSize.Provider value={THUMB_PX}>{live}</ImageSize.Provider></div>
-      <button
+      {choosing && !image && (
+        <>
+          <span className={bg.check} aria-hidden="true">✓</span>
+          <span className={`${bg.chip}${page.background ? '' : ` ${bg.chipNone}`}`}>
+            {page.background && <i style={{ backgroundImage: `url("${page.background.imageUrl}")` }} />}
+            {page.background ? page.background.subject || 'Eget billede' : 'Ingen baggrund'}
+          </span>
+        </>
+      )}
+      {!choosing && <button
         className="card__drop"
         title={`Slet side ${index + 1} (⌘Z fortryder)`}
         aria-label={`Slet side ${index + 1}`}
         onClick={(event) => { event.stopPropagation(); removePage(page.id); }}
-      >×</button>
+      >×</button>}
       {/* A marker, not a banner: what is wrong is said under the page, in words. */}
       {verdict && (
         <span
@@ -235,6 +291,7 @@ function BookSums() {
  */
 function AddPages() {
   const open = useStudio((s) => s.addPagesOpen);
+  const sectionCount = useStudio((s) => s.sections.length);
   const setOpen = useStudio((s) => s.setAddPagesOpen);
   const s = useStudioPick(
     'build', 'busy', 'curationReady', 'decorReady', 'document', 'feed', 'setReproduceOpen',
@@ -281,7 +338,7 @@ function AddPages() {
               <b>Fra kædens sektioner</b>
               <span>Vælg et gemt sidedesign — det fyldes med ugens varer</span>
             </span>
-            <span className="ways2__price ways2__price--free">anbefalet</span>
+            {sectionCount > 0 && <span className="ways2__price ways2__price--free">anbefalet</span>}
           </button>
 
           <button
@@ -298,7 +355,7 @@ function AddPages() {
           <button
             className="ways2__way"
             disabled={Boolean(s.busy) || !s.feed}
-            title={s.feed ? '' : 'Hent ugens varer fra fil først — i menuen øverst til venstre'}
+            title={s.feed ? '' : 'Hent ugens varer først — under Varer'}
             onClick={() => { setOpen(false); void s.build({ append: true }); }}
           >
             <span className="ways2__what">
@@ -366,11 +423,11 @@ function ChainDesignButtons() {
   const setRulesOpen = useStudio((s) => s.setRulesOpen);
   return (
     <>
-      <button className="thin" onClick={() => setDesignsOpen(true)} title="Hvor billede, pris og tekst står på en vare">
-        Varedesigns{designs ? ` · ${designs}` : ''}
+      <button className="tool" onClick={() => setDesignsOpen(true)} title="Hvor billede, pris og tekst står på en vare">
+        <span className="tool__icon" aria-hidden="true">◧</span>Varedesigns{designs ? <i className="tool__n">{designs}</i> : null}
       </button>
-      <button className="thin" onClick={() => setRulesOpen(true)} title="Hvilket design en vare får, og hvornår">
-        Regler{rules ? ` · ${rules}` : ''}
+      <button className="tool" onClick={() => setRulesOpen(true)} title="Hvilket design en vare får, og hvornår">
+        <span className="tool__icon" aria-hidden="true">⇄</span>Regler{rules ? <i className="tool__n">{rules}</i> : null}
       </button>
     </>
   );
@@ -380,8 +437,8 @@ function ThemeButton() {
   const theme = useStudio((s) => (s.variantBase ?? s.document)?.theme);
   const open = useStudio((s) => s.setThemesOpen);
   return (
-    <button className={`thin${theme ? ' book__theme' : ''}`} onClick={() => open(true)} title="Pynt hele avisen til en anledning — fødselsdag, Halloween, Black Friday">
-      {theme ? `Tema · ${theme.name}` : 'Tema'}
+    <button className={`tool${theme ? ' tool--on' : ''}`} onClick={() => open(true)} title="Pynt hele avisen til en anledning — fødselsdag, Halloween, Black Friday">
+      <span className="tool__icon" aria-hidden="true">✦</span>{theme ? theme.name : 'Tema'}
     </button>
   );
 }
@@ -395,26 +452,33 @@ function EmptyBook() {
       <p className="empty__said">
         {s.feedOffers.length > 0
           ? `${s.feedOffers.length} af ugens varer er klar. Hvor skal siderne komme fra?`
-          : 'Hent ugens varer fra fil i menuen øverst til venstre — og vælg så hvor siderne kommer fra.'}
+          : 'Hent ugens varefil under Varer øverst — og vælg så, hvor siderne kommer fra.'}
       </p>
       <div className="empty__ways">
-        <button className="empty__way empty__way--first" onClick={() => s.setSectionsOpen(true, 0)}>
+        {/* Offered only when there is something to choose: with none saved, it opened an empty gallery. */}
+        <button
+          className={`empty__way${sections ? ' empty__way--first' : ''}`}
+          disabled={!sections}
+          title={sections ? '' : 'Kæden har ingen gemte sektioner endnu. Når avisen har sider, gemmes en side som sektion fra ⋯ over siden.'}
+          onClick={() => s.setSectionsOpen(true, 0)}
+        >
           <b>Fra kædens sektioner</b>
-          <span>{sections ? `${sections} gemte sidedesigns` : 'Gemte sidedesigns'} — fyldes med ugens varer efter afdeling</span>
-          <i className="ways2__price ways2__price--free">anbefalet</i>
+          <span>{sections ? `${sections} gemte sidedesigns — fyldes med ugens varer efter afdeling` : 'Ingen gemte sektioner endnu'}</span>
+          {sections > 0 && <i className="ways2__price ways2__price--free">anbefalet</i>}
         </button>
         <button className="empty__way" onClick={() => s.togglePanel('sider')}>
           <b>Fra en trykt avis</b>
           <span>Sæt et link ind — siderne kommer præcis som udgivet, og kan rettes bagefter</span>
         </button>
         <button
-          className="empty__way"
+          className={`empty__way${sections ? '' : ' empty__way--first'}`}
           disabled={!s.feed}
-          title={s.feed ? '' : 'Hent ugens varer fra fil først'}
+          title={s.feed ? '' : 'Hent ugens varer først — under Varer'}
           onClick={() => void s.build({ fresh: true })}
         >
           <b>Hurtigt udkast</b>
           <span>Ugens varer i kædens egne layouts, afdeling for afdeling</span>
+          {!sections && <i className="ways2__price ways2__price--free">anbefalet</i>}
         </button>
       </div>
       <p className="empty__tip">Tryk <kbd>⌘K</kbd> for at søge efter alt — eller <kbd>?</kbd> for genvejene.</p>
@@ -430,6 +494,16 @@ export function Book() {
   const setSectionsOpen = useStudio((s) => s.setSectionsOpen);
   const sectionCount = useStudio((s) => s.sections.length);
   const [lifted, setLifted] = useState<number | null>(null);
+  const [dressing, setDressing] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const choosing: Choosing | null = dressing ? {
+    picked,
+    toggle: (pageId) => setPicked((was) => {
+      const next = new Set(was);
+      if (next.has(pageId)) next.delete(pageId); else next.add(pageId);
+      return next;
+    }),
+  } : null;
   const [over, setOver] = useState<number | null>(null);
   const aspect = useStudio((s) => s.brand?.pageAspect ?? 0.707);
 
@@ -459,12 +533,27 @@ export function Book() {
         <h2>Avisen</h2>
         <BookSums />
         <div className="book__gap" />
-        <ThemeButton />
-        <ChainDesignButtons />
-        <button className="thin" onClick={() => setSectionsOpen(true)} title="Kædens gemte sidedesigns">
-          Sektioner{sectionCount ? ` · ${sectionCount}` : ''}
-        </button>
-        <div className="seg" role="group" aria-label="Vis som">
+        <div className="booktools" role="toolbar" aria-label="Avisens værktøjer">
+          {pages.length > 0 && (
+            <button
+              className={`tool ${bg.feature}${dressing ? ` ${bg.featureOn}` : ''}`}
+              aria-pressed={dressing}
+              onClick={() => { setDressing(!dressing); setPicked(new Set()); }}
+              title="Vælg baggrund for hver side — fra kædens bibliotek eller computeren"
+            >
+              <span className="tool__icon" aria-hidden="true">▣</span>Baggrunde
+              {pages.some((p) => p.background && p.kind !== 'image')
+                ? <i className="tool__n">{pages.filter((p) => p.background && p.kind !== 'image').length}/{pages.filter((p) => p.kind !== 'image').length}</i>
+                : null}
+            </button>
+          )}
+          <ThemeButton />
+          <ChainDesignButtons />
+          <button className="tool" onClick={() => setSectionsOpen(true)} title="Kædens gemte sidedesigns">
+            <span className="tool__icon" aria-hidden="true">▤</span>Sektioner{sectionCount ? <i className="tool__n">{sectionCount}</i> : null}
+          </button>
+        </div>
+        <div className="seg seg--small" role="group" aria-label="Vis som">
           <button
             className={bookView === 'opslag' ? 'is-on' : ''}
             onClick={() => setBookView('opslag')}
@@ -476,6 +565,9 @@ export function Book() {
         </div>
       </div>
 
+      {dressing && pages.length > 0 && (
+        <BackgroundDock pages={pages} picked={picked} setPicked={setPicked} onClose={() => { setDressing(false); setPicked(new Set()); }} />
+      )}
       {pages.length === 0 && <EmptyBook />}
       <FeedArrival />
       <CarryReport />
@@ -488,7 +580,7 @@ export function Book() {
             className={`leaf${lifted === group.at ? ' leaf--lifted' : ''}${
               over === group.at ? ' leaf--over' : ''}`}
             key={group.pages[0]!.id}
-            draggable
+            draggable={!dressing}
             onDragStart={() => setLifted(group.at)}
             onDragEnd={() => { setLifted(null); setOver(null); }}
             onDragOver={(event) => { event.preventDefault(); setOver(group.at); }}
@@ -516,11 +608,11 @@ export function Book() {
             {group.pages.length === 2 ? (
               <div className="leaf__pair">
                 {group.pages.map((page, n) => (
-                  <Card key={page.id} page={page} index={group.at + n} />
+                  <Card key={page.id} page={page} index={group.at + n} choosing={choosing} />
                 ))}
               </div>
             ) : (
-              <Card page={group.pages[0]!} index={group.at} />
+              <Card page={group.pages[0]!} index={group.at} choosing={choosing} />
             )}
             <div className="leaf__caps">
               {group.pages.map((page, n) => (

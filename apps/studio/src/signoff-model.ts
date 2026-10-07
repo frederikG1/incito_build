@@ -16,14 +16,20 @@ export interface Bucket {
   title: string;
   /** What was looked at and found in order — the one line a clean check gets. */
   clean: string;
-  lines: { id: string; said: string; finding: Finding }[];
+  lines: Line[];
+  /** What someone let go — see `CatalogDocument.ignored`. Counts for nothing, shown on request. */
+  ignored: Line[];
 }
+
+export interface Line { id: string; said: string; finding: Finding }
 
 export interface Signoff {
   /** Checks with something to do, in the order they matter. */
   open: Bucket[];
   /** Checks that found nothing. */
   clean: Bucket[];
+  /** Every check with something to list, open or ignored — what the screen draws below the overview. */
+  listed: Bucket[];
   waiting: number;
   unsigned: Lane[];
   published: boolean;
@@ -54,7 +60,10 @@ export function verdictFinding(offerId: string, document: CatalogDocument): Find
 
 export function signoffOf(document: CatalogDocument, findings: Finding[], lanes: Lane[], verdicts: PriceVerdict[]): Signoff {
   const line = (finding: Finding) => ({ id: finding.id, said: finding.said, finding });
-  const stops = findings.filter((f) => f.weight === 'stop' && f.kind !== 'førpris' && f.kind !== 'solgt');
+  const let_go = new Set(document.ignored ?? []);
+  // An ignored print check arrives as 'se' — see `refreshFindings` — and is listed here as let go.
+  const print = findings.filter((f) => (f.weight === 'stop' || let_go.has(f.id)) && f.kind !== 'førpris' && f.kind !== 'solgt');
+  const stops = print.filter((f) => !let_go.has(f.id));
   const prices = findings.filter((f) => f.kind === 'førpris');
   const sold = findings.filter((f) => f.kind === 'solgt');
   const changed = new Map<string, Change>();
@@ -62,21 +71,25 @@ export function signoffOf(document: CatalogDocument, findings: Finding[], lanes:
   const booked = document.bookings?.length ?? 0;
 
   const buckets: Bucket[] = [
-    { key: 'tryk', title: 'Skal rettes før tryk', clean: 'Alle sider er tjekket', lines: stops.map(line) },
+    {
+      key: 'tryk', title: 'Skal rettes før tryk',
+      clean: print.length > stops.length ? `${count(print.length - stops.length, 'ignoreret', 'ignorerede')}, resten er i orden` : 'Alle sider er tjekket',
+      lines: stops.map(line), ignored: print.filter((f) => let_go.has(f.id)).map(line),
+    },
     {
       key: 'pris', title: 'Prisregler',
       clean: verdicts.length ? `${count(verdicts.length, 'førpris', 'førpriser')} holder` : 'Ingen førpriser',
-      lines: prices.map(line),
+      lines: prices.filter((f) => !let_go.has(f.id)).map(line), ignored: prices.filter((f) => let_go.has(f.id)).map(line),
     },
     {
       key: 'solgt', title: 'Solgte pladser',
       clean: booked ? `${count(booked, 'solgt plads', 'solgte pladser')} viser det aftalte` : 'Ingen pladser solgt',
-      lines: sold.map(line),
+      lines: sold.map(line), ignored: [],
     },
     {
       key: 'ændret', title: 'Ændret efter godkendelse',
       clean: lanes.some((lane) => lane.approval) ? 'Intet ændret siden underskrift' : 'Ingen underskrifter endnu',
-      lines: [...changed.values()].map((change) => line(changeFinding(change, document))),
+      lines: [...changed.values()].map((change) => line(changeFinding(change, document))), ignored: [],
     },
   ];
 
@@ -86,6 +99,7 @@ export function signoffOf(document: CatalogDocument, findings: Finding[], lanes:
   return {
     open: buckets.filter((bucket) => bucket.lines.length > 0),
     clean: buckets.filter((bucket) => bucket.lines.length === 0),
+    listed: buckets.filter((bucket) => bucket.lines.length + bucket.ignored.length > 0),
     waiting: buckets.reduce((total, bucket) => total + bucket.lines.length, 0),
     unsigned,
     published,

@@ -1,8 +1,6 @@
 /* ------------------------------------------- "which design", where the product is */
 .pagebar button.pagebar__pics.pagebar__design { border-color: #f5c2dd; background: #fdf2f8; color: #9d174d; }
 .pagebar button.pagebar__pics.pagebar__design b { font-weight: 600; }
-.celltool button.celltool__design { background: #ec4899; color: #fff; font-weight: 600; margin-left: 4px; }
-.celltool button.celltool__design:hover { background: #be185d; color: #fff; }
 
 /* The design menu's own rules live beside it: DesignMenu.module.css. */
 

@@ -235,9 +235,14 @@ export function catalogsRoutes(app: Hono<Scope>, ctx: RouteContext) {
     }
   });
 
-  app.delete('/api/brand/catalogs/:id', (c) =>
-    store.remove(c.get('brand').brand.id, c.req.param('id'))
-      ? c.json({ ok: true })
-      : c.json({ error: 'not found' }, 404));
+  app.delete('/api/brand/catalogs/:id', (c) => {
+    const brandId = c.get('brand').brand.id;
+    const stored = store.get(brandId, c.req.param('id'));
+    if (!stored) return c.json({ error: 'not found' }, 404);
+    // A published avis is what shoppers see: it comes down under Godkend first, then it can go.
+    if (stored.status === 'udgivet') return c.json({ error: 'Avisen er udgivet — træk den tilbage under Godkend, før den slettes.' }, 409);
+    store.remove(brandId, stored.id);
+    return c.json({ ok: true });
+  });
 
 }

@@ -141,3 +141,23 @@ describe('editions that differ by page', () => {
     expect(document.pages[0]!.templateId).toBe('cms/grid-2');
   });
 });
+
+describe('adjust', () => {
+  const overridesOf = (d: CatalogDocument, id: string) => d.pages.flatMap((p) => p.placements).find((p) => p.offerId === id)!.overrides;
+
+  it('merges over what is set and drops what is back at zero', () => {
+    let d = applyOps(doc, [{ op: 'adjust', offerId: 'ost', adjust: { brightness: 0.2, blend: 'multiply' } }], brand).document;
+    d = applyOps(d, [{ op: 'adjust', offerId: 'ost', adjust: { brightness: 0, contrast: 0.1 } }], brand).document;
+    expect(overridesOf(d, 'ost').adjust).toEqual({ blend: 'multiply', contrast: 0.1 });
+  });
+  it('develops one product of a cluster on its own, and leaves no key when cleared', () => {
+    let d = applyOps(doc, [{ op: 'adjust', offerId: 'øl', index: 1, adjust: { saturation: -1 } }], brand).document;
+    expect(overridesOf(d, 'øl').pack['1']!.adjust).toEqual({ saturation: -1 });
+    d = applyOps(d, [{ op: 'adjust', offerId: 'øl', index: 1, adjust: null }], brand).document;
+    expect(overridesOf(d, 'øl').pack).toEqual({});
+  });
+  it('is undone by reset', () => {
+    const d = applyOps(doc, [{ op: 'adjust', offerId: 'ost', adjust: { hue: 30 } }, { op: 'reset', offerId: 'ost' }], brand).document;
+    expect(overridesOf(d, 'ost').adjust).toBeUndefined();
+  });
+});

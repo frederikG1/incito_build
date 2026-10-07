@@ -14,6 +14,7 @@ import { count, type StudioState } from './model.js';
 import { message, withTemplates, toBase64, reachable, pictureAspect, cutoutAspect, packMembers, type Ghost, type StoodUp, standUpCluster, backToFront, tileName, withPatches, keepGhost, withGhost, pagePhotographs, CLUSTER_AT_ONCE, type ClusterRun, PROMPT_RUNS, RUNS_KEY } from './cluster.js';
 import { FRESH, withFeedFacts, DIFF_NAMES, kroner, rememberCells, unplaced, THUMB_PX, EDITOR_PX } from './layout.js';
 import type { StoreApi } from 'zustand';
+import { printedOffers, withoutTwins } from './twins.js';
 
 /**
  * What every slice of the studio's store shares: `set` and `get`, the
@@ -152,7 +153,11 @@ export function makeContext(set: StoreApi<StudioState>['setState'], get: StoreAp
     const related = new Set(wanted.flatMap(familyOf));
     const inAvis = new Set(document.offers.map((offer) => offer.id));
     const fromFeed = get().feedOffers.filter((offer) => !inAvis.has(offer.id) && offer.members.length === 0);
-    const free = [...unplaced(document), ...fromFeed].filter((offer) => offer.imageUrl).sort(byImportance(get().brand?.offerRules));
+    // Not a product the pages already print under another id — see `sameShown`.
+    const free = withoutTwins(
+      [...unplaced(document), ...fromFeed].filter((offer) => offer.imageUrl).sort(byImportance(get().brand?.offerRules)),
+      printedOffers(document),
+    );
     const own = free.filter((offer) => wanted.length === 0 || wanted.includes(departmentOf(offer)));
     const near = wanted.length === 0 ? [] : free.filter((offer) => !own.includes(offer) && related.has(departmentOf(offer)));
     return { reserve: [...own, ...near], fromFeed };
@@ -449,7 +454,7 @@ export function makeContext(set: StoreApi<StudioState>['setState'], get: StoreAp
     const ownPrompt = typed || placePrompt(promptId);
     const started = Date.now();
     set({
-      ...(quiet ? {} : { busy: `0/${tasks.length} klynger stillet op…` }),
+      ...(quiet ? {} : { busy: `AI stiller varer op · 0/${tasks.length} fliser…` }),
       standingUp: tasks.map((task) => task.offerId),
       error: null,
       note: null,
@@ -586,7 +591,7 @@ export function makeContext(set: StoreApi<StudioState>['setState'], get: StoreAp
           outputTokens: reading.usage?.outputTokens ?? 0,
         };
       }, (finished, total) => {
-        if (!quiet) set({ busy: `${finished}/${total} klynger stillet op…` });
+        if (!quiet) set({ busy: `AI stiller varer op · ${finished}/${total} fliser…` });
       });
 
       /*
@@ -616,7 +621,7 @@ export function makeContext(set: StoreApi<StudioState>['setState'], get: StoreAp
       if (stoodUp.length === 0) {
         // The spinner on each tile goes too — a failed run that leaves
         // "stiller op…" behind looks like one still going.
-        set({ busy: null, standingUp: [], error: notes.join(' · ') || 'ingen af klyngerne kunne stilles op' });
+        set({ busy: null, standingUp: [], error: notes.join(' · ') || 'AI kunne ikke stille varerne op på nogen af fliserne. Prøv igen om lidt.' });
         return;
       }
 
@@ -866,8 +871,17 @@ export function makeContext(set: StoreApi<StudioState>['setState'], get: StoreAp
     return week ? { ...document, week } : document;
   }
 
+  /*
+   * History for an avis replaced whole — a draft, a link import, an AI
+   * layout. It used to be cleared, so one click took every page with no
+   * way back. Now the avis it replaces is one ⌘Z away.
+   */
+  function replacing(before: CatalogDocument | null): { past: CatalogDocument[]; future: CatalogDocument[] } {
+    return { past: before && !get().variantBase ? [...get().past.slice(-29), before] : [], future: [] };
+  }
+
   return {
-    set, get,
+    set, get, replacing,
     repeating,
     warmImages,
     loadFeed,

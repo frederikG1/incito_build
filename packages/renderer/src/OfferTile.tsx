@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type {
   FrameLine, FrameStack, MeasuredRect, Offer, OfferLabel, PlacementOverrides, PriceShape,
@@ -6,6 +6,7 @@ import type {
 } from '@incitio/schema';
 import { wordsBesidePrice } from './words.js';
 import { useSizedImage } from './image.js';
+import { adjustment } from './adjust.js';
 import {
   TILE_PARTS, packOverride, packStack, partOverride, tileArranged, PlacementOverrides as Overrides,
 } from '@incitio/schema';
@@ -668,8 +669,13 @@ export function OfferTile({
   const metaText = wording('meta');
 
   // Image nudges are stored normalised so they survive a template change.
+  // A cluster's wrapper is not a photograph: crop and mask belong to each product's own.
+  const developed = adjustment(isPacked && corrections.adjust
+    ? { ...corrections.adjust, crop: undefined, mask: undefined }
+    : corrections.adjust);
   const mediaStyle: CSSProperties = {
-    transform: `translate(${corrections.imageOffsetX * 20}%, ${corrections.imageOffsetY * 20}%) scale(${corrections.imageScale})`,
+    ...developed.style,
+    transform: `translate(${corrections.imageOffsetX * 20}%, ${corrections.imageOffsetY * 20}%) scale(${corrections.imageScale})${developed.skew ? ` ${developed.skew}` : ''}`,
   };
 
 
@@ -762,6 +768,8 @@ export function OfferTile({
               if (item.hidden) return null;
               const moved = item.offsetX !== 0 || item.offsetY !== 0
                 || item.scale !== 1 || item.rotate !== 0;
+              // One product developed on its own — see `PackOverride.adjust`.
+              const own = adjustment(item.adjust);
               return (
                 /*
                  * The middle item paints on top, not the last one.
@@ -785,7 +793,9 @@ export function OfferTile({
                   data-part="media"
                   data-pack={index}
                   {...(selectedPack === index ? { 'data-pack-selected': 'true' } : {})}
+                  {...own.attrs}
                   style={{
+                    ...own.style,
                     /*
                      * The stylesheet's own order, with the editor's word
                      * over it — see `packStack`.
@@ -823,12 +833,18 @@ export function OfferTile({
             })}
           </div>
         ) : offer.imageUrl ? (
-          <img src={sized(offer.imageUrl)} alt="" loading="lazy" style={mediaStyle} />
+          <img src={sized(offer.imageUrl)} alt="" loading="lazy" style={mediaStyle} {...developed.attrs} />
         ) : (
           <div className="tile__placeholder" aria-hidden="true">
             <span>{name.slice(0, 1).toUpperCase()}</span>
           </div>
         )}
+
+        {developed.defs}
+        {isPacked && pack.map((_, index) => {
+          const item = packOverride(corrections, index);
+          return item.adjust && !item.hidden ? <Fragment key={`adj-${index}`}>{adjustment(item.adjust).defs}</Fragment> : null;
+        })}
 
         {/*
           * The picture the cluster was stood up from, laid over it.

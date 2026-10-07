@@ -1,0 +1,71 @@
+/* ------------------------------------------------------- clarity pass (2026) */
+/*
+ * Small things that made the studio harder to read than it had to be:
+ * no visible keyboard focus, labels shouted in capitals, filters cut
+ * off mid-word, a status pill that was only a number, a delete button
+ * dressed like a copy button.
+ */
+
+/* Keyboard focus, everywhere, the one primary colour. Mouse clicks show nothing. */
+:where(button, a, input, select, textarea, [role='tab'], [tabindex]):focus-visible {
+  outline: 2px solid var(--hot);
+  outline-offset: 2px;
+}
+
+/*
+ * Section labels in sentence case. Capitals with tracking read as
+ * shouting in a tool full of small labels, and they cost the eye a
+ * second pass on Danish words.
+ */
+.inspector__group,
+.home__label,
+.home__menuhead,
+.newavis__step > b,
+.chain__head,
+.checks__group h3,
+.palette__group,
+.put__label,
+.inspector__designsaid small,
+.compare__read h3,
+.sheet__kind,
+.library__fold,
+.ways2__head,
+.weekly__kicker {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.inspector__group { font-size: 12.5px; color: var(--ink-2); }
+.home__label { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.home__menuhead, .chain__head, .palette__group { font-size: 12px; }
+.checks__group h3 { font-size: 12.5px; }
+.inspector__designsaid small { font-size: 11.5px; font-weight: 600; }
+
+/* The week cards: the status pill on its own line, the hint under the button. */
+.home__week .home__pill { align-self: flex-start; }
+.home__week--empty .home__title { margin-top: 2px; }
+.home__week--empty .home__muted { margin: 0; }
+.home__from { font-size: 12px; }
+
+/* The avis's own menu (⋯) is a button you can see is a button. */
+.home__dots { border-color: var(--line); }
+
+/* The list's two filters: one under the other when the list is narrow, so neither is cut off. */
+.shelf__tools .shelf__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; }
+.shelf__tools .shelf__row .shelf__filter { width: 100%; min-width: 0; }
+
+/* "Samme baggrund på: sider herefter · alle sider" — the lead-in is a label, the rest are links. */
+.inspector__spread { align-items: baseline; font-size: 12.5px; }
+.inspector__spread > span { color: var(--muted); }
+.inspector__spread .inspector__link { margin-left: 0; }
+
+/* A design card: Ret first, Slet last and in the colour of a deletion. */
+.dcard__do .dcard__drop { margin-left: auto; color: var(--stop-ink); }
+.dcard__do .dcard__drop:hover { border-color: var(--stop); background: #fdf1ed; }
+.dcard__badges i { background: var(--hot); border-color: var(--hot); color: #fff; font-weight: 600; }
+
+/* The page's ⋯ menu: the empty-the-page line sits with the other page-wide errands. */
+.pagebar .more__menu button { text-align: left; }
+
+/* Price and førpris side by side, their fields on one line even if a label wraps. */
+.tileprice { align-items: end; }
+.tileprice input { width: 100%; }

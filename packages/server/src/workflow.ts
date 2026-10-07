@@ -6,7 +6,7 @@ import {
 import { resolveTemplate, type BrandDefinition } from '@incitio/brands';
 import { resolveVariant } from '@incitio/edit';
 import {
-  applyLive, checkWrite, keepWorkflow, LiveError, publishBlockers, signed, standInPrices, unsigned,
+  applyLive, checkWrite, heeded, keepWorkflow, LiveError, publishBlockers, signed, standInPrices, unsigned,
   type Blocker, type Finding, type PriceSource, type ResolvedEdition, type Stop,
 } from '@incitio/workflow';
 import { SaveConflict, type Store } from './db.js';
@@ -316,7 +316,7 @@ export function workflowRoutes(
     if (measure) {
       let drawn: Blocker[];
       try {
-        drawn = (await measure(seen, brand)).filter((f) => f.weight === 'stop').map((f) => ({ id: f.id, said: f.said }));
+        drawn = heeded(seen, (await measure(seen, brand)).filter((f) => f.weight === 'stop')).map((f) => ({ id: f.id, said: f.said }));
       } catch (error) {
         throw new Refused(422, {
           error: `siderne kunne ikke tegnes og måles før udgivelse (${error instanceof Error ? error.message : 'ukendt fejl'})`,

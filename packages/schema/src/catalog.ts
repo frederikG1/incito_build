@@ -7,6 +7,7 @@ import { CatalogWeek } from './week.js';
 import { TILE_ARRANGEMENTS, TILE_PARTS, type TilePart } from './tile.js';
 import { EditOp } from './edit-ops.js';
 import { Approval, LiveEvent, SlotBooking } from './workflow.js';
+import { ImageAdjust, adjustTouched } from './adjust.js';
 
 /** Where on the page a decoration is pinned. */
 export const DECOR_ANCHORS = [
@@ -143,6 +144,8 @@ export const PageDecoration = z.object({
    * measured piece by hand exactly as they move a pinned one.
    */
   rect: MeasuredRect.optional(),
+  /** Tone, colour, mask and blend — see `ImageAdjust`. */
+  adjust: ImageAdjust.optional(),
 });
 export type PageDecoration = z.infer<typeof PageDecoration>;
 
@@ -377,6 +380,8 @@ export const PackOverride = z.object({
   depth: z.number().int().min(-4).max(4).default(0),
   /** Taken off the page. The others close up around it. */
   hidden: z.boolean().default(false),
+  /** This one photograph developed on its own — see `ImageAdjust`. */
+  adjust: ImageAdjust.optional(),
 });
 export type PackOverride = z.infer<typeof PackOverride>;
 
@@ -417,6 +422,12 @@ export const PlacementOverrides = z.object({
   imageScale: z.number().min(0.5).max(2).default(1),
   imageOffsetX: z.number().min(-1).max(1).default(0),
   imageOffsetY: z.number().min(-1).max(1).default(0),
+  /**
+   * The artwork developed — tone, colour, sharpness, crop, mask, blend.
+   * On a cluster it reaches every product at once; one product's own
+   * is `pack[i].adjust`. See `ImageAdjust`.
+   */
+  adjust: ImageAdjust.optional(),
   /*
    * Where every other box has been put, keyed by `TilePart`.
    *
@@ -595,7 +606,8 @@ export function notOnePhotograph(
 export function packTouched(overrides: PlacementOverrides, index: number): boolean {
   const item = packOverride(overrides, index);
   return item.offsetX !== 0 || item.offsetY !== 0
-    || item.scale !== 1 || item.rotate !== 0 || item.depth !== 0 || item.hidden;
+    || item.scale !== 1 || item.rotate !== 0 || item.depth !== 0 || item.hidden
+    || adjustTouched(item.adjust);
 }
 
 /**
@@ -865,6 +877,13 @@ export const CatalogPage = z.object({
    */
   ground: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
   /**
+   * `false`: no chain motif over the ground (SuperBrugsen's petals). A
+   * page laid out by a CMS section design is the whole look already —
+   * the CMS draws its sheet plain, and petals between its white offer
+   * panels read as gaps. Absent: the chain's motif, as always.
+   */
+  motif: z.boolean().optional(),
+  /**
    * Generated mood artwork, drawn behind the offers.
    *
    * Capped at three because this is seasoning: a page that is mostly
@@ -1099,6 +1118,14 @@ export const CatalogDocument = z.object({
    * the checks before print. See `Varer` in the studio.
    */
   mustInclude: z.array(z.string()).optional(),
+  /**
+   * Print checks someone looked at and let go — finding ids, see
+   * `Finding.id` in `@incitio/workflow`. An empty place the chain wants
+   * empty, a "Spar 20%" tile that has no price on purpose. Only the
+   * print checks: the price rules and sold places are the law and a
+   * contract, and are not anyone's to ignore.
+   */
+  ignored: z.array(z.string()).optional(),
   /** The theme the avis wears — birthday, Halloween — see `withTheme`. */
   theme: AppliedTheme.optional(),
   /** Local editions of this publication — see `PublicationVariant`. */

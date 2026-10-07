@@ -42,7 +42,7 @@ export function FillPageButton({ pageId }: { pageId: string }) {
               <>
                 <p><b>{empty}</b> {empty === 1 ? 'plads står' : 'pladser står'} tom{empty === 1 ? '' : 'me'} på siden.</p>
                 <button className="go" onClick={() => { s.fillEmptySlots(pageId); setRoom('closed'); }}>
-                  Fyld {empty === 1 ? 'pladsen' : `de ${empty} pladser`} fra reserven
+                  Fyld {empty === 1 ? 'pladsen' : `de ${empty} pladser`} med ikke placerede varer
                 </button>
               </>
             )}
@@ -60,9 +60,9 @@ export function FillPageButton({ pageId }: { pageId: string }) {
                   onClick={() => { s.fillPage(pageId, 'more'); setRoom('closed'); }}
                   title={more === 0 ? 'Der er ikke plads til en hel række mere' : undefined}
                 >
-                  {more > 0 ? `Tilføj ${more} ${more === 1 ? 'vare' : 'varer'} fra reserven` : 'Ikke plads til flere varer'}
+                  {more > 0 ? `Tilføj ${more} ikke ${more === 1 ? 'placeret vare' : 'placerede varer'}` : 'Ikke plads til flere varer'}
                 </button>
-                <p className="fillpage__hint">Varerne tages fra reserven efter sidens afdeling. ⌘Z fortryder.</p>
+                <p className="fillpage__hint">Varerne tages blandt de ikke placerede, efter sidens afdeling. ⌘Z fortryder.</p>
               </>
             )}
           </div>

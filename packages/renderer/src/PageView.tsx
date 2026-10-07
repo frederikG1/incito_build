@@ -1,4 +1,6 @@
+import { Fragment } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { adjustment } from './adjust.js';
 import { IncitoPage, printsExactly } from './IncitoPage.js';
 import { cellStates, pagedSheet } from './paged.js';
 import { incitoPacks, offerViewIds } from './incito.js';
@@ -217,7 +219,7 @@ export function designChoices(
       const a = slot.role === 'hero' || slot.role === 'feature';
       const look = resolveLook(offer, rules, { hero: a });
       const chosen = placement.overrides?.design ?? null;
-      const tag = chosen ?? look.design ?? pageTag;
+      const tag = chosen ?? slot.design ?? look.design ?? pageTag;
       const turn = turnsByTag.get(tag) ?? 0;
       turnsByTag.set(tag, turn + 1);
       const choice = chooseDesign(brand.offerDesigns, tag, offer, { a, turn })
@@ -570,9 +572,12 @@ export function PageView({
   };
 
   /** A picture laid on the page — the chain's own or a drawn motif. */
-  const renderDecor = (decor: CatalogPage['decorations'][number]) => (
+  const renderDecor = (decor: CatalogPage['decorations'][number]) => {
+    const developed = adjustment(decor.adjust);
+    return (
+    <Fragment key={decor.id}>
     <img
-      key={decor.id}
+      {...developed.attrs}
       className={`page__decor page__decor--${decor.anchor}${
         decor.front ? ' page__decor--front' : ''}${
         onMoveDecor && selectedDecorId === decor.id ? ' page__decor--active' : ''}`}
@@ -630,6 +635,11 @@ export function PageView({
         },
       } : {})}
       style={{
+        ...developed.style,
+        ...(decor.adjust?.skewX || decor.adjust?.skewY ? {
+          '--decor-skx': `${decor.adjust.skewX ?? 0}deg`,
+          '--decor-sky': `${decor.adjust.skewY ?? 0}deg`,
+        } : {}),
         '--decor-scale': String(decor.scale),
         '--decor-rotate': `${decor.rotate}deg`,
         '--decor-opacity': String(decor.opacity),
@@ -655,7 +665,10 @@ export function PageView({
         } : {}),
       } as CSSProperties}
     />
-  );
+    {developed.defs}
+    </Fragment>
+    );
+  };
 
   // Printed as published — the publication's own tree, not the chain's tiles.
   if (printsExactly(page)) {
@@ -706,7 +719,7 @@ export function PageView({
         {(page.notes ?? []).filter((note) => !note.id.startsWith(PUBLISHED)).map(renderNote)}
         {(sheet || ruled.length > 0) && (
           <div
-            className={`page page--overlay brand--${brand.id} page--ground-${brand.groundPattern}`}
+            className={`page page--overlay brand--${brand.id} ${page.motif === false ? '' : `page--ground-${brand.groundPattern}`}`}
             style={brandCssVars(brand, pageIndex) as CSSProperties}
           >
             <div className="page__grid page__grid--measured">
@@ -718,7 +731,7 @@ export function PageView({
             drawn by the chain's tile in the printed packshot's box. */}
         {packs.length > 0 && (
           <div
-            className={`page page--overlay brand--${brand.id} page--ground-${brand.groundPattern}`}
+            className={`page page--overlay brand--${brand.id} ${page.motif === false ? '' : `page--ground-${brand.groundPattern}`}`}
             style={brandCssVars(brand, pageIndex) as CSSProperties}
           >
             <div className="page__grid page__grid--measured">
@@ -766,7 +779,7 @@ export function PageView({
 
   return (
     <section
-      className={`page brand--${brand.id} page--ground-${brand.groundPattern}`}
+      className={`page brand--${brand.id} ${page.motif === false ? '' : `page--ground-${brand.groundPattern}`}`}
       style={style}
       data-page-id={page.id}
       data-template-id={template.id}

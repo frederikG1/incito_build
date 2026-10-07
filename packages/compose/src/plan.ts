@@ -401,8 +401,16 @@ export function planByCategory(
  * between the two faces. Mixed case is left exactly as it arrived,
  * because a lowercase word after the first may well be a brand name.
  */
-function sectionHeading(value: string): string {
-  const trimmed = value.trim().replace(/[\s_-]+/g, ' ');
+export function sectionHeading(value: string): string {
+  /*
+   * A slug ("frugt-og-groent") is a category some system already spelled
+   * without æ, ø and å — printed as it is, the page says "Koed og fisk".
+   * Only there are the usual ASCII spellings put back; a heading with
+   * spaces or Danish letters is the feed's own words and left alone.
+   */
+  const slug = /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(value.trim());
+  const danish = slug ? value.trim().replace(/aa/g, 'å').replace(/ae/g, 'æ').replace(/oe/g, 'ø') : value;
+  const trimmed = danish.trim().replace(/[\s_-]+/g, ' ');
   if (!trimmed) return trimmed;
   const shouting = trimmed === trimmed.toUpperCase() && /\p{Lu}/u.test(trimmed);
   const base = shouting ? trimmed.toLowerCase() : trimmed;

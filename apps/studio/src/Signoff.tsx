@@ -8,6 +8,7 @@ import { CHANGE_NAMES, LANE_SAID, familiarity, lanesOf, type Lane } from './appr
 import { priceVerdicts, type PriceVerdict } from './pricerules.js';
 import { changeFinding, signoffOf, verdictFinding, type Bucket, type Signoff } from './signoff-model.js';
 import { count, kr, when } from './format.js';
+import { standInPrices } from '@incitio/workflow';
 import { quickFixOf } from './quickfix.js';
 import { usePreviousWeek } from './week-diff.js';
 import { knownNames, rememberName, useWho } from './who.js';
@@ -64,7 +65,7 @@ export function SignoffBoard() {
 
       <Overview model={model} lanes={lanes} />
 
-      {model.open.map((bucket) => <OpenBucket key={bucket.key} bucket={bucket} onGo={goToFinding} />)}
+      {model.listed.map((bucket) => <OpenBucket key={bucket.key} bucket={bucket} onGo={goToFinding} />)}
 
       <Section title="Underskrifter" aside={<span className="bsection__said">hver ser kun det, der er ændret siden de skrev under</span>}>
         <ul className="lanes">
@@ -113,9 +114,6 @@ function Overview({ model, lanes }: { model: Signoff; lanes: Lane[] }) {
         <div>
           <h3>{verdict}</h3>
           <p>{done} af {steps.length} trin er i orden{model.blockedBy && !model.published ? ` — ${model.blockedBy.toLowerCase()}` : ''}</p>
-        </div>
-        <div className="overview__bar" aria-hidden="true">
-          {steps.map((step) => <i key={step.key} className={`is-${step.state}`} />)}
         </div>
       </div>
       <ul className="overview__steps">
@@ -170,37 +168,70 @@ function Who() {
 
 const MORE = 6;
 
+/**
+ * One check's list. A print stop can be let go — the place the chain
+ * wants empty, the tile with no price on purpose — and then it stops
+ * counting, here and on the server's publish; folded away under the
+ * list, one click from being taken back.
+ */
 function OpenBucket({ bucket, onGo }: { bucket: Bucket; onGo: (finding: Finding) => void }) {
   const [all, setAll] = useState(false);
+  const [showIgnored, setShowIgnored] = useState(false);
   const shown = all ? bucket.lines : bucket.lines.slice(0, MORE);
-  const { document, feed, emptySlots, quickFix } = useStudio(useShallow((s) => ({
+  const { document, feed, emptySlots, quickFix, setIgnored } = useStudio(useShallow((s) => ({
     document: s.variantBase ?? s.document,
     feed: s.feedOffers,
     emptySlots: s.emptySlots,
     quickFix: s.quickFix,
+    setIgnored: s.setIgnored,
   })));
   const fixes = useMemo(() => new Map(document
     ? shown.map((line) => [line.id, quickFixOf(document, line.finding, feed, (pageId) => emptySlots(pageId).length)] as const)
     : []), [document, shown, feed, emptySlots]);
+  const mayIgnore = bucket.key === 'tryk' || (bucket.key === 'pris' && standInPrices.demo);
   return (
-    <section className={`exception exception--${bucket.key}`}>
+    <section className={`exception exception--${bucket.key}${bucket.lines.length === 0 ? ' is-quiet' : ''}`}>
       <h3><span className="exception__n">{bucket.lines.length}</span>{bucket.title}</h3>
-      <ol>
-        {shown.map((line) => (
-          <li key={line.id} className={fixes.get(line.id) ? 'has-fix' : undefined}>
-            <button onClick={() => onGo(line.finding)}>{line.said}</button>
-            {fixes.get(line.id) && (
-              <button className="fix" title={fixes.get(line.id)!.detail} onClick={() => quickFix(fixes.get(line.id)!)}>
-                {fixes.get(line.id)!.label}
-              </button>
-            )}
-          </li>
-        ))}
-      </ol>
+      {shown.length > 0 && (
+        <ol>
+          {shown.map((line) => (
+            <li key={line.id} className={fixes.get(line.id) ? 'has-fix' : undefined}>
+              <button onClick={() => onGo(line.finding)}>{line.said}</button>
+              {fixes.get(line.id) && (
+                <button className="fix" title={fixes.get(line.id)!.detail} onClick={() => quickFix(fixes.get(line.id)!)}>
+                  {fixes.get(line.id)!.label}
+                </button>
+              )}
+              {mayIgnore && (
+                <button className="exception__ignore" title="Det er med vilje — tæl det ikke med" onClick={() => setIgnored([line.id], true)}>
+                  Ignorér
+                </button>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
       {bucket.lines.length > MORE && (
         <button className="linkish" onClick={() => setAll(!all)}>
           {all ? 'Vis færre' : `Vis ${bucket.lines.length - MORE} mere`}
         </button>
+      )}
+      {bucket.ignored.length > 0 && (
+        <div className="exception__ignored">
+          <button className="linkish" aria-expanded={showIgnored} onClick={() => setShowIgnored(!showIgnored)}>
+            {showIgnored ? 'Skjul ignorerede' : `Vis ${count(bucket.ignored.length, 'ignoreret', 'ignorerede')}`}
+          </button>
+          {showIgnored && (
+            <ol>
+              {bucket.ignored.map((line) => (
+                <li key={line.id}>
+                  <button onClick={() => onGo(line.finding)}>{line.said}</button>
+                  <button className="exception__ignore" onClick={() => setIgnored([line.id], false)}>Tag med igen</button>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       )}
     </section>
   );

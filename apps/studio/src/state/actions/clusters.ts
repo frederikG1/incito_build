@@ -17,7 +17,7 @@ export function clustersActions(ctx: StoreContext): Pick<StudioState, 'applyClus
       const offer = document.offers.find((entry) => entry.id === offerId);
       const members = offer ? packMembers(offer, document) : [];
       if (!offer || members.length < 2) {
-        set({ error: 'flisen er ikke sat sammen af flere varer' });
+        set({ error: 'Den valgte flise har kun én vare. Læg flere varer i pladsen først — træk dem fra listen.' });
         return;
       }
 

@@ -5,6 +5,7 @@ import { ImagePage, PageView } from '@incitio/renderer';
 import { weekRange } from '@incitio/schema';
 import { sameAvis, useStudio } from './state.js';
 import type * as api from './api.js';
+import { usePopover } from './popover.js';
 
 /**
  * The week, as the person making it lives it.
@@ -27,6 +28,7 @@ import type * as api from './api.js';
 
 /** A tag as a person reads it: a department's name, or the word capitalised. */
 function tagName(tag: string): string {
+  if (tag === 'cms') return 'CMS';
   return DEPARTMENT_NAMES[tag as Department] ?? `${tag.charAt(0).toUpperCase()}${tag.slice(1)}`;
 }
 
@@ -105,11 +107,11 @@ export function FeedArrival() {
           </span>
           <span className="choice__price">Opdatér</span>
         </button>
-        <button className={`choice${same ? '' : ' choice--best'}`} onClick={carry}>
+        <button className={`choice${same ? '' : ' choice--best'}`} onClick={() => carry()}>
           <span className="choice__what">
             <b>Fyld siderne med filens varer</b>
             <span>
-              Behold alle {pages} sider og deres design — felterne fyldes med de {arrival.count} varer
+              Behold alle {pages} sider og deres design — pladserne fyldes med de {arrival.count} varer
               fra filen, afdeling for afdeling. Det der ikke passer ind, står tomt og er listet.
             </span>
           </span>
@@ -164,7 +166,7 @@ export function CarryReport() {
         </div>
         <div className="stat">
           <b>{report.reserve}</b>
-          <span>i reserven</span>
+          <span>ikke placeret</span>
         </div>
         {(report.kept > 0 || report.pinnedGone.length > 0) && (
           <div
@@ -235,7 +237,7 @@ export function FeedChanges() {
         <span className="weekly__kicker weekly__kicker--warn">Rettet</span>
         <b>{onPage.length} {onPage.length === 1 ? 'vare' : 'varer'} på siderne har nye tal</b>
         {gone.length > 0 && <span className="weekly__stop">{gone.length} udgået — skal af siden</span>}
-        <span className="weekly__muted">{changes.added.length} nye ligger i reserven</span>
+        <span className="weekly__muted">{changes.added.length} nye venter under Ikke placeret</span>
         <div className="weekly__gap" />
         <button className="weekly__x" onClick={clear} title="Færdig">×</button>
       </header>
@@ -309,6 +311,18 @@ function SectionCard({ section, picked, picking, onPick }: {
         title={picking ? (picked ? 'Fravælg' : 'Vælg også denne') : `Indsæt som side ${at + 1} — ⇧-klik for at vælge flere`}
       >
         <div className="card__live" aria-hidden="true">{live}</div>
+        {/* A section that has never printed — one brought in from the CMS — shows where its offers will stand. */}
+        {section.page.placements.length === 0 && template && section.page.kind !== 'image' && (
+          <span className="sec__cells" aria-hidden="true" style={{ aspectRatio: String(brand.pageAspect ?? 0.707) }}>
+            {template.slots.filter((slot) => slot.rect).map((slot) => (
+              <i
+                key={slot.id}
+                style={{ left: `${slot.rect!.x * 100}%`, top: `${slot.rect!.y * 100}%`, width: `${slot.rect!.w * 100}%`, height: `${slot.rect!.h * 100}%` }}
+              />
+            ))}
+            <b>{template.slots.length} {template.slots.length === 1 ? 'plads' : 'pladser'}</b>
+          </span>
+        )}
         <span className="sec__use">{picking ? (picked ? 'Valgt' : '+ Vælg') : '+ Indsæt'}</span>
       </button>
       <button
@@ -322,7 +336,11 @@ function SectionCard({ section, picked, picking, onPick }: {
         {section.tags.map((tag) => (
           <span key={tag} className="tag">{tagName(tag)}</span>
         ))}
-        <button className="sec__drop" onClick={() => remove(section.id)} title="Slet sektionen">Slet</button>
+        <button
+          className="sec__drop"
+          onClick={() => { if (window.confirm(`Slet sektionen «${section.name}» for hele kæden? Sider der er lavet af den, beholder deres indhold.`)) remove(section.id); }}
+          title="Slet sektionen for hele kæden"
+        >Slet</button>
       </div>
     </div>
   );
@@ -336,6 +354,8 @@ export function SectionGallery() {
   const saveAll = useStudio((s) => s.saveAllSections);
   const busy = useStudio((s) => Boolean(s.busy));
   const at = useStudio((s) => s.sectionsAt);
+  // Esc closes it, as its × says — also with the caret in the search field.
+  usePopover(open, () => setOpen(false));
   const setAt = useStudio((s) => s.setSectionsAt);
   const pages = document?.pages ?? [];
   const [query, setQuery] = useState('');
@@ -343,7 +363,12 @@ export function SectionGallery() {
   // In the order they were chosen: that is the order the pages go in.
   const [chosen, setChosen] = useState<string[]>([]);
   const insertMany = useStudio((s) => s.insertSections);
-  useEffect(() => { if (!open) setChosen([]); }, [open]);
+  const importCms = useStudio((s) => s.importCmsSections);
+  // Section designs from the Tjek CMS, pasted — the same route Varedesigns takes in.
+  const [importing, setImporting] = useState(false);
+  const [pasted, setPasted] = useState('');
+  const [said, setSaid] = useState<string[] | null>(null);
+  useEffect(() => { if (!open) { setChosen([]); setImporting(false); setSaid(null); } }, [open]);
   if (!open) return null;
   const pick = (id: string) => setChosen((was) => (was.includes(id) ? was.filter((one) => one !== id) : [...was, id]));
 
@@ -361,7 +386,7 @@ export function SectionGallery() {
         <header className="secgal__head">
           <h2>Sektioner</h2>
           <span className="weekly__muted">
-            Kædens egne sidedesigns — pladserne fyldes fra reserven efter sektionens tags.
+            Kædens egne sidedesigns — pladserne fyldes med ikke placerede varer efter sektionens tags.
           </span>
           <div className="weekly__gap" />
           {document && (
@@ -397,6 +422,7 @@ export function SectionGallery() {
               </button>
             ))}
           </div>
+          <button className="thin" aria-expanded={importing} onClick={() => setImporting(!importing)}>Hent fra CMS</button>
           {document && (
             <button className="thin" disabled={busy} onClick={() => void saveAll()}>
               Gem avisens {document.pages.length} sider som sektioner
@@ -404,14 +430,48 @@ export function SectionGallery() {
           )}
         </div>
 
+        {importing && (
+          <div className="designs__import secgal__import">
+            <p>
+              I CMS’et: <b>Design templates → Sections</b>, vælg designs, <b>Clipboard → Copy to clipboard</b>. Sæt det ind her —
+              hver sektion kommer med sine pladser, sin baggrund, logo og overskrifter.
+            </p>
+            <textarea value={pasted} onChange={(e) => setPasted(e.target.value)} placeholder="incito_designs:[…]" rows={5} />
+            <button
+              className="go"
+              disabled={!pasted.trim() || busy}
+              onClick={async () => {
+                const done = await importCms(pasted);
+                if (!done) return;
+                setSaid([
+                  `${done.saved} ${done.saved === 1 ? 'sektion' : 'sektioner'} hentet — de står med mærket «CMS».`,
+                  ...(done.missing.length
+                    ? [`Kæden mangler varedesigns ${done.missing.map((t) => `«${t}»`).join(', ')} — hent dem under Varedesigns, ellers tegnes pladserne i sidens design.`]
+                    : []),
+                  ...done.left.slice(0, 6),
+                ]);
+                setPasted('');
+                setImporting(false);
+                setTag('cms');
+              }}
+            >Hent sektioner</button>
+          </div>
+        )}
+        {said && (
+          <ul className="secgal__said">
+            {said.map((line) => <li key={line}>{line}</li>)}
+          </ul>
+        )}
+
         {sections.length === 0 ? (
           <div className="secgal__empty">
             <b>Ingen sektioner endnu</b>
             <p>
               En sektion er et sidedesign der genbruges uge efter uge — frostsiden med ballonerne,
-              bagsiden, fredag & lørdag. Gem en side fra ⋯-menuen på siden, eller start biblioteket
-              med alle siderne i den avis der er åben.
+              bagsiden, fredag & lørdag. Gem en side fra ⋯-menuen på siden, start biblioteket
+              med alle siderne i den avis der er åben — eller hent kædens sektionsdesigns fra CMS’et.
             </p>
+            {!importing && <button className="go" onClick={() => setImporting(true)}>Hent fra CMS</button>}
           </div>
         ) : (
           <div className="secgal__grid">
@@ -435,7 +495,7 @@ export function SectionGallery() {
             </span>
             <div className="weekly__gap" />
             <button className="thin" onClick={() => setChosen([])}>Ryd</button>
-            <button className="go" onClick={() => insertMany(chosen, at)}>
+            <button className="go" disabled={!document} title={document ? '' : 'Åbn en avis for at indsætte'} onClick={() => insertMany(chosen, at)}>
               Indsæt {chosen.length === 1 ? `som side ${at + 1}` : `som side ${at + 1}–${at + chosen.length}`}
             </button>
           </footer>

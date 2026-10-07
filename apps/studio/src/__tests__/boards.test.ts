@@ -53,6 +53,18 @@ describe('Godkend as data', () => {
     expect(signoffOf(d, [], lanesOf(d), []).blockedBy).toMatch(/^Mangler /);
   });
 
+  it('lets a print check go: it stops nothing and waits, folded away, to be taken back', () => {
+    const d = { ...doc(four, [['x']]), ignored: ['a'] };
+    const model = signoffOf(d, [stop('a'), stop('b')], lanesOf(d), []);
+    expect(model.blockedBy).toBe('1 skal rettes først');
+    const tryk = model.listed.find((b) => b.key === 'tryk')!;
+    expect(tryk.lines.map((l) => l.id)).toEqual(['b']);
+    expect(tryk.ignored.map((l) => l.id)).toEqual(['a']);
+    const quiet = signoffOf(d, [stop('a')], lanesOf(d), []);
+    expect(quiet.clean.find((b) => b.key === 'tryk')!.clean).toBe('1 ignoreret, resten er i orden');
+    expect(quiet.listed.map((b) => b.key)).toEqual(['tryk']);
+  });
+
   it('lets an avis with every signature and no stops go out', () => {
     const d = doc(four, [['x']]);
     const at = '2026-09-20T08:00:00.000Z';

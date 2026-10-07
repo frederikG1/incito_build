@@ -1,0 +1,112 @@
+/*
+ * Backgrounds across the avis — see Backgrounds.tsx. Scoped: the dock,
+ * and what a page card wears while backgrounds are being chosen.
+ */
+.dock {
+  --tile-w: 92px;
+  margin: 0 0 20px;
+  padding: 14px 16px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 1px 0 var(--line-soft);
+}
+.head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.head > div:first-child { flex: 1 1 320px; min-width: 0; }
+.head h3 { margin: 0 0 2px; font-size: 15px; color: var(--ink); }
+.say { margin: 0; font-size: 13px; color: var(--muted); transition: color 0.2s; }
+.nudge { color: var(--stop); }
+.pick { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.pick button, .close {
+  font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line-field); background: var(--surface); color: var(--ink-2);
+}
+.pick button:hover:not(:disabled) { border-color: var(--line-dashed); background: var(--surface-hover); }
+.pick button:disabled { opacity: 0.5; cursor: default; }
+.close { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+
+.strip {
+  display: flex; gap: 10px; margin: 12px -16px 0; padding: 2px 16px 6px;
+  list-style: none; overflow-x: auto; scroll-snap-type: x proximity;
+}
+.strip li { flex: none; scroll-snap-align: start; }
+.tile {
+  position: relative; display: flex; flex-direction: column; gap: 5px;
+  width: var(--tile-w); padding: 0; border: 0; background: none; font: inherit; text-align: left;
+  color: var(--ink-2); cursor: pointer;
+}
+.tile::before {
+  /* The page shape, so a picture is judged as the sheet it will be. */
+  content: ''; display: block; width: 100%; aspect-ratio: var(--aspect, 0.707);
+  border-radius: 4px; outline: 1px solid var(--line); background: var(--paper-sunken);
+}
+.shot {
+  position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: var(--aspect, 0.707);
+  border-radius: 4px; background: center / cover no-repeat;
+}
+.tile:hover::before, .tile:focus-visible::before { outline: 2px solid var(--hot); }
+.tile:focus-visible { outline: none; }
+.tileName { font-size: 11.5px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uses {
+  position: absolute; top: 6px; right: 6px; padding: 1px 6px; border-radius: 9px;
+  font-size: 10.5px; background: rgb(22 24 29 / 0.78); color: #fff;
+}
+.upload input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.upload::before { background: var(--surface); outline: 1.5px dashed var(--line-dashed); }
+.upload:focus-within::before { outline: 2px solid var(--hot); }
+.plus {
+  position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: var(--aspect, 0.707);
+  display: grid; place-items: center; font-size: 28px; color: var(--hot);
+}
+.busy { opacity: 0.5; cursor: progress; }
+.none::before {
+  background:
+    linear-gradient(to top right, transparent calc(50% - 1px), var(--line-dashed) 50%, transparent calc(50% + 1px)),
+    var(--surface);
+}
+
+/* A page card while backgrounds are chosen. */
+.choosing { cursor: pointer; }
+.picked { outline: 3px solid var(--hot); outline-offset: 2px; }
+.check {
+  position: absolute; top: 6px; left: 6px; z-index: 3;
+  width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  background: rgb(255 255 255 / 0.92); border: 1.5px solid var(--line-dashed); color: transparent;
+}
+.picked .check { background: var(--hot); border-color: var(--hot); color: #fff; }
+.chip {
+  position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 3;
+  display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 3px;
+  border-radius: 6px; background: rgb(255 255 255 / 0.94); box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+  font-size: 11px; color: var(--ink-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.chip i { flex: none; width: 18px; height: 24px; border-radius: 2px; background: center / cover no-repeat var(--paper-sunken); outline: 1px solid var(--line); }
+.chipNone { color: var(--muted); }
+
+/* Something that can become a background is over this page. */
+.target::after {
+  content: attr(data-drop-said); position: absolute; inset: 0; z-index: 4;
+  display: grid; place-items: center; padding: 12px; text-align: center;
+  font-size: 13px; font-weight: 600; color: var(--hot);
+  background: rgb(45 108 223 / 0.12); outline: 2px dashed var(--hot); outline-offset: -2px;
+}
+
+/* The open sheet, with a file or a library picture over it: two halves, two answers. */
+.zones { position: absolute; inset: 0; z-index: 60; display: grid; grid-template-rows: 1fr 1fr; pointer-events: none; }
+.zone {
+  display: grid; place-items: center; align-content: center; gap: 4px; margin: 6px; padding: 12px;
+  border-radius: 8px; border: 2px dashed rgb(45 108 223 / 0.5); background: rgb(255 255 255 / 0.7);
+  color: var(--ink-2); font-size: 14px; text-align: center; backdrop-filter: blur(2px);
+}
+.zone b { font-size: 17px; color: var(--ink); }
+.zoneOn { border-style: solid; border-color: var(--hot); background: rgb(234 241 252 / 0.92); }
+.zoneOn b { color: var(--hot); }
+@media (prefers-reduced-motion: reduce) { .say { transition: none; } }
+
+/* The way in, on the avis's own toolbar: the one tool there that is filled, because choosing backgrounds is what this screen is for. */
+.feature { background: #eaf1fc; color: var(--hot); font-weight: 600; }
+.feature:hover { background: #dce8fb; color: var(--hot); }
+.feature :global(.tool__icon), .feature:hover :global(.tool__icon), .feature :global(.tool__n) { color: var(--hot); }
+.featureOn, .featureOn:hover { background: var(--hot); color: #fff; }
+.featureOn :global(.tool__icon), .featureOn:hover :global(.tool__icon), .featureOn :global(.tool__n) { color: #fff; }

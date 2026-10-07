@@ -107,6 +107,8 @@ export function DecorBar() {
     'document', 'drawBackdrops', 'setDecorNote', 'setDecorStyle'
   );
   const [tuning, setTuning] = useState(false);
+  // One AI drawing per page — asked once, like "Stil alle varer op".
+  const [askingAll, setAskingAll] = useState(false);
   const [open, setOpen] = useState(false);
   const pageNumber = useStudio((state) => {
     const at = state.document?.pages.findIndex((page) => page.id === state.activePageId) ?? -1;
@@ -163,11 +165,27 @@ export function DecorBar() {
         <button
           className={pageNumber ? 'decor__second' : 'decor__go'}
           disabled={blocked}
-          onClick={() => void s.drawBackdrops(pageIds)}
-          title={s.decorReady ? 'Motiver på hver side' : 'Kræver en Gemini-nøgle — se herunder'}
+          onClick={() => setAskingAll(!askingAll)}
+          aria-expanded={askingAll}
+          title={s.decorReady ? 'AI tegner et motiv på hver side' : 'AI-hjælpen er slået fra på denne maskine'}
         >
           Tegn til alle sider
         </button>
+        {askingAll && (
+          <div className="aiask aiask--inline" role="dialog" aria-label="Tegn til alle sider med AI">
+            <b className="aiask__title"><span aria-hidden="true">✦</span> Tegn til alle {pageIds.length} sider med AI?</b>
+            <p className="aiask__say">
+              AI tegner et motiv i den tomme plads på hver side — ét kald pr. side. Det kan tage et par minutter,
+              og ⌘Z fjerner dem igen, én side ad gangen.
+            </p>
+            <div className="aiask__does">
+              <button className="aiask__no" onClick={() => setAskingAll(false)}>Annuller</button>
+              <button className="aiask__go" autoFocus onClick={() => { setAskingAll(false); void s.drawBackdrops(pageIds); }}>
+                Ja, tegn {pageIds.length} sider
+              </button>
+            </div>
+          </div>
+        )}
         <button className="decor__more" onClick={() => setTuning(!tuning)} aria-expanded={tuning}>
           {tuning ? 'Skjul' : 'Tilpas'}{style && !tuning ? ' · tilpasset' : ''} {tuning ? '▴' : '▾'}
         </button>

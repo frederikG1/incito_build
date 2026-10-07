@@ -167,35 +167,17 @@ And once for the whole composition: view — "side" or "top".`;
  * Because it names the products itself, `placeCluster` leaves them out
  * of the brief rather than listing them twice.
  */
-export const PLACE_SCENE = `The attached images are {count} product cutouts for one
-supermarket offer, image 1 to {count} in this order:
+export const PLACE_SCENE = `The attached images are {count} product cutouts for one supermarket offer, image 1 to {count} in this order:
 {products}
 The offer is called "{offer}".
 
-{canvas} The products must fill as much of it as possible and still make a good-looking
-composition, the way a Danish leaflet (SuperBrugsen, Kvickly, føtex) shows an offer next to
-its price: overlapping a little, the hero in front and slightly larger, the same pack size
-at the same height. Give every product the height AND the width it has in real life beside
-the others: a flat 350 g cheese tub is a few centimetres tall and a hand wide, a 1 l carton
-is four times its height and a third of its width, and drawn to the same height the wide
-one covers three times the area and reads as the biggest thing in the offer. A product much
-wider than the rest must be correspondingly shorter. Look at how the products were
-photographed: cutouts shot from the side
-stand on one shared floor; cutouts shot from above (tubs, trays, pizzas, sweets seen from
-the top) lie on one flat surface seen from above, a flat lay spread over the whole canvas
-with slight turns, and have no floor. Products photographed from different angles go side
-by side, never on top of each other. Where products overlap, keep the labels readable: let
-the overlap fall on lids, edges and bottoms, never on the brand name or the front of a
-label, and no product is more than a quarter (25 %) covered. Depth follows the floor: of
-two standing products, the one whose feet are lower on the canvas is nearer to the viewer
-and in front.
+{canvas} The products must fill the canvas as much as possible, but strictly prioritize the overlap rule: you must scale down the entire group of products proportionally if necessary to guarantee that no product is more than 25 % covered. Still aim for a good-looking composition, the way a Danish leaflet (SuperBrugsen, Kvickly, føtex) shows an offer next to its price: overlapping a little, the hero in front and slightly larger, the same pack size at the same height. Give every product the height AND the width it has in real life beside the others: a flat 350 g cheese tub is a few centimetres tall and a hand wide, a 1 l carton is four times its height and a third of its width, and drawn to the same height the wide one covers three times the area and reads as the biggest thing in the offer. A product much wider than the rest must be correspondingly shorter.
 
-Return for every product its place on the canvas in pixels: left, top, width and height of
-the whole product (also where another product will cover it), with the cutout's aspect
-ratio kept, so width = height x aspect; tilt_degrees (0 unless a small lean helps, larger
-turns in a flat lay); covered_by, the numbers of the products in front of it (nearer
-products, whose feet are lower). Use the whole canvas. view: side when the products stand
-on a floor, top when they lie on a surface seen from above.`;
+Look at how the products were photographed: cutouts shot from the side stand on one shared floor; cutouts shot from above (tubs, trays, pizzas, sweets seen from the top) lie on one flat surface seen from above, a flat lay spread over the whole canvas with slight turns, and have no floor. Products photographed from different angles go side by side, never on top of each other. When displaying 3 or more of the same wide product type, arrange them in a slightly fanned-out pattern (cascading diagonally) or staggered in multiple shallow rows. Do not stack them steeply behind one another.
+
+Where products overlap, keep the labels completely readable: let the overlap fall only on blank spaces, transparent packaging, edges, or bottoms. The primary brand logo and product title on the items in the back must remain 100% visible and unobstructed, and no product is more than a quarter (25 %) covered. Depth follows the floor: of two standing products, the one whose feet are lower on the canvas is nearer to the viewer and in front.
+
+Return for every product its place on the canvas in pixels: left, top, width and height of the whole product (also where another product will cover it), with the cutout's aspect ratio kept, so width = height x aspect; tilt_degrees (0 unless a small lean helps, larger turns in a flat lay); covered_by, the numbers of the products in front of it (nearer products, whose feet are lower). Use the whole canvas. view: side when the products stand on a floor, top when they lie on a surface seen from above.`;
 
 /** Which standing prompt a run used. */
 export type PlacePromptId = 'regler' | 'beskrivelse';

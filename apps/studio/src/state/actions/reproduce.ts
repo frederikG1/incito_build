@@ -10,7 +10,7 @@ import type { StoreContext } from '../context.js';
 
 /** Regler, varedesigns og genskab-en-side fra referencer. */
 export function reproduceActions(ctx: StoreContext): Pick<StudioState, 'setReproduceOpen' | 'setRulesOpen' | 'setDesignsOpen' | 'setDesignEditing' | 'setOfferDesigns' | 'setOfferRules' | 'addReferences' | 'setReferencePages' | 'removeReference' | 'moveReference' | 'clearReferences' | 'setReproduceNote' | 'setReproduceAppend' | 'reproduce'> {
-  const { set, get, askingWeek, weekId, withWeek } = ctx;
+  const { set, get, replacing, askingWeek, weekId, withWeek } = ctx;
   return {
     setReproduceOpen: (open) => set({ reproduceOpen: open, error: null }),
 
@@ -180,6 +180,9 @@ export function reproduceActions(ctx: StoreContext): Pick<StudioState, 'setRepro
       // they land, so the week has to be known BEFORE the first one.
       if (askingWeek(() => void get().reproduce())) return;
       const week = get().week;
+      // The whole run is one step back: the avis as it was before the first page.
+      const before = get().document?.pages.length ? get().document : null;
+      const pastBefore = replacing(before);
 
       /*
        * Adding to what is open, or starting again.
@@ -245,7 +248,7 @@ export function reproduceActions(ctx: StoreContext): Pick<StudioState, 'setRepro
       const failures: { refId: string; name: string; message: string }[] = [];
       const cost = { inputTokens: 0, outputTokens: 0 };
       const started = Date.now();
-      set({ busy: 'Claude læser siden…', error: null, note: null, reproduceOpen: false });
+      set({ busy: 'AI læser siden…', error: null, note: null, reproduceOpen: false });
 
       for (const [index, job] of jobs.entries()) {
         set({
@@ -299,8 +302,7 @@ export function reproduceActions(ctx: StoreContext): Pick<StudioState, 'setRepro
             document,
             brand: withTemplates(reply.brand, document.templates),
             reproductions: runs,
-            past: [],
-            future: [],
+            ...pastBefore,
             activePageId: document.pages[document.pages.length - 1]?.id ?? null,
             selectedOfferId: null,
             selectedPart: null,

@@ -8,7 +8,7 @@ import type { StoreContext } from '../context.js';
 
 /** Skabeloner, sidetal, fokus og fortryd/gentag. */
 export function layoutActions(ctx: StoreContext): Pick<StudioState, 'setLayoutCells' | 'setLayoutNote' | 'setLayoutAppend' | 'generateLayout' | 'benched' | 'setPageTemplate' | 'shufflePage' | 'setPageCount' | 'applyLayout' | 'focusOffer' | 'undo' | 'redo'> {
-  const { set, get, mutate, templatesFollow, askingWeek, forWeek, withWeek, live } = ctx;
+  const { set, get, replacing, mutate, templatesFollow, askingWeek, forWeek, withWeek, live } = ctx;
   return {
     setLayoutCells: (cells) => set({ layoutCells: cells }),
     setLayoutNote: (note) => set({ layoutNote: note }),
@@ -21,9 +21,10 @@ export function layoutActions(ctx: StoreContext): Pick<StudioState, 'setLayoutCe
       if (askingWeek(() => void get().generateLayout())) return;
 
       const base = layoutAppend ? get().document : null;
+      const before = get().document?.pages.length ? get().document : null;
       const spent = base ? base.offers.map((offer) => offer.id) : [];
 
-      set({ busy: 'Gemini tegner et layout…', error: null, note: null });
+      set({ busy: 'AI tegner et layout…', error: null, note: null });
       try {
         const reply = await api.generateLayout(brandId, {
           feed: feed.text,
@@ -67,8 +68,7 @@ export function layoutActions(ctx: StoreContext): Pick<StudioState, 'setLayoutCe
           document,
           brand: withTemplates(reply.brand, document.templates),
           reproductions: base ? [...get().reproductions, run] : [run],
-          past: [],
-          future: [],
+          ...replacing(before),
           activePageId: landed?.id ?? null,
           selectedOfferId: null,
           selectedPart: null,
@@ -78,9 +78,8 @@ export function layoutActions(ctx: StoreContext): Pick<StudioState, 'setLayoutCe
           busy: null,
           note: [
             'Layout tegnet og fyldt',
-            `${(reply.drawnInMs / 1000).toFixed(0)}s tegning`,
-            `${(reply.elapsedMs / 1000).toFixed(0)}s casting`,
-            reply.rejected > 0 ? `${reply.rejected} plads(er) tomme` : '',
+            `${((reply.drawnInMs + reply.elapsedMs) / 1000).toFixed(0)} sek.`,
+            reply.rejected > 0 ? `${reply.rejected} ${reply.rejected === 1 ? 'plads er tom' : 'pladser er tomme'}` : '',
           ].filter(Boolean).join(' · '),
         });
       } catch (error) {

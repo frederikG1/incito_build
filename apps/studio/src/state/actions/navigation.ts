@@ -1,7 +1,7 @@
 import { weekName } from '@incitio/schema';
 import { bySeverity, measureFindings, readFindings } from '../../findings.js';
 import { applyQuickFix } from '../../quickfix.js';
-import { measureInputs } from '@incitio/workflow';
+import { measureInputs, standInPrices } from '@incitio/workflow';
 import { priceRuleFindings } from '../../pricerules.js';
 import { bookingFindings } from '../../inventory.js';
 import { WEEK_KEY, type StudioState } from '../model.js';
@@ -106,10 +106,21 @@ export function navigationActions(ctx: StoreContext): Pick<StudioState, 'setWeek
       const measured = document
         ? measureFindings(window.document, document.pages.map((page) => page.id), untouched, crowding)
         : [];
+      /*
+       * A print check someone let go is still on the list, but as worth
+       * a look rather than a stop — so the toolbar's count, the page
+       * marks and the list agree with the server's publish. The price
+       * rules and sold places are added after and are never let go.
+       */
+      const ignored = new Set(document?.ignored ?? []);
+      const print = [...read, ...measured, ...mustFindings()]
+        .map((finding) => (ignored.has(finding.id) ? { ...finding, weight: 'se' as const } : finding));
       set({
         findings: [
-          ...read, ...measured, ...changeFindings(), ...mustFindings(),
-          ...priceRuleFindings(document), ...bookingFindings(document),
+          ...print, ...changeFindings(),
+          // Price rules may be let go only while the history is a stand-in (see `priceStops`).
+          ...priceRuleFindings(document).map((finding) => (standInPrices.demo && ignored.has(finding.id) ? { ...finding, weight: 'se' as const } : finding)),
+          ...bookingFindings(document),
         ].sort(bySeverity),
       });
     },
@@ -157,7 +168,8 @@ export function navigationActions(ctx: StoreContext): Pick<StudioState, 'setWeek
       } else {
         live.gesture = null;
         mutate((doc) => applyQuickFix(doc, fix));
-        set({ note: `${fix.kind === 'uge' ? 'Datoerne er rettet' : 'Billedet er sat ind'} · ⌘Z fortryder` });
+        const said = { uge: 'Datoerne er rettet', billede: 'Billedet er sat ind', førpris: fix.kind === 'førpris' && fix.prePrice === null ? 'Førprisen er fjernet' : 'Spar-beløbet er rettet' };
+        set({ note: `${said[fix.kind]} · ⌘Z fortryder` });
       }
       get().refreshFindings();
     },

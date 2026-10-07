@@ -10,7 +10,7 @@ export { fetchBrands, checkFeed, fetchBrandProfile, fetchCurationStatus, fetchDe
 export type { BrandSummary, BrandSource, BrandProfile, DecorStatus, Section } from './api/chain.js';
 export { decorateDocument, buildCatalogue, fetchUploads, forgetUpload, uploadImage, readFeed } from './api/build.js';
 export type { DecorResult, DecorDirection, BuildReply, BuildRequest, LibraryImage, UploadedImage, FeedReading } from './api/build.js';
-export { patchCatalogue, fetchCatalogues, fetchCover, SaveConflict, SaveRefused, saveCatalogue, approveCatalogue, unapproveCatalogue, bookPlace, releasePlace, publishCatalogue, unpublishCatalogue, sendLiveChange, fetchVersions, fetchVersion, fetchCatalogue, fetchCataloguePdf, instructEdit } from './api/catalogs.js';
+export { deleteCatalogue, patchCatalogue, fetchCatalogues, fetchCover, SaveConflict, SaveRefused, saveCatalogue, approveCatalogue, unapproveCatalogue, bookPlace, releasePlace, publishCatalogue, unpublishCatalogue, sendLiveChange, fetchVersions, fetchVersion, fetchCatalogue, fetchCataloguePdf, instructEdit } from './api/catalogs.js';
 export type { CatalogStatus, CatalogSummary, CatalogCover, Workflow, CatalogueVersion, InstructReply } from './api/catalogs.js';
 export { fetchFeed, reproducePage, importPublication, generateLayout } from './api/references.js';
 export type { ReproduceRequest, ReproduceReply, PageReading, PublicationReply, LayoutRequest, LayoutReply } from './api/references.js';

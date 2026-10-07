@@ -33,11 +33,12 @@ function useExamples(): Offer[] {
 export function DesignsPanel() {
   const s = useStudioPick(
     'brand', 'designEditing', 'designsFromRules', 'designsReturn', 'designsSaving', 'document',
-    'setDesignEditing', 'setDesignsOpen', 'setOfferDesigns', 'setRulesOpen'
+    'setDesignEditing', 'setDesignsOpen', 'setOfferDesigns', 'setRulesOpen', 'importCmsSections'
   );
   const [query, setQuery] = useState('');
   const [importing, setImporting] = useState(false);
   const [pasted, setPasted] = useState('');
+  const [sectionPaste, setSectionPaste] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const examples = useExamples();
   const [exampleId, setExampleId] = useState<string | null>(null);
@@ -65,7 +66,9 @@ export function DesignsPanel() {
       const byId = new Map(designs.map((d) => [d.id, d]));
       for (const design of incoming) byId.set(design.id, design);
       save([...byId.values()]);
-      setSaid(`${incoming.length} designs hentet${skipped ? ` · ${skipped} sektionsdesigns sprunget over` : ''}`);
+      setSaid(`${incoming.length} designs hentet${skipped ? ` · ${skipped} sektionsdesigns i samme udklip` : ''}`);
+      // Section designs copied along: offer to keep them as sections instead of dropping them.
+      setSectionPaste(skipped ? pasted : null);
       setImporting(false);
       setPasted('');
     } catch (error) {
@@ -137,7 +140,26 @@ export function DesignsPanel() {
               Kopiér til CMS
             </button>
           </div>
-          {said && <p className="designs__said">{said}</p>}
+          {said && (
+            <p className="designs__said">
+              {said}
+              {sectionPaste && (
+                <>
+                  {' '}
+                  <button
+                    className="thin"
+                    onClick={() => {
+                      const text = sectionPaste;
+                      setSectionPaste(null);
+                      void s.importCmsSections(text).then((done) => {
+                        if (done) setSaid(`${done.saved} sektioner gemt — find dem under Sektioner`);
+                      });
+                    }}
+                  >Gem dem som sektioner</button>
+                </>
+              )}
+            </p>
+          )}
           {importing && (
             <div className="designs__import">
               <p>I CMS’et: <b>Design templates → Offers</b>, vælg designs, <b>Clipboard → Copy to clipboard</b>. Sæt det ind her:</p>
@@ -153,15 +175,14 @@ export function DesignsPanel() {
               <article key={design.id} className={`dcard${design.tag === tag ? ' is-default' : ''}`}>
                 <button className="dcard__open" onClick={() => setEditing(design.id)} title="Ret designet">
                   <Preview design={design} offer={example} />
-                  <span className="dcard__badges">
-                    {design.offer_priority === 'a' && <i title="Bruges til A-varer (sidens hovedvarer)">A</i>}
-                    {design.offer_type && <i title={`Kun til: ${TYPE_WORDS[design.offer_type]}`}>T</i>}
-                  </span>
+                  {/* The blue frame said "the pages use this one" to nobody; now it says it in words. */}
+                  {design.tag === tag && <span className="dcard__badges"><i>Siderne bruger det</i></span>}
                 </button>
                 <b className="dcard__tag">{design.tag}</b>
                 <small>{design.offer_type ? TYPE_WORDS[design.offer_type] : design.offer_priority === 'a' ? 'A-varer' : 'B-varer'}
                   {design.layers.some((l) => l.type === 'offer_image') ? '' : ' · uden billede'}</small>
                 <div className="dcard__do">
+                  <button className="thin" onClick={() => setEditing(design.id)}>Ret</button>
                   <button
                     className="thin"
                     onClick={() => {
@@ -171,7 +192,8 @@ export function DesignsPanel() {
                     }}
                   >Kopiér</button>
                   <button
-                    className="thin"
+                    className="thin dcard__drop"
+                    title="Slet designet for hele kæden"
                     onClick={() => { if (window.confirm(`Slet «${design.tag}»?`)) save(designs.filter((d) => d.id !== design.id)); }}
                   >Slet</button>
                 </div>

@@ -11,3 +11,4 @@ export * from './json-schema.js';
 export * from './offer-designs.js';
 export * from './theme.js';
 export * from './workflow.js';
+export * from './adjust.js';

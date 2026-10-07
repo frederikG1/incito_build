@@ -1,5 +1,7 @@
 import { PriceMark, pricePieces, setsPrice } from './price-mark.js';
+import { Fragment } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import { adjustment } from './adjust.js';
 import { packOverride, packStack, partOverride, type DesignLayer, type DesignParagraph, type Offer, type OfferDesign, type PlacementOverrides, type TilePart } from '@incitio/schema';
 import { incitoVars, renderLiquid } from './liquid.js';
 import { packStyle } from './OfferTile.js';
@@ -89,7 +91,7 @@ function shows(layer: DesignLayer, offer: Offer, vars: Record<string, unknown>):
   }
 }
 
-function paragraphStyle(p: DesignParagraph, layer: DesignLayer, text: string, box: { w: number; h: number }, others = 0, side = 1): CSSProperties {
+function paragraphStyle(p: DesignParagraph, layer: DesignLayer, text: string, box: { w: number; h: number }, others = 0, side = 1, grow = 1): CSSProperties {
   const color = p.text_color_level === 'primary' && layer.primary_color ? layer.primary_color
     : p.text_color_level === 'secondary' && layer.secondary_color ? layer.secondary_color
       : p.text_color ?? undefined;
@@ -99,7 +101,8 @@ function paragraphStyle(p: DesignParagraph, layer: DesignLayer, text: string, bo
    * the box's width, and it may not be taller than the box.
    */
   const lines = Math.max(1, p.text_max_lines ?? 1);
-  let size = p.text_size ?? p.text_max_size ?? 12;
+  // A layer `reshape` made larger carries its words larger with it.
+  let size = (p.text_size ?? p.text_max_size ?? 12) * grow;
   // A raised ",-" or øre takes less width than it would as text: count it at its own size.
   const pieces = p.incito_price?.minor === 'raised' ? pricePieces(text) : null;
   const length = pieces
@@ -112,7 +115,7 @@ function paragraphStyle(p: DesignParagraph, layer: DesignLayer, text: string, bo
     // Sharing its box with other lines — "1 stk." over the price — it may take only part of the height.
     const share = others > 0 ? 0.62 : 0.9;
     const byHeight = (box.h / side * DESIGN_REFERENCE_PX * share) / (lines * (p.text_line_height ?? 1.15));
-    size = Math.min(p.text_max_size, byWidth, byHeight);
+    size = Math.min(p.text_max_size * grow, byWidth, byHeight);
   }
   /*
    * One word — a figure like "560,70" — cannot wrap into its box, only
@@ -186,6 +189,130 @@ function fitted(layer: DesignLayer, aspect: number): DesignLayer {
   const cy = (layer.y1 + layer.y2) / 2;
   const sideY = side * aspect;
   return { ...layer, x1: cx - side / 2, x2: cx + side / 2, y1: cy - sideY / 2, y2: cy + sideY / 2 };
+}
+
+/** How far from square a cell may be before `reshape` lays the design out again. */
+export const RESHAPE_FROM = 1.25;
+/** The most a price or line of words grows in a tall cell. */
+const GROW_MAX = 1.3;
+
+type Span = { a1: number; a2: number; b1: number; b2: number };
+
+/**
+ * A design laid out again for a cell well off square.
+ *
+ * The designs are drawn for cells near square. Stretched as they are
+ * into a tall cell, every box grew tall and everything in it stayed the
+ * size the width allowed: a small picture and price in the middle,
+ * empty paper above and below. Instead:
+ *
+ * - The picture's band takes the length the cell has over a square, and
+ *   every box spanning that band (the backgrounds) stretches with it.
+ *   A box above it keeps its place; one on it keeps its place on the
+ *   picture; one below moves down with the cell's end.
+ * - In a tall cell with room for it, what stood side by side under the
+ *   picture — the name beside the price — is stacked: each line gets the
+ *   cell's whole width and grows (up to `GROW_MAX`), the price over the
+ *   words, the way a tall column in a printed avis reads.
+ * - A box tied to another (`parent_id`: a saving on its disc) moves and
+ *   grows with it.
+ *
+ * A wide cell is laid out again but does not grow its words: there the
+ * cell's height sets them, as in its row. Returns the layers in the
+ * cell's fractions, and how much each one grew.
+ */
+export function reshape(layers: DesignLayer[], aspect: number): { layers: DesignLayer[]; grow: Map<string, number> } {
+  const grow = new Map<string, number>();
+  const tall = aspect < 1 / RESHAPE_FROM;
+  const wide = aspect > RESHAPE_FROM;
+  const image = layers.find((layer) => layer.type === 'offer_image');
+  if ((!tall && !wide) || !image) return { layers, grow };
+  // `a` runs along the cell's long side, `b` across it; both in units of the short side.
+  const [a1, a2, b1, b2] = tall ? (['y1', 'y2', 'x1', 'x2'] as const) : (['x1', 'x2', 'y1', 'y2'] as const);
+  const span = (layer: DesignLayer): Span => ({ a1: layer[a1], a2: layer[a2], b1: layer[b1], b2: layer[b2] });
+  const long = tall ? 1 / aspect : aspect;
+  const s1 = image[a1];
+  const s2 = Math.max(image[a2], s1 + 0.05);
+  const ids = new Set(layers.map((layer) => String(layer.id)));
+  const parentOf = (layer: DesignLayer) =>
+    layer.parent_id !== null && layer.parent_id !== undefined && ids.has(String(layer.parent_id)) ? String(layer.parent_id) : null;
+  const spans = (layer: DesignLayer) => layer === image || (layer[a1] <= s1 + 1e-6 && layer[a2] >= s2 - 1e-6);
+  const centre = (box: Span) => (box.a1 + box.a2) / 2;
+  const own = layers.filter((layer) => parentOf(layer) === null);
+  const placed = new Map<string, Span>();
+
+  /* Under the picture: stacked in a tall cell when the length allows it
+     without the picture getting smaller than in a square. */
+  const foot = own.filter((layer) => !spans(layer) && centre(span(layer)) >= s2)
+    .sort((x, y) => x[a1] - y[a1] || x[b1] - y[b1]);
+  // How far the words and price reached up over the picture's edge — kept.
+  const tuck = foot.length > 0 ? Math.max(0, s2 - Math.min(...foot.map((layer) => layer[a1]))) : 0;
+  let end = s2 + (long - 1);
+  if (tall && foot.length > 1) {
+    for (const g of [GROW_MAX, 1]) {
+      const height = foot.reduce((sum, layer) => sum + (layer[a2] - layer[a1]) * g, 0);
+      const start = long - height;
+      if (start + tuck - s1 < s2 - s1) continue;
+      let cursor = start;
+      for (const layer of foot) {
+        const box = span(layer);
+        const h = (box.a2 - box.a1) * g;
+        const artwork = Boolean(layer.bg_image_url?.signed);
+        // Words take the whole width; a disc grows about its centre and stays inside the cell.
+        const half = ((box.b2 - box.b1) * g) / 2;
+        const c = Math.min(Math.max((box.b1 + box.b2) / 2, half), 1 - half);
+        placed.set(String(layer.id), {
+          a1: cursor, a2: cursor + h,
+          b1: artwork ? c - half : Math.min(0, box.b1), b2: artwork ? c + half : Math.max(1, box.b2),
+        });
+        if (g !== 1) grow.set(String(layer.id), g);
+        cursor += h;
+      }
+      end = start + tuck;
+      break;
+    }
+  }
+  const along = (v: number) => (v <= s1 ? v
+    : v <= s2 ? s1 + ((v - s1) * (end - s1)) / (s2 - s1)
+      : v <= 1 ? end + ((v - s2) * (long - end)) / Math.max(1e-6, 1 - s2)
+        : v + long - 1);
+  for (const layer of own) {
+    const id = String(layer.id);
+    if (placed.has(id)) continue;
+    const box = span(layer);
+    if (spans(layer)) { placed.set(id, { ...box, a1: along(box.a1), a2: along(box.a2) }); continue; }
+    // Kept its size, its centre carried to where that point of the design now stands.
+    const shift = along(centre(box)) - centre(box);
+    placed.set(id, { ...box, a1: box.a1 + shift, a2: box.a2 + shift });
+  }
+  // A tied box follows its own: the same move and growth, from the same corner.
+  const follow = (layer: DesignLayer, seen = new Set<string>()): Span => {
+    const id = String(layer.id);
+    const done = placed.get(id);
+    if (done) return done;
+    const parentId = parentOf(layer);
+    const parent = parentId ? layers.find((l) => String(l.id) === parentId) : undefined;
+    if (!parent || seen.has(id)) return span(layer);
+    seen.add(id);
+    const from = span(parent);
+    const to = follow(parent, seen);
+    const ka = (to.a2 - to.a1) / Math.max(1e-6, from.a2 - from.a1);
+    const kb = (to.b2 - to.b1) / Math.max(1e-6, from.b2 - from.b1);
+    const box = span(layer);
+    const result = {
+      a1: to.a1 + (box.a1 - from.a1) * ka, a2: to.a1 + (box.a2 - from.a1) * ka,
+      b1: to.b1 + (box.b1 - from.b1) * kb, b2: to.b1 + (box.b2 - from.b1) * kb,
+    };
+    placed.set(id, result);
+    const g = grow.get(parentId!);
+    if (g) grow.set(id, g);
+    return result;
+  };
+  const out = layers.map((layer) => {
+    const box = follow(layer);
+    return { ...layer, [a1]: box.a1 / long, [a2]: box.a2 / long, [b1]: box.b1, [b2]: box.b2 };
+  });
+  return { layers: out, grow };
 }
 
 /*
@@ -278,7 +405,9 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
   const visible = (layer: DesignLayer): boolean => !switchedOff(layer) && shows(layer, offer, vars);
 
   // First in the list is on top, as the CMS lists them.
-  const layers = [...design.layers].reverse().filter(visible).map((layer) => fitted(layer, aspect));
+  const layersBefore = [...design.layers].reverse().filter(visible);
+  const shaped = reshape(layersBefore, aspect);
+  const layers = shaped.layers.map((layer) => fitted(layer, aspect));
 
   const content = (layer: DesignLayer): ReactNode => {
     const raw = { w: layer.x2 - layer.x1, h: (layer.y2 - layer.y1) / aspect };
@@ -301,12 +430,17 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
       const shape = pack.length > 1 ? overrides?.arrangement ?? packStyle(offer.id, pack.length, 'standard') : 'row';
       const cols = shape === 'grid' ? packColumns(pack.length, raw.w / raw.h) : pack.length;
       const rows = Math.ceil(pack.length / cols);
+      // As on `OfferTile`: one photograph takes the whole adjustment, a cluster's wrapper all but crop and mask.
+      const whole = adjustment(pack.length > 1 && overrides?.adjust
+        ? { ...overrides.adjust, crop: undefined, mask: undefined }
+        : pack.length > 1 ? overrides?.adjust : undefined);
       return (
         <div
           className={`dtile__pack dtile__pack--${shape}`}
           data-count={pack.length}
-          style={{ ...(moved('media') ?? {}), '--cols': cols, '--rows': rows } as CSSProperties}
+          style={{ ...whole.style, ...(moved('media') ?? {}), '--cols': cols, '--rows': rows } as CSSProperties}
         >
+          {whole.defs}
           {pack.map((url, index) => {
             /*
              * Each product addressable and movable, as on `OfferTile`:
@@ -318,8 +452,11 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
             const item = overrides ? packOverride(overrides, index) : null;
             if (item?.hidden) return null;
             const shifted = item && (item.offsetX !== 0 || item.offsetY !== 0 || item.scale !== 1 || item.rotate !== 0);
+            const own = adjustment(pack.length === 1 ? overrides?.adjust : item?.adjust);
             return (
+              <Fragment key={`${url}-${index}`}>
               <img
+                {...own.attrs}
                 key={`${url}-${index}`}
                 src={url}
                 alt={index === 0 ? offer.name : ''}
@@ -327,6 +464,8 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
                 data-part="media"
                 data-pack={index}
                 style={{
+                  ...own.style,
+                  ...(own.skew ? { transform: own.skew } : {}),
                   // In a block the front row covers the one behind it.
                   zIndex: shape === 'grid' && !item?.depth
                     ? 4 + Math.floor(index / cols)
@@ -339,13 +478,21 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
                   } : {}),
                 }}
               />
+              {own.defs}
+              </Fragment>
             );
           })}
         </div>
       );
     }
     if (layer.type === 'offer_bg_image' && vars['__photoAsBackground'] && offer.imageUrl) {
-      return <img className="dtile__cover" src={offer.imageUrl} alt={offer.name} draggable={false} />;
+      const own = adjustment(overrides?.adjust);
+      return (
+        <>
+          <img className="dtile__cover" src={offer.imageUrl} alt={offer.name} draggable={false} {...own.attrs} style={own.skew ? { ...own.style, transform: own.skew } : own.style} />
+          {own.defs}
+        </>
+      );
     }
     if (layer.type === 'offer_logos') {
       return offer.labels.filter((label) => label.image).slice(0, 4).map((label) => (
@@ -363,7 +510,7 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
         <div
           key={p.id}
           className="dtile__p"
-          style={{ ...paragraphStyle(p, layer, text, box, said.length - 1, Math.min(1, 1 / aspect)), ...(part ? moved(part) : null) }}
+          style={{ ...paragraphStyle(p, layer, text, box, said.length - 1, Math.min(1, 1 / aspect), shaped.grow.get(String(layer.id)) ?? 1), ...(part ? moved(part) : null) }}
           {...(part ? { 'data-part': part, 'data-text': String(vars[part === 'name' ? 'offerName' : 'offerDescription'] ?? '') } : {})}
         >
           {setsPrice(p.incito_price) ? <PriceMark text={text} style={p.incito_price!} /> : text}
@@ -374,7 +521,7 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
 
   return (
     <div
-      className={`dtile${selected ? ' is-selected' : ''}`}
+      className={`dtile${selected ? ' is-selected' : ''}${shaped.layers !== layersBefore && aspect < 1 ? ' dtile--tall' : ''}`}
       data-offer-id={offer.id}
       data-design-id={design.id}
       title={because ? `${design.tag} — ${because}` : design.tag}

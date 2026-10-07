@@ -1,4 +1,5 @@
 import { useStudio } from './state.js';
+import { PICTURE_MIME } from './Backgrounds.js';
 
 /**
  * The chain's own pictures, as a drawer.
@@ -100,7 +101,16 @@ export function Pictures() {
         ) : (
           <ul className="pp__grid">
             {uploads.map((picture) => (
-              <li className="pp__card" key={picture.ref}>
+              <li
+                className="pp__card"
+                key={picture.ref}
+                draggable
+                title="Træk billedet hen på siden — øverste halvdel som baggrund, nederste oven på siden"
+                onDragStart={(event) => {
+                  event.dataTransfer.setData(PICTURE_MIME, picture.ref);
+                  event.dataTransfer.effectAllowed = 'copy';
+                }}
+              >
                 <span className="pp__shot">
                   <img src={picture.ref} alt="" loading="lazy" />
                   <button

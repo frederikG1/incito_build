@@ -78,6 +78,8 @@ function Document() {
           </span>
         </span>
       </button>
+      {/* Saved, said where the avis is named — like a document title, not a control of its own. */}
+      {document && <SaveStatus />}
     </div>
   );
 }
@@ -129,26 +131,46 @@ function PageHead() {
  * — so the file on the printer's desk says which version it is.
  */
 function PdfButton() {
-  const s = useStudioPick('busy', 'document', 'downloadPdf');
+  const s = useStudioPick('busy', 'document', 'downloadPdf', 'findings', 'setFindingsOpen', 'variantBase', 'variantId');
   const [open, setOpen] = useState(false);
   usePopover(open, () => setOpen(false));
   const off = !s.document || Boolean(s.busy);
+  const base = s.variantBase ?? s.document;
+  const edition = base?.variants?.find((variant) => variant.id === s.variantId)?.name ?? null;
+  /*
+   * What the printer would get, said before it goes. Not a lock — a
+   * proof is printed precisely to look at what is still wrong — but the
+   * file for the printer says what it is being sent with.
+   */
+  const stops = s.findings.filter((finding) => finding.weight === 'stop').length;
+  const unsigned = base ? lanesOf(base).filter((lane) => lane.state !== 'godkendt').length : 0;
+  const caveats = [
+    stops ? `${stops} skal rettes` : '',
+    unsigned ? `${unsigned} ${unsigned === 1 ? 'godkendelse mangler' : 'godkendelser mangler'}` : '',
+  ].filter(Boolean);
   return (
     <div className="pdfwrap">
-      <button className="go go--split" onClick={() => void s.downloadPdf()} disabled={off}>Hent PDF</button>
+      <button className="go go--split" onClick={() => void s.downloadPdf()} disabled={off}
+        title={edition ? `Korrektur af udgaven ${edition}` : 'Korrektur af hele avisen'}>
+        Hent PDF{edition ? ` · ${edition}` : ''}
+      </button>
       <button className="go go--caret" onClick={() => setOpen(!open)} disabled={off} aria-expanded={open} title="Flere PDF'er" aria-label="Flere PDF'er"><Chevron /></button>
       {open && (
         <>
           <div className="sheetaway" onPointerDown={() => setOpen(false)} />
           <div className="docmenu docmenu--right">
             <button className="docmenu__do docmenu__do--big" onClick={() => { setOpen(false); void s.downloadPdf(); }}>
-              <b>Korrektur</b>
+              <b>Korrektur{edition ? ` · ${edition}` : ''}</b>
               <span>Til skærm og godkendelse</span>
             </button>
             <button className="docmenu__do docmenu__do--big" onClick={() => { setOpen(false); void s.downloadPdf(true); }}>
-              <b>Til trykkeriet</b>
+              <b>Til trykkeriet{edition ? ` · ${edition}` : ''}</b>
               <span>3 mm beskæring, skæremærker og versionslinje</span>
+              {caveats.length > 0 && <span className="pdf__caveat">⚠ Avisen har {caveats.join(' og ')}</span>}
             </button>
+            {stops > 0 && (
+              <button className="docmenu__do" onClick={() => { setOpen(false); s.setFindingsOpen(true); }}>Se hvad der skal rettes</button>
+            )}
           </div>
         </>
       )}
@@ -250,12 +272,13 @@ export function Top() {
         {document && s.view !== 'hjem' && s.view !== 'varedesigns' && (
           <>
             <Document />
-            <EditionPicker />
+            {/* Only when there are store editions to choose between; they are made under Udgaver. */}
+            {(document.variants?.length ?? 0) > 0 && <EditionPicker />}
           </>
         )}
 
         {inAvis && s.view !== 'side' && (
-          <div className="seg top__tabs" role="tablist" aria-label="Skærm">
+          <nav className="navtabs" role="tablist" aria-label="Skærm">
             <button role="tab" aria-selected={s.view === 'bog'} className={s.view === 'bog' ? 'is-on' : ''} onClick={() => s.openPage(null)}>Avisen</button>
             <button role="tab" aria-selected={s.view === 'varer'} className={s.view === 'varer' ? 'is-on' : ''} onClick={() => s.openGoods()}>Varer</button>
             <button role="tab" aria-selected={s.view === 'pladser'} className={s.view === 'pladser' ? 'is-on' : ''} onClick={() => s.openBoard('pladser')}>
@@ -270,7 +293,7 @@ export function Top() {
             <button role="tab" aria-selected={s.view === 'live'} className={s.view === 'live' ? 'is-on' : ''} onClick={() => s.openBoard('live')}>
               Live{document?.status === 'udgivet' ? <i className="seg__live" aria-label="udgivet" /> : null}
             </button>
-          </div>
+          </nav>
         )}
 
         {/* Back to the book, only from inside a page. */}
@@ -284,11 +307,13 @@ export function Top() {
         {inAvis && (
           <>
             <ReadyPill />
-            <SaveStatus />
-            <div className="top__history">
-              <button className="quiet" onClick={s.undo} disabled={s.past.length === 0} title="Fortryd (⌘Z)" aria-label="Fortryd">↶</button>
-              <button className="quiet" onClick={s.redo} disabled={s.future.length === 0} title="Gentag (⇧⌘Z)" aria-label="Gentag">↷</button>
-            </div>
+            {/* On the page, where edits are made; ⌘Z and ⇧⌘Z work everywhere. */}
+            {s.view === 'side' && (
+              <div className="top__history">
+                <button className="quiet" onClick={s.undo} disabled={s.past.length === 0} title="Fortryd (⌘Z)" aria-label="Fortryd">↶</button>
+                <button className="quiet" onClick={s.redo} disabled={s.future.length === 0} title="Gentag (⇧⌘Z)" aria-label="Gentag">↷</button>
+              </div>
+            )}
             <PdfButton />
           </>
         )}
@@ -304,11 +329,26 @@ export function Top() {
 /** Who is signed in, and the way out — only when the server asks for sign-in. */
 function SignedIn() {
   const session = useSession();
+  const [open, setOpen] = useState(false);
+  usePopover(open, () => setOpen(false));
   if (session.state !== 'signed-in') return null;
+  const initials = session.user.name.split(/\s+/).map((part) => part[0] ?? '').join('').slice(0, 2).toUpperCase();
   return (
-    <span className="top__who" title={session.user.email}>
-      {session.user.name}{' '}
-      <button className="top__signout" onClick={() => void signOutNow()}>Log ud</button>
-    </span>
+    <div className="docwrap top__who">
+      <button className="avatar" onClick={() => setOpen(!open)} aria-expanded={open} title={session.user.email}>
+        <span aria-hidden="true">{initials}</span>
+        <span className="sr">{session.user.name}</span>
+      </button>
+      {open && (
+        <>
+          <div className="sheetaway" onPointerDown={() => setOpen(false)} />
+          <div className="docmenu docmenu--right avatar__menu" role="menu">
+            <b>{session.user.name}</b>
+            <small>{session.user.email}</small>
+            <button className="thin top__signout" onClick={() => void signOutNow()}>Log ud</button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

@@ -28,7 +28,8 @@ const FACT_WORDS: Record<RuleFact, { yes: string; no: string }> = {
   image: { yes: 'har billede', no: 'har ikke billede' },
   hero: { yes: 'står på hovedpladsen', no: 'står ikke på hovedpladsen' },
   lifestyle: { yes: 'har livsstilsbillede', no: 'har pakkebillede' },
-  lead: { yes: 'er hovedvare', no: 'er ikke hovedvare' },
+  // From the feed's own ranking (Coop: Priority 2) — not where the product stands; that is `hero`.
+  lead: { yes: 'har høj prioritet i varefilen', no: 'har ikke høj prioritet i varefilen' },
   member: { yes: 'har medlemspris', no: 'har ikke medlemspris' },
   reduced: { yes: 'er nedsat', no: 'er ikke nedsat' },
   savings: { yes: 'har besparelse', no: 'har ingen besparelse' },
@@ -295,8 +296,8 @@ function RuleCard({
             ? 'Gælder varen på hovedpladsen på hver side'
             : caught.length === 0
             ? 'Rammer ingen af ugens varer — feedet har måske ikke oplysningen'
-            : caught.length === offers.length && rule.when.length > 0
-              ? `Rammer alle ${caught.length} varer — betingelsen skelner ikke`
+            : rule.when.length > 0 && nearlyAll(caught.length, offers.length)
+              ? <b className="rule__warn">⚠ {nearlyAllSaid(caught.length, offers.length, rule.when.map((c) => c.fact))}</b>
               : `Rammer ${caught.length} ${caught.length === 1 ? 'vare' : 'varer'}`}
         </span>
         {caught.length > 0 && <RulePreview offers={caught.slice(0, 6)} />}
@@ -394,16 +395,35 @@ export function ruleFromOffer(offer: Offer): OfferRule {
   return OfferRule.parse({ id: newId(), name, when, then: {} });
 }
 
+/**
+ * A condition that catches nearly every product decides almost nothing —
+ * usually a file that gives every product the same value (a preliminary
+ * export with every priority at 2). Said, not silently applied to all.
+ */
+function nearlyAll(n: number, total: number): boolean {
+  return total >= 5 && n >= total * 0.8;
+}
+
+/** Why a condition catches nearly everything, in the words of the field it reads. */
+function nearlyAllSaid(n: number, total: number, facts: RuleCondition['fact'][]): string {
+  const why = facts.includes('lead')
+    ? ' — varefilen giver næsten alle varerne høj prioritet. Tjek filen, eller brug "står på hovedpladsen"'
+    : ' — betingelsen skelner næsten ikke';
+  return `Rammer ${n} af ${total} varer${why}`;
+}
+
 /** How many of the week's products one condition catches, and a warning when that decides nothing. */
 function Count({ offers, condition }: { offers: Offer[]; condition: RuleCondition }) {
   // Where an offer stands is only known on a page.
   if (condition.fact === 'hero') return <span className="rule__count" title="Afgøres på siden">side</span>;
   const n = offers.filter((offer) => meets(offerFacts(offer), condition)).length;
-  const idle = n === 0 || n === offers.length;
+  const idle = n === 0 || nearlyAll(n, offers.length);
   return (
     <span
       className={`rule__count${idle ? ' rule__count--idle' : ''}`}
-      title={n === 0 ? 'Ingen af ugens varer — feedet har måske ikke oplysningen' : n === offers.length ? 'Alle ugens varer — betingelsen skelner ikke' : `${n} af ugens ${offers.length} varer`}
+      title={n === 0 ? 'Ingen af ugens varer — feedet har måske ikke oplysningen'
+        : nearlyAll(n, offers.length) ? nearlyAllSaid(n, offers.length, [condition.fact])
+        : `${n} af ugens ${offers.length} varer`}
     >
       {n}
     </span>

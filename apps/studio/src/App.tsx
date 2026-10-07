@@ -56,7 +56,12 @@ export function App() {
           <span className="spinner" aria-hidden="true" /> {s.busy}
         </div>
       )}
-      {s.error && <div className="banner banner--error">{s.error}</div>}
+      {s.error && (
+        <div className="banner banner--error" role="alert">
+          <span>{s.error}</span>
+          <button className="banner__x" onClick={() => useStudio.setState({ error: null })} aria-label="Luk" title="Luk">×</button>
+        </div>
+      )}
       {s.note && !s.error && !s.busy && <Toast note={s.note} />}
       {/* One quiet line, not a set-up guide: everything but the AI help works without keys. */}
       {s.brand && (!s.curationReady || !s.decorReady) && (

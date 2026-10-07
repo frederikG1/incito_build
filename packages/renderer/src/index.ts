@@ -13,3 +13,4 @@ export { ImageSize, sizedImage } from './image.js';
 export * from './DesignTile.js';
 export * from './liquid.js';
 export * from './price-mark.js';
+export * from './adjust.js';

@@ -1,5 +1,5 @@
 import {
-  PlacementOverrides, partLimits, partOverride, partPatch, TILE_PART_NAMES,
+  PlacementOverrides, PACK_DEFAULTS, tidyAdjust, packLimits, packOverride, partLimits, partOverride, partPatch, TILE_PART_NAMES,
   type Brand, type CatalogDocument, type CatalogPage, type PageTemplate, type Placement,
 } from '@incitio/schema';
 import { EditOp } from './ops.js';
@@ -218,6 +218,61 @@ export function applyOps(document: CatalogDocument, ops: unknown[], brand: Brand
           } as PlacementOverrides;
         });
         applied.push(`${n(op.offerId)}: ${TILE_PART_NAMES[op.part].toLowerCase()} rettet`);
+        break;
+      }
+      case 'pack': {
+        placed(op.offerId);
+        const limits = packLimits();
+        doc = withOverrides(doc, op.offerId, (o) => {
+          const now = packOverride(o, op.index);
+          const next = {
+            offsetX: op.offsetX === undefined ? now.offsetX : clamp(op.offsetX, -limits.reach, limits.reach),
+            offsetY: op.offsetY === undefined ? now.offsetY : clamp(op.offsetY, -limits.reach, limits.reach),
+            scale: op.scale === undefined ? now.scale : clamp(op.scale, limits.minScale, limits.maxScale),
+            rotate: op.rotate === undefined ? now.rotate : clamp(op.rotate, -limits.turn, limits.turn),
+            depth: op.depth === undefined ? now.depth : clamp(op.depth, -limits.depth, limits.depth),
+            hidden: op.hidden ?? now.hidden,
+          };
+          // Sparse, like the document keeps it: a product put back where it was leaves no key.
+          const { [String(op.index)]: _, ...rest } = o.pack;
+          const back = JSON.stringify(next) === JSON.stringify({ ...PACK_DEFAULTS });
+          return { ...o, pack: back ? rest : { ...rest, [String(op.index)]: next } };
+        });
+        applied.push(`${n(op.offerId)}: vare ${op.index + 1} i flisen ${op.hidden ? 'skjult' : 'rettet'}`);
+        break;
+      }
+      case 'adjust': {
+        placed(op.offerId);
+        const merge = (now: PlacementOverrides['adjust']) => (op.adjust === null ? undefined : tidyAdjust({ ...now, ...op.adjust }));
+        doc = withOverrides(doc, op.offerId, (o) => {
+          if (op.index === undefined) {
+            const { adjust: now, ...rest } = o;
+            const next = merge(now);
+            return (next ? { ...rest, adjust: next } : rest) as PlacementOverrides;
+          }
+          const { adjust: now, ...item } = packOverride(o, op.index);
+          const next = merge(now);
+          const { [String(op.index)]: _, ...others } = o.pack;
+          const entry = next ? { ...item, adjust: next } : item;
+          const back = JSON.stringify(entry) === JSON.stringify({ ...PACK_DEFAULTS });
+          return { ...o, pack: back ? others : { ...others, [String(op.index)]: entry } };
+        });
+        applied.push(`${n(op.offerId)}: ${op.index === undefined ? 'billedet' : `vare ${op.index + 1}`} ${op.adjust === null ? 'nulstillet' : 'justeret'}`);
+        break;
+      }
+      case 'adjustDecor': {
+        const page = pageOf(op.pageId);
+        if (!page.decorations.some((d) => d.id === op.decorId)) fail(`page "${page.id}" has no picture "${op.decorId}"`);
+        doc = withPage(doc, page.id, (entry) => ({
+          ...entry,
+          decorations: entry.decorations.map((d) => {
+            if (d.id !== op.decorId) return d;
+            const { adjust: now, ...rest } = d;
+            const next = op.adjust === null ? undefined : tidyAdjust({ ...now, ...op.adjust });
+            return next ? { ...rest, adjust: next } : rest;
+          }),
+        }));
+        applied.push(`${side(page.id)}: billede ${op.adjust === null ? 'nulstillet' : 'justeret'}`);
         break;
       }
       case 'arrange':

@@ -7,6 +7,9 @@ import { LayoutEditor } from "../LayoutEditor.js";
 import { PageTextEditor } from "../PageTextEditor.js";
 import { Comparison } from "../Reproduce.js";
 import { OFFER_MIME, droppedOffers } from "../Tray.js";
+import { useState, type DragEvent } from "react";
+import { PICTURE_MIME, carriesPicture, droppedImages } from "../Backgrounds.js";
+import bg from "../Backgrounds.module.css";
 import type { CatalogPage, Offer } from "@incitio/schema";
 
 /** One page of the avis on the canvas, with everything that edits it. */
@@ -16,8 +19,14 @@ export function Sheet({ page, offers }: { page: CatalogPage; offers: Map<string,
     'layoutEditPageId', 'librarySelection', 'moveIncito', 'movePage', 'removePage', 'replaceImagePage',
     'reproductions', 'select', 'selectIncito', 'selectNote', 'selectedDecorId', 'selectedIncito',
     'selectedNoteId', 'selectedOfferId', 'selectedPart', 'setActivePage', 'setPageSubtitle',
-    'setPageTitle', 'updateNote', 'updatePageImage'
+    'setPageTitle', 'updateNote', 'updatePageImage', 'backgroundPages', 'uploadBackground', 'placeFromLibrary'
   );
+  // A picture over the sheet: the top half lays it under the page, the bottom half on it.
+  const [dropTo, setDropTo] = useState<"bg" | "pic" | null>(null);
+  const halfOf = (event: DragEvent<HTMLElement>): "bg" | "pic" => {
+    const paper = event.currentTarget.querySelector(".sheet__paper")?.getBoundingClientRect();
+    return paper && event.clientY > paper.top + paper.height / 2 ? "pic" : "bg";
+  };
   const document = s.document!;
   const index = document.pages.findIndex((entry) => entry.id === page.id);
   const brand = s.brand!;
@@ -60,7 +69,7 @@ export function Sheet({ page, offers }: { page: CatalogPage; offers: Map<string,
             </div>
             <button
               className="sheet__drop"
-              title="Tag siden ud af avisen"
+              title="Slet siden (⌘Z fortryder)"
               onClick={() => s.removePage(page.id)}
             >
               ×
@@ -117,16 +126,31 @@ export function Sheet({ page, offers }: { page: CatalogPage; offers: Map<string,
       key={page.id}
       onPointerDownCapture={() => s.setActivePage(page.id)}
       onDragOver={(event) => {
-        if (event.dataTransfer.types.includes("Files"))
-          event.preventDefault();
+        if (!carriesPicture(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        const half = halfOf(event);
+        if (half !== dropTo) setDropTo(half);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTo(null);
       }}
       onDrop={async (event) => {
-        const file = [...event.dataTransfer.files].find((f) =>
-          f.type.startsWith("image/"),
-        );
-        if (!file) return;
+        const kind = carriesPicture(event);
+        setDropTo(null);
+        if (!kind) return;
         event.preventDefault();
-        await s.addPageImage(page.id, file);
+        const half = halfOf(event);
+        if (kind === "library") {
+          const ref = event.dataTransfer.getData(PICTURE_MIME);
+          if (half === "bg") await s.backgroundPages([page.id], ref);
+          else s.placeFromLibrary(page.id, ref, "på siden");
+          return;
+        }
+        const [file] = droppedImages(event);
+        if (!file) return;
+        if (half === "bg") await s.uploadBackground([page.id], file);
+        else await s.addPageImage(page.id, file);
       }}
     >
       {run && <Comparison run={run} />}
@@ -228,6 +252,18 @@ export function Sheet({ page, offers }: { page: CatalogPage; offers: Map<string,
       {s.layoutEditPageId === page.id
         ? <LayoutEditor page={page} template={template} />
         : <EmptyCells page={page} template={template} />}
+      {dropTo && (
+        <div className={bg.zones} aria-hidden="true">
+          <div className={`${bg.zone}${dropTo === "bg" ? ` ${bg.zoneOn}` : ""}`}>
+            <b>Som baggrund</b>
+            <span>Under hele siden, bag varerne</span>
+          </div>
+          <div className={`${bg.zone}${dropTo === "pic" ? ` ${bg.zoneOn}` : ""}`}>
+            <b>Som billede på siden</b>
+            <span>Oven på — flyt det bagefter</span>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

@@ -28,14 +28,18 @@ test.describe('signed in', () => {
     expect(foreign.status()).toBe(403);
   });
 
-  test('Feedtjek judges the week\'s file on the front page', async ({ page }) => {
+  test('a new avis judges its file before it is made', async ({ page }) => {
     await page.goto('/#/superbrugsen');
-    const pick = page.locator('.feedcheck__pick input[type=file]');
-    await pick.setInputFiles(feed('SuperBrugsenW36.json'));
-    await expect(page.locator('.feedcheck__report--ok')).toContainText('Klar til at bygge');
-    await expect(page.locator('.feedcheck__report')).toContainText('160 tilbud');
+    await page.getByRole('button', { name: /^Lav avisen for uge/ }).first().click();
+    const dialog = page.getByRole('dialog', { name: /Ny avis/ });
+    const pick = dialog.locator('input[type=file]');
+    // Another chain's file: said here, not after the week is built from it.
     await pick.setInputFiles(feed('nemlig.json'));
-    await expect(page.locator('.feedcheck__report--ulæselig')).toContainText('Kan ikke læses');
+    await expect(dialog.locator('.feedcheck__report--ulæselig')).toContainText('Kan ikke læses');
+    // The chain's own, whole file: nothing to say.
+    await pick.setInputFiles(feed('SuperBrugsenW36.json'));
+    await expect(dialog.locator('.feedcheck__report')).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Annullér' }).click();
   });
 
   test('a tile opens in the inspector, and its three tabs switch', async ({ page }) => {
@@ -61,6 +65,54 @@ test.describe('signed in', () => {
     await expect(undo).toBeEnabled();
     await page.keyboard.press('ControlOrMeta+z');
     await expect(undo).toBeDisabled();
+  });
+
+  test('dragging the edge two cells share moves both, and Alt moves one alone', async ({ page }) => {
+    const { catalogId, pages } = seeded();
+    await page.goto(`/#/superbrugsen/${catalogId}/side/${pages[0]}`);
+    await page.getByRole('button', { name: 'Rediger layout' }).click();
+    const cells = page.locator('.celledit__cell');
+    await expect(cells.first()).toBeVisible();
+    const boxes = await cells.evaluateAll((all) => all.map((el) => el.getBoundingClientRect().toJSON() as DOMRect));
+    // A cell with a neighbour across its left edge — or, on a page of rows, across its top.
+    const across = (vertical: boolean) => boxes.flatMap((r, i) => boxes.map((l, j) => ({ i, j, r, l }))).find(({ r, l }) => vertical
+      ? Math.abs(r.top - l.bottom) < 40 && Math.min(r.right, l.right) - Math.max(r.left, l.left) > 40
+      : Math.abs(r.left - l.right) < 40 && Math.min(r.bottom, l.bottom) - Math.max(r.top, l.top) > 40);
+    const vertical = !across(false);
+    const pair = across(vertical);
+    expect(pair).toBeTruthy();
+    const { i, j } = pair!;
+    const drag = async (by: number, alt = false) => {
+      const grip = cells.nth(i).locator(vertical ? '.celledit__grip--n' : '.celledit__grip--w');
+      const g = (await grip.boundingBox())!;
+      const at = { x: g.x + g.width / 2, y: g.y + g.height / 2 };
+      if (alt) await page.keyboard.down('Alt');
+      await page.mouse.move(at.x, at.y);
+      await page.mouse.down();
+      for (const k of [0.5, 1]) {
+        await page.mouse.move(at.x + (vertical ? 0 : by * k), at.y + (vertical ? by * k : 0), { steps: 4 });
+      }
+      await page.mouse.up();
+      if (alt) await page.keyboard.up('Alt');
+    };
+    // The held cell's near edge, and its neighbour's facing edge.
+    const edges = async () => {
+      const held = (await cells.nth(i).boundingBox())!;
+      const next = (await cells.nth(j).boundingBox())!;
+      return vertical
+        ? { near: held.y, facing: next.y + next.height }
+        : { near: held.x, facing: next.x + next.width };
+    };
+    const before = await edges();
+    await drag(-40);
+    const after = await edges();
+    expect(after.near).toBeLessThan(before.near - 25);
+    // The neighbour gave what the cell took: the alley between them is what it was.
+    expect(Math.abs((after.near - after.facing) - (before.near - before.facing))).toBeLessThan(1.5);
+    await drag(60, true);
+    const alone = await edges();
+    expect(alone.near).toBeGreaterThan(after.near + 40);
+    expect(Math.abs(alone.facing - after.facing)).toBeLessThan(1.5);
   });
 });
 
@@ -135,5 +187,55 @@ test.describe('the design menu', () => {
     const onTop = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[role=dialog]') !== null,
       { x: box.x + 5, y: box.y + box.height / 2 });
     expect(onTop).toBe(true);
+  });
+});
+
+test.describe('printing', () => {
+  test('the print file says what it would be sent with', async ({ page }) => {
+    const { catalogId } = seeded();
+    await page.goto(`/#/superbrugsen/${catalogId}/bog`);
+    await page.getByRole('button', { name: "Flere PDF'er" }).click();
+    await expect(page.locator('.pdf__caveat')).toContainText('godkendelser mangler');
+  });
+});
+
+test.describe('planning ahead', () => {
+  test('an avis weeks out is made for that week, even from another week\'s file', async ({ page }) => {
+    await page.goto('/#/superbrugsen');
+    const chip = page.locator('.ahead:not(.ahead--made)').first();
+    const week = Number((await chip.locator('b').textContent())!.replace(/\D/g, ''));
+    await chip.click();
+    const dialog = page.getByRole('dialog', { name: `Ny avis for uge ${week}` });
+    await dialog.locator('input[type=file]').setInputFiles(feed('SuperBrugsenW36.json'));
+    await dialog.getByRole('button', { name: 'Lav avisen' }).click();
+    // Not refused: made for the week chosen, and the file's week is said.
+    await expect(page.locator('.toast')).toContainText(`Uge ${week} er lavet med varer fra SuperBrugsenW36.json`);
+    await expect(page.locator('.banner--error')).toHaveCount(0);
+  });
+});
+
+test.describe('deleting an avis', () => {
+  test('an avis made weeks ahead can be deleted from its card', async ({ page }) => {
+    await page.goto('/#/superbrugsen');
+    const chip = page.locator('.ahead:not(.ahead--made)').last();
+    const week = Number((await chip.locator('b').textContent())!.replace(/\D/g, ''));
+    await chip.click();
+    const dialog = page.getByRole('dialog', { name: `Ny avis for uge ${week}` });
+    await dialog.locator('input[type=file]').setInputFiles(feed('SuperBrugsenW36.json'));
+    await dialog.getByRole('button', { name: 'Lav avisen' }).click();
+    await expect(page.locator('.toast')).toContainText(`Uge ${week}`);
+    // Pages, so there is something to save.
+    await page.getByRole('button', { name: /Hurtigt udkast/ }).click();
+    await expect(page.locator('.saving__state--saved')).toBeVisible({ timeout: 15_000 });
+    await page.goto('/#/superbrugsen');
+    const made = page.locator('.ahead__wrap').filter({ hasText: `Uge ${week}` });
+    await made.getByRole('button', { name: /^Mere om/ }).click();
+    page.once('dialog', (confirm) => void confirm.accept());
+    await made.getByRole('button', { name: 'Slet avisen…' }).click();
+    await expect(page.locator('.ahead:not(.ahead--made)').filter({ hasText: `Uge ${week}` })).toHaveCount(1);
+    // Not written back by an autosave a moment later.
+    await page.waitForTimeout(3500);
+    const list = await (await page.request.get('/api/brand/catalogs', { headers: { 'x-incitio-brand': 'superbrugsen' } })).json() as { catalogs: { week: { week: number } | null }[] };
+    expect(list.catalogs.some((c) => c.week?.week === week)).toBe(false);
   });
 });

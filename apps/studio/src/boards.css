@@ -80,7 +80,7 @@
 .who { display: flex; align-items: center; gap: var(--b-2); font-size: var(--t-sm); color: var(--muted); }
 .who b { color: var(--ink); font-weight: 600; }
 .who input {
-  font: inherit; font-size: var(--t-sm); color: var(--ink); width: 160px; padding: 7px 10px;
+  font: inherit; font-size: var(--t-sm); color: var(--ink); width: 220px; padding: 7px 10px;
   border: 1px solid var(--line-field); border-radius: var(--r-sm); background: var(--surface);
 }
 
@@ -96,13 +96,25 @@
 }
 .exception li button:hover, .lane__changes button:hover { background: var(--surface); color: var(--ink); }
 .exception > .linkish { margin-left: 32px; }
-.exception li.has-fix { display: flex; align-items: center; gap: var(--b-2); }
-.exception li.has-fix > button:first-child { flex: 1; min-width: 0; }
+.exception li { display: flex; align-items: center; gap: var(--b-2); }
+.exception li > button:first-child { flex: 1; min-width: 0; }
 .exception li button.fix {
   display: inline-block; width: auto; flex: none; margin: 0; white-space: nowrap;
   color: var(--hot); font-weight: 600; border: 1px solid currentColor; padding: 3px 10px;
 }
 .exception li button.fix:hover { background: var(--hot); color: #fff; }
+/* Letting a check go: quiet until the row is pointed at, so it never competes with the fix. */
+.exception li button.exception__ignore {
+  width: auto; flex: none; margin: 0; white-space: nowrap; font-size: var(--t-xs, 12px); color: var(--ink-3, var(--ink-2));
+  opacity: 0.55; transition: opacity 120ms;
+}
+.exception li:hover button.exception__ignore,
+.exception li button.exception__ignore:focus-visible,
+.exception__ignored li button.exception__ignore { opacity: 1; }
+.exception__ignored { display: flex; flex-direction: column; gap: var(--b-1, 4px); margin-left: 32px; }
+.exception .exception__ignored ol { padding-left: 0; }
+.exception .exception__ignored li > button:first-child { text-decoration: line-through; color: var(--ink-3, var(--ink-2)); }
+.exception.is-quiet { border-left-color: var(--line); }
 
 /* What was checked and found in order: one muted line. */
 .signoff__checked { margin: calc(-1 * var(--b-3)) 0 0; display: flex; flex-wrap: wrap; gap: var(--b-1) var(--b-4); font-size: var(--t-sm); color: var(--muted); }
@@ -228,13 +240,7 @@
 /* --- Live ----------------------------------------------------------- */
 
 .liveboard__body { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: var(--b-5); align-items: start; }
-.liveboard__phonecol { display: flex; flex-direction: column; gap: 10px; align-items: center; }
-.liveboard__whohead { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.liveboard__who { flex-wrap: nowrap; }
-.liveboard__who button { padding: 5px 9px; font-size: 12px; white-space: nowrap; }
-.liveboard__said { margin: 0; font-size: var(--t-xs); color: var(--muted); text-align: center; max-width: 340px; min-height: 34px; }
-.liveboard__wait { margin: 0; max-width: 46ch; font-size: var(--t-md); line-height: 1.55; color: var(--muted); padding-top: var(--b-5); }
-.liveboard__wait b { color: var(--ink-2); font-weight: 600; }
+.liveboard__phonecol { display: flex; flex-direction: column; gap: 10px; align-items: center; position: sticky; top: var(--b-4); }
 
 .phone {
   width: 340px; height: 640px; border-radius: 42px; padding: 12px; background: #1b1d21;
@@ -245,31 +251,23 @@
 .phone__bar span { margin-left: auto; color: var(--muted); font-size: 12px; }
 .phone__screen { flex: 1 1 auto; overflow-y: auto; background: #fff; border-radius: 0 0 30px 30px; display: flex; flex-direction: column; gap: 6px; padding: 0 0 18px; scrollbar-width: none; }
 .phone__screen::-webkit-scrollbar { display: none; }
-.phone__list { margin: 4px 10px; padding: 10px 12px; border-radius: 12px; background: var(--paper); display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
-.phone__list span { color: var(--ink-2); font-size: var(--t-xs); }
 .phone__page { position: relative; width: 316px; height: calc(316px / var(--aspect, 0.707)); overflow: hidden; flex: none; content-visibility: auto; contain-intrinsic-size: 316px 447px; }
-.phone__live { position: absolute; left: 0; top: 0; width: 500px; transform: scale(0.632); transform-origin: 0 0; pointer-events: none; }
+.phone__live { position: absolute; left: 0; top: 0; width: 500px; transform: scale(0.632); transform-origin: 0 0; cursor: pointer; }
+/* Tapping a tile opens its row; nothing inside the page acts on its own. */
+.phone__live * { pointer-events: none; }
+.phone__live [data-offer-id] { pointer-events: auto; }
 .phone__live .page { max-width: none; }
 .livemark { position: absolute; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 6px; pointer-events: none; }
 .livemark__tag { font: 600 15px/1.15 var(--ui-font); background: var(--ink); color: #fff; padding: 4px 8px; border-radius: 6px; max-width: 100%; }
 .livemark__tag--out { background: var(--stop); }
-.livemark__mine { font: 600 14px/1.1 var(--ui-font); background: #fff; color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); padding: 3px 7px; border-radius: 999px; }
+/* The tile whose row is open. */
+.livemark--here { box-shadow: inset 0 0 0 4px var(--hot); border-radius: 6px; }
 
-.liveboard__side { display: flex; flex-direction: column; gap: var(--b-5); max-width: 640px; }
-.liveboard__hits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.liveboard__hits button { width: 100%; display: flex; justify-content: space-between; gap: 10px; text-align: left; font: inherit; font-size: var(--t-sm); padding: 8px 10px; border: none; border-radius: var(--r-sm); background: none; cursor: pointer; }
-.liveboard__hits button:hover { background: var(--surface); }
-.liveboard__hits b { font-weight: 600; }
-.liveboard__hits span { color: var(--muted); }
-.liveboard__form { display: flex; flex-direction: column; gap: 12px; }
-.liveboard__act { display: grid; grid-template-columns: 170px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: var(--t-sm); color: var(--ink-2); }
-.liveboard__soldout { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--t-sm); }
-.liveboard__soldout li { display: flex; gap: var(--b-3); align-items: baseline; }
-.liveboard__soldout b { font-weight: 600; }
+.liveboard__side { display: flex; flex-direction: column; gap: var(--b-5); max-width: 760px; }
 
 @media (max-width: 1180px) {
   .slotsboard__body, .liveboard__body { grid-template-columns: minmax(0, 1fr); }
-  .slotsboard__side { position: static; }
+  .slotsboard__side, .liveboard__phonecol { position: static; }
   .lane { grid-template-columns: minmax(0, 1fr) auto; }
   .lane__state { display: none; }
 }
@@ -299,11 +297,6 @@
 .overview__top { display: flex; align-items: center; justify-content: space-between; gap: var(--b-4); flex-wrap: wrap; }
 .overview__top h3 { font-size: 22px; letter-spacing: -0.02em; }
 .overview__top p { margin: 2px 0 0; font-size: var(--t-sm); color: var(--muted); }
-.overview__bar { display: flex; gap: 4px; flex: 0 1 320px; min-width: 160px; }
-.overview__bar i { flex: 1; height: 8px; border-radius: 4px; background: var(--line); }
-.overview__bar i.is-ok { background: var(--ok-ink); }
-.overview__bar i.is-open { background: var(--stop); }
-.overview__bar i.is-wait { background: #f79009; }
 .overview__steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--b-2); }
 .step {
   display: grid; grid-template-columns: 26px 1fr; column-gap: 10px; row-gap: 1px; align-items: center;

@@ -8,7 +8,7 @@ import { FRESH, cellSize, carryOverrides, departmentOfPage } from '../layout.js'
 import type { StoreContext } from '../context.js';
 
 /** Markering, layoutredigering, celler, noter og bytte af pladser. */
-export function editingActions(ctx: StoreContext): Pick<StudioState, 'select' | 'selectDecor' | 'setLayoutEdit' | 'ownLayout' | 'setCellRect' | 'addCell' | 'emptySlots' | 'fillEmptySlots' | 'fillPage' | 'removeCell' | 'mergeCells' | 'selectNote' | 'addNote' | 'updateNote' | 'removeNote' | 'selectPart' | 'selectPageText' | 'swapPlacements' | 'setMaxPages' | 'endGesture'> {
+export function editingActions(ctx: StoreContext): Pick<StudioState, 'select' | 'selectDecor' | 'setLayoutEdit' | 'ownLayout' | 'setCellRect' | 'setCellRects' | 'addCell' | 'emptySlots' | 'fillEmptySlots' | 'fillPage' | 'removeCell' | 'mergeCells' | 'selectNote' | 'addNote' | 'updateNote' | 'removeNote' | 'selectPart' | 'selectPageText' | 'swapPlacements' | 'setMaxPages' | 'endGesture'> {
   const { set, get, reserveFor, mutate, clearUnderText, live } = ctx;
   return {
     /*
@@ -78,33 +78,40 @@ export function editingActions(ctx: StoreContext): Pick<StudioState, 'select' | 
     },
 
     setCellRect(pageId, slotId, rect, name) {
+      get().setCellRects(pageId, { [slotId]: rect }, name ?? `cell:${pageId}:${slotId}`);
+    },
+
+    setCellRects(pageId, rects, name) {
       const page = get().document?.pages.find((entry) => entry.id === pageId);
       if (!page) return;
-      const was = get().document?.templates.find((t) => t.id === page.templateId)
-        ?.slots.find((slot) => slot.id === slotId);
+      const slots = get().document?.templates.find((t) => t.id === page.templateId)?.slots ?? [];
+      const was = new Map(slots.map((slot) => [slot.id, slot]));
       mutate((doc) => ({
         ...doc,
         templates: doc.templates.map((t) => (t.id === page.templateId
-          ? { ...t, slots: t.slots.map((slot) => (slot.id === slotId ? { ...slot, rect } : slot)) }
+          ? { ...t, slots: t.slots.map((slot) => (rects[slot.id] ? { ...slot, rect: rects[slot.id]! } : slot)) }
           : t)),
         // The tile in the cell keeps its arrangement as the cell grows.
-        pages: doc.pages.map((entry) => (entry.id === pageId && was?.rect
+        pages: doc.pages.map((entry) => (entry.id === pageId
           ? {
             ...entry,
-            placements: entry.placements.map((placement) => (placement.slotId === slotId
-              ? {
+            placements: entry.placements.map((placement) => {
+              const rect = rects[placement.slotId];
+              const before = was.get(placement.slotId);
+              if (!rect || !before?.rect) return placement;
+              return {
                 ...placement,
                 overrides: carryOverrides(
                   placement.overrides,
                   doc.offers.find((offer) => offer.id === placement.offerId),
-                  { w: was.rect!.w, h: was.rect!.h, role: was.role },
-                  { w: rect.w, h: rect.h, role: was.role },
+                  { w: before.rect.w, h: before.rect.h, role: before.role },
+                  { w: rect.w, h: rect.h, role: before.role },
                 ),
-              }
-              : placement)),
+              };
+            }),
           }
           : entry)),
-      }), name ?? `cell:${pageId}:${slotId}`);
+      }), name ?? `cells:${pageId}`);
     },
 
     addCell(pageId, rect) {
@@ -185,7 +192,7 @@ export function editingActions(ctx: StoreContext): Pick<StudioState, 'select' | 
       });
       const index = document.pages.indexOf(page);
       set({
-        note: `Side ${index + 1}: ${placements.length} af ${empty.length} tomme pladser fyldt fra reserven · ⌘Z fortryder`,
+        note: `Side ${index + 1}: ${placements.length} af ${empty.length} tomme pladser fyldt med ikke placerede varer · ⌘Z fortryder`,
       });
       clearUnderText([pageId]);
     },
@@ -284,7 +291,7 @@ export function editingActions(ctx: StoreContext): Pick<StudioState, 'select' | 
       }));
       set({
         note: added.length > 0
-          ? `${count(added.length, 'vare', 'varer')} lagt ind fra reserven: ${added.map((entry) => entry.offer.name.split(/[,(]/)[0]!.trim()).join(', ')}`
+          ? `${count(added.length, 'vare', 'varer')} lagt ind fra Ikke placeret: ${added.map((entry) => entry.offer.name.split(/[,(]/)[0]!.trim()).join(', ')}`
           : `Fliserne fylder nu siden ud — ${Math.round(room.free * 100)} % af siden var tom`,
       });
     },

@@ -1,5 +1,5 @@
 import {
-  partOverride, TEXT_PARTS, TILE_PARTS,
+  packOverride, partOverride, TEXT_PARTS, TILE_PARTS,
   type Brand, type CatalogDocument, type EditOp, type Offer, type PublicationVariant,
 } from '@incitio/schema';
 import { applyOps, EditError } from './apply.js';
@@ -158,7 +158,16 @@ export function diffToOps(before: CatalogDocument, after: CatalogDocument, brand
           }
         }
       }
-      if (!same(o.pack, w.pack)) unrepresented.push(`product positions inside ${id}`);
+      // Each product of a cluster that stands somewhere else, as its whole position.
+      for (const key of new Set([...Object.keys(o.pack), ...Object.keys(w.pack)])) {
+        const index = Number(key);
+        const a = packOverride(o, index);
+        if (!Number.isInteger(index) || index < 0 || index > 7) {
+          unrepresented.push(`product positions inside ${id}`);
+          continue;
+        }
+        if (!same(a, packOverride(w, index))) run({ op: 'pack', offerId: id, index, ...a });
+      }
     }
   }
 

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Offer, readIncitoDesigns } from '@incitio/schema';
 import { DesignTile, renderLiquid } from '../index.js';
 import { incitoVars } from '../liquid.js';
-import { packColumns } from '../DesignTile.js';
+import { packColumns, reshape } from '../DesignTile.js';
 
 const { designs } = readIncitoDesigns(readFileSync(new URL('../../../../data/designs/superbrugsen-cms.json', import.meta.url), 'utf8'));
 const offer = (over: Partial<Offer> = {}) => Offer.parse({
@@ -37,6 +37,28 @@ describe('DesignTile', () => {
     for (const design of designs) {
       expect(() => renderToStaticMarkup(createElement(DesignTile, { design, offer: offer(), aspect: 1 }))).not.toThrow();
     }
+  });
+
+  it('gives a tall cell\'s length to the picture, and moves the price and words with it', () => {
+    const design = designs.find((d) => d.tag === 'Rød, sort, hvid' && d.offer_priority === 'a')!;
+    expect(reshape(design.layers, 1).layers).toBe(design.layers);
+    const { layers, grow } = reshape(design.layers, 1 / 3);
+    const before = design.layers.find((l) => l.type === 'offer_image')!;
+    const after = layers.find((l) => l.type === 'offer_image')!;
+    // The picture takes the length: its share of the tall cell is more than a third of its share of the square.
+    expect((after.y2 - after.y1) * 3).toBeGreaterThan(before.y2 - before.y1);
+    const price = layers.find((l) => l.type === 'offer_price')!;
+    const was = design.layers.find((l) => l.type === 'offer_price')!;
+    expect(grow.get(String(price.id))).toBeGreaterThan(1);
+    // Larger, and still inside the cell.
+    expect(price.x2 - price.x1).toBeGreaterThan(was.x2 - was.x1);
+    for (const layer of layers) {
+      expect(layer.x1).toBeGreaterThanOrEqual(Math.min(0, design.layers.find((l) => l.id === layer.id)!.x1) - 1e-9);
+      expect(layer.x2).toBeLessThanOrEqual(Math.max(1, design.layers.find((l) => l.id === layer.id)!.x2) + 1e-9);
+      expect(layer.y2).toBeLessThanOrEqual(1 + 1e-9);
+    }
+    // A wide cell lays it out again, but its words keep the row's size.
+    expect(reshape(design.layers, 3).grow.size).toBe(0);
   });
 
   it('places the boxes where the design says, and the price in its box', () => {
@@ -72,8 +94,32 @@ describe('DesignTile', () => {
     expect(packColumns(6, 8)).toBe(6);
   });
 
+  it('says "fra" over the lowest of several prices', () => {
+    const design = designs.find((d) => d.tag === 'Rød, sort, hvid' && d.offer_priority === 'a')!;
+    const from = renderToStaticMarkup(createElement(DesignTile, { design, aspect: 1, offer: offer({ price: 25, priceFrom: true, pack: '' }) }));
+    expect(from).toMatch(/>fra</);
+    expect(from).toContain('25,-');
+    expect(incitoVars(offer({ priceFrom: true, pack: '1 pakke' }))['offerCommentLabel1']).toBe('1 pakke fra');
+    expect(incitoVars(offer({ pack: '1 pakke' }))['offerCommentLabel1']).toBe('1 pakke');
+  });
+
   it('draws no picture in a design without an image box', () => {
     const design = designs.find((d) => d.tag === 'Rød, sort, hvid - Uden billede')!;
     expect(renderToStaticMarkup(createElement(DesignTile, { design, offer: offer(), aspect: 1 }))).not.toContain('img/x.png');
+  });
+});
+
+describe('chooseDesign picks a variant that can draw the picture', () => {
+  it('gives a packshot the variant with an image box, and a photograph the one that lays it under the cell', async () => {
+    const { chooseDesign } = await import('@incitio/schema');
+    const withBox = { id: 'box', tag: 'T', type: 'offer' as const, offer_priority: 'a' as const, layers: [{ id: 1, type: 'offer_image' as const, x1: 0, y1: 0, x2: 1, y2: 0.8 }] };
+    const underCell = { id: 'bg', tag: 'T', type: 'offer' as const, offer_priority: 'a' as const, layers: [{ id: 1, type: 'offer_bg_image' as const, x1: 0, y1: 0, x2: 1, y2: 1 }] };
+    const pool = [withBox, underCell] as never[];
+    for (const turn of [0, 1, 2, 3]) {
+      expect(chooseDesign(pool, 'T', { ...offer(), imageKind: 'pack' }, { a: true, turn })!.design.id).toBe('box');
+    }
+    // A photograph can stand in either; turns still rotate between them.
+    const photo = { ...offer(), imageKind: 'lifestyle' as const };
+    expect(new Set([0, 1].map((turn) => chooseDesign(pool, 'T', photo, { a: true, turn })!.design.id))).toEqual(new Set(['box', 'bg']));
   });
 });

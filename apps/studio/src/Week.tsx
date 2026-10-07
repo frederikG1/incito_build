@@ -51,8 +51,8 @@ export function AskWeek() {
       <div className="ask__card">
         <h2>Hvilken uge laver I?</h2>
         <p className="ask__why">
-          Avisen får navn efter ugen, gyldighedsdatoerne udfyldes, og feedet
-          skæres til de varer der faktisk gælder. Spørges kun denne ene gang.
+          Avisen får navn efter ugen, og gyldighedsdatoerne udfyldes.
+          Spørges kun denne ene gang.
         </p>
 
         <div className="ask__row">

@@ -20,7 +20,8 @@
     "@incitio/curator": "0.1.0",
     "@incitio/compose": "0.1.0",
     "@incitio/edit": "0.1.0",
-    "@incitio/workflow": "0.1.0"
+    "@incitio/workflow": "0.1.0",
+    "@incitio/cms": "0.1.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.17",

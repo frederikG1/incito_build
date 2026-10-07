@@ -1,6 +1,7 @@
 import { useStudio } from './state.js';
 import type { Finding, FindingKind } from './findings.js';
 import { usePopover } from './popover.js';
+import { lanesOf } from './approvals.js';
 
 /**
  * What is missing, as a list you can work through.
@@ -65,8 +66,11 @@ export function Checklist() {
   const refresh = useStudio((s) => s.refreshFindings);
   // Inside a page the right edge is the panel you fix things with: the list moves left.
   const onPage = useStudio((s) => s.view === 'side');
+  const openBoard = useStudio((s) => s.openBoard);
+  const base = useStudio((s) => s.variantBase ?? s.document);
 
   if (!document || !open) return null;
+  const unsigned = base ? lanesOf(base).filter((lane) => lane.state !== 'godkendt').length : 0;
 
   const stop = findings.filter((finding) => finding.weight === 'stop');
   /*
@@ -92,7 +96,7 @@ export function Checklist() {
   return (
     <aside className={`checks${onPage ? ' checks--left' : ''}`} aria-label="Hvad mangler">
       <div className="checks__head">
-        <h2>{stop.length === 0 ? 'Klar til tryk' : 'Før tryk'}</h2>
+        <h2>{stop.length === 0 ? 'Siderne er klar' : 'Før tryk'}</h2>
         <button
           className="checks__again"
           onClick={refresh}
@@ -111,7 +115,15 @@ export function Checklist() {
       {findings.length === 0 ? (
         <div className="checks__clear">
           <span aria-hidden="true">✓</span>
-          <p>Avisen er klar. Hent PDF’en øverst til højre.</p>
+          {/* The pages are one half of ready; the signatures are the other, and they live on Godkend. */}
+          {unsigned > 0 ? (
+            <p>
+              Siderne er klar — men {unsigned} {unsigned === 1 ? 'godkendelse mangler' : 'godkendelser mangler'}.{' '}
+              <button className="linkish" onClick={() => { setOpen(false); openBoard('godkend'); }}>Gå til Godkend</button>
+            </p>
+          ) : (
+            <p>Avisen er klar og godkendt. Hent PDF’en øverst til højre.</p>
+          )}
         </div>
       ) : (
         <div className="checks__groups">
@@ -132,7 +144,7 @@ export function Checklist() {
 /**
  * The avis's state in one word, where the save and the PDF are.
  *
- * "Klar til tryk" in green is the thing a person wants to see before
+ * "Siderne er klar" in green is the thing a person wants to see before
  * they send the file, and it was nowhere: the list existed and had no
  * way in. Red with a count when something stops the print, amber when
  * something is only worth a look.
@@ -155,7 +167,7 @@ export function ReadyPill() {
       <span className="ready__dot" aria-hidden="true">{tone === 'ok' ? '✓' : ''}</span>
       {/* The number stays when the header is narrow; the words give way. */}
       {tone === 'ok'
-        ? <span className="ready__said">Klar til tryk</span>
+        ? <span className="ready__said">Siderne er klar</span>
         : <><b className="ready__n">{stop > 0 ? stop : look}</b><span className="ready__said">{stop > 0 ? ' skal rettes' : ' værd at se'}</span></>}
     </button>
   );

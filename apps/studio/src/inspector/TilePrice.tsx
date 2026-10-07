@@ -24,7 +24,7 @@ export function TilePrice({ offer }: { offer: Offer }) {
       <h3 className="inspector__group">Pris</h3>
       <div className="tileprice">
         <label className="inspector__field">
-          <span>Pris, kr.{offer.priceFrom ? ' — laveste, der står "fra"' : ''}</span>
+          <span title={offer.priceFrom ? 'Den laveste pris — der står "fra" foran på siden' : undefined}>{offer.priceFrom ? 'Fra-pris, kr.' : 'Pris, kr.'}</span>
           <input
             inputMode="decimal"
             value={price}

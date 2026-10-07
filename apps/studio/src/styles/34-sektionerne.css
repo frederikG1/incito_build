@@ -348,7 +348,6 @@
 .empty__tip kbd { font: inherit; font-size: 11px; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line-strong); background: var(--surface); }
 
 /* A cluster on a published page is only its products — the page prints its own price and words. */
-.slot--pack .celltool { display: none; }
 
 /* Tuning controls, folded away — the week's paper needs the button above, not these. */
 .way__more { border-top: 1px solid #eceae4; padding-top: 6px; margin-top: 2px; display: flex; flex-direction: column; gap: 8px; }

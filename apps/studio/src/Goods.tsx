@@ -260,7 +260,7 @@ export function GoodsBoard() {
               <span>
                 {row.page
                   ? <button className="linkish goods__page" onClick={() => go(row)}>side {row.page.number}</button>
-                  : <span className="goods__muted">reserven</span>}
+                  : <span className="goods__muted">ikke placeret</span>}
               </span>
             </div>
           );
@@ -290,7 +290,7 @@ export function GoodsBoard() {
               setPicked([]);
             }}
             title={waiting.length === 0 ? 'De valgte varer står allerede på en side' : 'Hver vare får sin egen plads — siden får flere pladser, hvis den mangler'}
-          >{waiting.length === picked.length ? 'Tilføj som nye pladser' : `Tilføj ${waiting.length} fra reserven`}</button>
+          >{waiting.length === picked.length ? 'Tilføj som nye pladser' : `Tilføj ${waiting.length} ikke placerede`}</button>
         </footer>
       )}
     </main>
