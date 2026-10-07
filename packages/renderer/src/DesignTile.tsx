@@ -2,6 +2,7 @@ import { PriceMark, pricePieces, setsPrice } from './price-mark.js';
 import type { CSSProperties, ReactNode } from 'react';
 import { packOverride, packStack, partOverride, type DesignLayer, type DesignParagraph, type Offer, type OfferDesign, type PlacementOverrides, type TilePart } from '@incitio/schema';
 import { incitoVars, renderLiquid } from './liquid.js';
+import { packStyle } from './OfferTile.js';
 
 /**
  * One offer drawn in one of the chain's offer designs.
@@ -210,6 +211,26 @@ function paragraphPart(liquid: string): 'name' | 'description' | null {
   return null;
 }
 
+/**
+ * Columns for a block of `count` products in a box `ratio` wide per unit
+ * of height: whichever count gives each (roughly square) product the
+ * most room. Six in a wide band is three by two, in a tall one two by
+ * three — a fixed column count spends one dimension and wastes the other.
+ */
+export function packColumns(count: number, ratio: number): number {
+  let best = { cols: 1, size: 0, gaps: count };
+  for (let cols = 1; cols <= count; cols += 1) {
+    const rows = Math.ceil(count / cols);
+    const size = Math.min(ratio / cols, 1 / rows);
+    const gaps = cols * rows - count;
+    /* A tie goes to the fuller block (5+1 is a row with a straggler),
+       then the wider one: 3+2 reads as a group, 2+2+1 as a list. */
+    const tie = Math.abs(size - best.size) < 1e-9;
+    if (size > best.size + 1e-9 || (tie && gaps <= best.gaps)) best = { cols, size, gaps };
+  }
+  return best.cols;
+}
+
 export function DesignTile({ design, offer, aspect, overrides, cell, selected, onSelect, because }: DesignTileProps) {
   /*
    * Where the editor moved, sized or took off a part — the same record
@@ -271,8 +292,21 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
       : raw;
     if (layer.type === 'offer_image' && offer.imageUrl) {
       const pack = offer.imagePack.length > 1 ? offer.imagePack : [offer.imageUrl];
+      /*
+       * The same arrangements `OfferTile` varies between — row, stagger,
+       * block, fan — drawn from the offer's id, or the one written onto
+       * the placement. Always a row made every cluster on a CMS page
+       * stand in the same queue.
+       */
+      const shape = pack.length > 1 ? overrides?.arrangement ?? packStyle(offer.id, pack.length, 'standard') : 'row';
+      const cols = shape === 'grid' ? packColumns(pack.length, raw.w / raw.h) : pack.length;
+      const rows = Math.ceil(pack.length / cols);
       return (
-        <div className="dtile__pack" style={moved('media') ?? undefined}>
+        <div
+          className={`dtile__pack dtile__pack--${shape}`}
+          data-count={pack.length}
+          style={{ ...(moved('media') ?? {}), '--cols': cols, '--rows': rows } as CSSProperties}
+        >
           {pack.map((url, index) => {
             /*
              * Each product addressable and movable, as on `OfferTile`:
@@ -293,7 +327,11 @@ export function DesignTile({ design, offer, aspect, overrides, cell, selected, o
                 data-part="media"
                 data-pack={index}
                 style={{
-                  zIndex: packStack(pack.length, index, item?.depth ?? 0),
+                  // In a block the front row covers the one behind it.
+                  zIndex: shape === 'grid' && !item?.depth
+                    ? 4 + Math.floor(index / cols)
+                    : packStack(pack.length, index, item?.depth ?? 0),
+                  ...(shape === 'grid' ? { '--row': Math.floor(index / cols), '--odd': (index % cols) % 2 } : {}),
                   ...(shifted ? {
                     translate: `${(item.offsetX / (cell?.w || 1)).toFixed(3)}cqw ${(item.offsetY / (cell?.h || 1)).toFixed(3)}cqh`,
                     scale: String(item.scale),

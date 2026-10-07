@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Offer, readIncitoDesigns } from '@incitio/schema';
 import { DesignTile, renderLiquid } from '../index.js';
 import { incitoVars } from '../liquid.js';
+import { packColumns } from '../DesignTile.js';
 
 const { designs } = readIncitoDesigns(readFileSync(new URL('../../../../data/designs/superbrugsen-cms.json', import.meta.url), 'utf8'));
 const offer = (over: Partial<Offer> = {}) => Offer.parse({
@@ -45,6 +46,30 @@ describe('DesignTile', () => {
     expect(html).toContain('Coop kylling');
     const image = design.layers.find((l) => l.type === 'offer_image')!;
     expect(html).toContain(`top:${image.y1 * 100}%`);
+  });
+
+  it('varies how several products stand instead of always queuing them', () => {
+    const design = designs.find((d) => d.tag === 'Rød, sort, hvid' && d.offer_priority === 'a')!;
+    const shapes = new Set<string>();
+    for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) {
+      const html = renderToStaticMarkup(createElement(DesignTile, {
+        design, aspect: 1, offer: offer({ id, imagePack: ['https://img/1.png', 'https://img/2.png', 'https://img/3.png'] }),
+      }));
+      shapes.add(/dtile__pack--(\w+)/.exec(html)![1]!);
+    }
+    expect(shapes.size).toBeGreaterThan(1);
+    const six = renderToStaticMarkup(createElement(DesignTile, {
+      design, aspect: 1, offer: offer({ imagePack: [1, 2, 3, 4, 5, 6].map((n) => `https://img/${n}.png`) }),
+    }));
+    expect(six).toContain('dtile__pack--grid');
+  });
+
+  it('gives a block the columns that leave each product the most room', () => {
+    expect(packColumns(6, 2.5)).toBe(3);
+    expect(packColumns(6, 0.6)).toBe(2);
+    expect(packColumns(5, 1)).toBe(3);
+    expect(packColumns(4, 1)).toBe(2);
+    expect(packColumns(6, 8)).toBe(6);
   });
 
   it('draws no picture in a design without an image box', () => {

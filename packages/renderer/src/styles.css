@@ -2226,5 +2226,25 @@
 .dtile__pack { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; isolation: isolate; }
 .dtile__pack img { flex: 1 1 0; min-width: 0; max-width: 100%; max-height: 100%; object-fit: contain; }
 .dtile__pack img + img { margin-left: -8%; }
+/*
+ * The arrangements, as on `.tile__pack--*` — see `packStyle`. `transform`
+ * only: a hand-moved product writes `translate`/`scale`/`rotate`, which
+ * compose with it instead of replacing it.
+ */
+.dtile__pack--stagger img:nth-child(odd) { transform: translateY(6%) scale(0.86); }
+.dtile__pack--fan img { transform-origin: 50% 100%; }
+.dtile__pack--fan img:first-child { transform: rotate(-7deg) scale(0.86); }
+.dtile__pack--fan img:last-child { transform: rotate(7deg) scale(0.86); }
+/* A block: rows of products, the back row tucked down behind the front
+   one, every other column riding a little lower so the rows do not read
+   as a table. */
+.dtile__pack--grid { flex-wrap: wrap; align-content: center; }
+.dtile__pack--grid img {
+  flex: 0 0 calc(100% / var(--cols));
+  height: calc(100% / var(--rows));
+  max-width: none;
+  transform: translateY(calc((var(--rows) - 1 - var(--row)) * 14% + (var(--odd) - 0.5) * 12%)) scale(1.12);
+}
+.dtile__pack--grid img + img { margin-left: 0; }
 .dtile__cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .dtile__logo { width: 100%; max-height: 24%; object-fit: contain; margin-bottom: 4%; }
